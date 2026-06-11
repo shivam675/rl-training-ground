@@ -14,6 +14,9 @@ class HealthResponse(BaseModel):
     app: str = "EasyRTG"
     renderer: str
     pybullet_connected: bool
+    uptime_seconds: float = 0.0
+    training_active: bool = False
+    training_alive: bool = True
 
 
 class LoadUrdfRequest(BaseModel):
@@ -76,7 +79,8 @@ class RewardTestRequest(BaseModel):
 
 
 class TrainingStartRequest(BaseModel):
-    config: EnvConfig
+    # When omitted, the backend builds the config from the saved/current robot.
+    config: EnvConfig | None = None
     algorithm: Literal["PPO", "SAC", "TD3", "DQN", "A2C"] = "PPO"
     total_timesteps: int = 10_000
     learning_rate: float = 3e-4
@@ -84,12 +88,18 @@ class TrainingStartRequest(BaseModel):
     gamma: float = 0.99
     n_steps: int = 2048
     policy_type: str = "MlpPolicy"
+    # Telemetry / robustness controls (Phase 2)
+    checkpoint_every: int = 0  # timesteps between checkpoints, 0 = off
+    resume_from: str | None = None  # path to a model.zip to continue from
+    stop_on_nan: bool = True
+    no_improvement_steps: int = 0  # early-stop window, 0 = off
 
 
 class TrainingStatus(BaseModel):
     active: bool
     run_dir: str | None = None
     timestep: int = 0
+    total_timesteps: int = 0
     episode_reward: float | None = None
     episode_length: int | None = None
     fps: float | None = None
@@ -104,6 +114,7 @@ class EvaluationRequest(BaseModel):
 
 
 class OllamaSettings(BaseModel):
+    schema_version: int = 1
     provider_name: str = "Local Ollama"
     base_url: str = "http://localhost:11434"
     bearer_token: str = ""
@@ -116,6 +127,7 @@ class OllamaSettings(BaseModel):
 
 
 class AppPreferences(BaseModel):
+    schema_version: int = 1
     stream_resolution_scale: float = Field(default=1.0, ge=0.5, le=1.5)
     show_inspector_on_dashboard: bool = True
 

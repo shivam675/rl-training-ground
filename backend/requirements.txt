@@ -9,3 +9,4 @@ gymnasium>=0.29
 stable-baselines3>=2.3
 torch>=2.3
 pytest>=8.0
+httpx2>=2.0  # test client transport
