@@ -246,10 +246,21 @@ class PyBulletControlPanel(QWidget):
         if w < 16 or h < 16:
             return
 
-        max_width = 1600 if self.numpy_fast else 512
-        scale = min(1.0, max_width / w) * self.render_scale
-        rw = max(64, int(w * scale)) & ~3
-        rh = max(64, int(h * scale)) & ~3
+        # Render at the viewport's native pixel resolution. On HiDPI displays
+        # the widget has width * devicePixelRatio physical pixels; rendering at
+        # the logical size and letting Qt upscale is what looks soft.
+        dpr = self.viewport.devicePixelRatioF()
+        pw = int(w * dpr)
+        ph = int(h * dpr)
+
+        # GPU path renders at full native resolution (scaled only by the
+        # adaptive guard); CPU fallback stays capped to remain responsive.
+        if self.numpy_fast:
+            scale = self.render_scale
+        else:
+            scale = min(1.0, 512 / pw) * self.render_scale
+        rw = max(64, int(pw * scale)) & ~3
+        rh = max(64, int(ph * scale)) & ~3
 
         renderer = (
             p.ER_BULLET_HARDWARE_OPENGL
@@ -280,11 +291,14 @@ class PyBulletControlPanel(QWidget):
         self._count_fps(rw, rh)
 
     def _adapt_resolution(self, grab_dt):
+        # Target a 60 fps frame budget (~16.7 ms). Only trim resolution when a
+        # frame clearly blows the budget, and grow back toward native res when
+        # there is comfortable headroom.
         ema = self._grab_ema
         self._grab_ema = grab_dt if ema is None else ema * 0.8 + grab_dt * 0.2
-        if self._grab_ema > 0.040 and self.render_scale > 0.35:
-            self.render_scale = max(0.35, self.render_scale * 0.85)
-        elif self._grab_ema < 0.015 and self.render_scale < 1.0:
+        if self._grab_ema > 0.016 and self.render_scale > 0.35:
+            self.render_scale = max(0.35, self.render_scale * 0.9)
+        elif self._grab_ema < 0.011 and self.render_scale < 1.0:
             self.render_scale = min(1.0, self.render_scale * 1.1)
 
     def _count_fps(self, rw, rh):

@@ -1,0 +1,2 @@
+"""Ollama-compatible AI agents."""
+
