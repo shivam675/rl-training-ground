@@ -1,0 +1,179 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  background: #202632;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #e6e9ef;
+  overflow: hidden;
+}
+
+.app {
+  position: relative;
+  height: 100vh;
+  width: 100vw;
+}
+
+.app canvas {
+  display: block;
+}
+
+.hud {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: rgba(20, 24, 32, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  user-select: none;
+}
+
+.title {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.badge {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  text-transform: capitalize;
+}
+
+.badge--connected {
+  background: rgba(52, 199, 89, 0.18);
+  color: #5fe089;
+}
+
+.badge--connecting {
+  background: rgba(255, 204, 0, 0.16);
+  color: #ffd84d;
+}
+
+.badge--disconnected,
+.badge--error {
+  background: rgba(255, 69, 58, 0.18);
+  color: #ff6f64;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  font: inherit;
+  font-size: 13px;
+  color: #e6e9ef;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.clock {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: #aab2c0;
+}
+
+.hint {
+  font-size: 11px;
+  color: #7e8794;
+}
+
+.loader {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 320px;
+}
+
+.loader__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c7cdd8;
+}
+
+.loader__row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.loader__row input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.loader input[type='text'],
+.loader input[type='number'] {
+  font: inherit;
+  font-size: 12px;
+  color: #e6e9ef;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+.loader input[type='file'] {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: #aab2c0;
+}
+
+.loader__base {
+  font-size: 11px;
+  color: #7e8794;
+}
+
+.loader__base input {
+  width: 56px;
+}
+
+.loader button {
+  font-size: 12px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+.loader button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.loader__msg {
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.loader__msg.ok {
+  color: #5fe089;
+}
+
+.loader__msg.err {
+  color: #ff6f64;
+}
