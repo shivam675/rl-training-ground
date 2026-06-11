@@ -20,6 +20,48 @@ from backend.models import (
 from backend.rl.reward_builder import default_reward_components, evaluate_reward
 
 
+# Tools that mutate state; in "ask" autonomy mode these require an explicit
+# user confirmation before they run.
+DESTRUCTIVE_TOOLS = {
+    "load_urdf",
+    "reset_simulation",
+    "set_gravity",
+    "apply_test_action",
+    "start_training",
+    "stop_training",
+    "patch_env_config",
+    "evaluate_run",
+    "start_tuning",
+}
+
+# Read-only tools, safe for every agent in every mode.
+READ_TOOLS = {
+    "get_health",
+    "get_robot_info",
+    "get_observations",
+    "get_actions",
+    "get_training_status",
+    "get_training_telemetry",
+    "test_reward",
+    "get_env_config",
+    "list_runs",
+    "get_run_details",
+    "compare_runs",
+    "get_evaluation_status",
+    "get_algorithm_advice",
+    "get_tuning_status",
+}
+
+# Per-agent tool scopes; None means every tool.
+AGENT_TOOL_SCOPES: dict[str, set[str] | None] = {
+    "helper": None,
+    "reward": READ_TOOLS | {"patch_env_config"},
+    "training_monitor": READ_TOOLS | {"stop_training"},
+    "evaluation": READ_TOOLS | {"evaluate_run"},
+    "robot_inspector": READ_TOOLS | {"load_urdf", "apply_test_action"},
+}
+
+
 class AgentToolbox:
     def __init__(
         self,
@@ -30,6 +72,8 @@ class AgentToolbox:
         config_service=None,
         registry=None,
         evaluation_worker=None,
+        tuner_worker=None,
+        autonomy_provider=None,
     ):
         self.sim = sim
         self.training_worker = training_worker
@@ -38,10 +82,19 @@ class AgentToolbox:
         self.config_service = config_service
         self.registry = registry
         self.evaluation_worker = evaluation_worker
+        self.tuner_worker = tuner_worker
+        # Callable returning "act" or "ask"; defaults to acting freely.
+        self.autonomy_provider = autonomy_provider or (lambda: "act")
 
     # ------------------------------------------------------------------ schema
 
-    def definitions(self) -> list[dict[str, Any]]:
+    def definitions(self, allowed: set[str] | None = None) -> list[dict[str, Any]]:
+        tools = self._all_definitions()
+        if allowed is None:
+            return tools
+        return [t for t in tools if t["function"]["name"] in allowed]
+
+    def _all_definitions(self) -> list[dict[str, Any]]:
         def tool(name: str, description: str, properties: dict[str, Any] | None = None,
                  required: list[str] | None = None) -> dict[str, Any]:
             return {
@@ -97,7 +150,27 @@ class AgentToolbox:
                 },
                 ["values"],
             ),
-            tool("test_reward", "Evaluate the default reward components against the current state."),
+            tool("test_reward", "Evaluate the configured reward components against the current state."),
+            tool(
+                "get_env_config",
+                "The full environment config (observations, actions, rewards, "
+                "terminations) plus validation problems.",
+            ),
+            tool(
+                "patch_env_config",
+                "Update parts of the environment config. Merge semantics: "
+                "observations match by key, actions by joint_index, rewards by key "
+                "(params merge). Example: {\"rewards\": [{\"key\": \"action_magnitude\", "
+                "\"weight\": -0.05}], \"observations\": [{\"key\": \"contact_points\", "
+                "\"enabled\": true}]}",
+                {
+                    "patch": {
+                        "type": "object",
+                        "description": "Partial config: observations/actions/rewards/terminations",
+                    }
+                },
+                ["patch"],
+            ),
             tool(
                 "start_training",
                 "Start an RL training run on the loaded robot.",
@@ -159,11 +232,60 @@ class AgentToolbox:
                 "get_evaluation_status",
                 "Progress/result of the current or last evaluation.",
             ),
+            tool(
+                "get_algorithm_advice",
+                "Rule-based algorithm recommendation for the current robot "
+                "(with reasons) plus hyperparameter presets per algorithm.",
+            ),
+            tool(
+                "start_tuning",
+                "Run an Optuna hyperparameter search: N short training trials, "
+                "each scored by rollout reward. Check get_tuning_status for the "
+                "best parameters.",
+                {
+                    "algorithm": {"type": "string", "enum": ["PPO", "SAC", "TD3", "A2C"]},
+                    "n_trials": {"type": "integer", "description": "Default 8, max 50"},
+                    "timesteps_per_trial": {"type": "integer", "description": "Default 2000"},
+                },
+            ),
+            tool("get_tuning_status", "Progress and best parameters of the tuning run."),
         ]
 
     # ----------------------------------------------------------------- execute
 
-    async def execute(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+    async def execute(
+        self,
+        name: str,
+        args: dict[str, Any],
+        confirmed: bool = False,
+        allowed: set[str] | None = None,
+    ) -> dict[str, Any]:
+        if allowed is not None and name not in allowed:
+            return {"error": f"Tool {name} is not available to this agent."}
+        if (
+            not confirmed
+            and name in DESTRUCTIVE_TOOLS
+            and self._autonomy() == "ask"
+        ):
+            return {
+                "requires_confirmation": True,
+                "tool": name,
+                "args": args or {},
+                "message": (
+                    "Agent autonomy is set to 'ask first' — the user must "
+                    "confirm this action in the UI before it runs. Tell them "
+                    "what the action will do and that a Run button is shown."
+                ),
+            }
+        return await self._dispatch(name, args)
+
+    def _autonomy(self) -> str:
+        try:
+            return str(self.autonomy_provider()) or "act"
+        except Exception:
+            return "act"
+
+    async def _dispatch(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         handlers: dict[str, Callable[..., Any]] = {
             "get_health": self._get_health,
             "get_robot_info": self._get_robot_info,
@@ -175,6 +297,8 @@ class AgentToolbox:
             "set_gravity": self._set_gravity,
             "apply_test_action": self._apply_test_action,
             "test_reward": self._test_reward,
+            "get_env_config": self._get_env_config,
+            "patch_env_config": self._patch_env_config,
             "start_training": self._start_training,
             "stop_training": self._stop_training,
             "get_training_telemetry": self._get_training_telemetry,
@@ -183,6 +307,9 @@ class AgentToolbox:
             "compare_runs": self._compare_runs,
             "evaluate_run": self._evaluate_run,
             "get_evaluation_status": self._get_evaluation_status,
+            "get_algorithm_advice": self._get_algorithm_advice,
+            "start_tuning": self._start_tuning,
+            "get_tuning_status": self._get_tuning_status,
         }
         handler = handlers.get(name)
         if handler is None:
@@ -244,16 +371,44 @@ class AgentToolbox:
         )
 
     def _test_reward(self) -> dict[str, Any]:
-        components = [
-            RewardComponent(
-                key=item["key"],
-                enabled=item["key"] != "custom_python",
-                weight=item.get("weight", 1.0),
-                params=item.get("params", {}),
-            )
-            for item in default_reward_components()
-        ]
+        if self.config_service is not None:
+            components = self.config_service.current_or_default(self.sim).rewards
+        else:
+            components = [
+                RewardComponent(
+                    key=item["key"],
+                    enabled=item["key"] != "custom_python",
+                    weight=item.get("weight", 1.0),
+                    params=item.get("params", {}),
+                )
+                for item in default_reward_components()
+            ]
         return evaluate_reward(self.sim, components)
+
+    def _get_env_config(self) -> dict[str, Any]:
+        if self.config_service is None:
+            return {"error": "Config service unavailable."}
+        config = self.config_service.current_or_default(self.sim)
+        return {
+            "config": config.model_dump(),
+            "problems": self.config_service.validate(config, self.sim),
+        }
+
+    def _patch_env_config(self, patch: dict[str, Any]) -> dict[str, Any]:
+        if self.config_service is None:
+            return {"error": "Config service unavailable."}
+        config = self.config_service.current_or_default(self.sim)
+        updated = self.config_service.apply_patch(config, patch or {})
+        self.config_service.save(updated)
+        problems = self.config_service.validate(updated, self.sim)
+        if self.notifier is not None:
+            self.notifier.notify_threadsafe(
+                title="Agent updated the environment config",
+                body="Rewards/observations/actions were modified via chat.",
+                severity="info",
+                category="agent_action",
+            )
+        return {"ok": True, "problems": problems, "rewards": updated.model_dump()["rewards"]}
 
     def _start_training(
         self,
@@ -336,11 +491,48 @@ class AgentToolbox:
     def _evaluate_run(self, run_name: str, episodes: int = 3) -> dict[str, Any]:
         if self.evaluation_worker is None:
             return {"error": "Evaluation worker unavailable."}
-        return self.evaluation_worker.start(
+        result = self.evaluation_worker.start(
             run_name=str(run_name), episodes=int(episodes), deterministic=True
         )
+        result["note"] = (
+            "Playback is live in the Simulation viewport — tell the user to watch it there."
+        )
+        return result
 
     def _get_evaluation_status(self) -> dict[str, Any]:
         if self.evaluation_worker is None:
             return {"error": "Evaluation worker unavailable."}
         return dict(self.evaluation_worker.status)
+
+    def _get_algorithm_advice(self) -> dict[str, Any]:
+        from backend.rl.advisor import advise
+
+        if self.config_service is None:
+            return {"error": "Config service unavailable."}
+        advice = advise(self.sim, self.config_service)
+        # Presets are bulky; keep only the recommended algorithm's presets.
+        advice["presets"] = {advice["recommended"]: advice["presets"][advice["recommended"]]}
+        return advice
+
+    def _start_tuning(
+        self,
+        algorithm: str = "PPO",
+        n_trials: int = 8,
+        timesteps_per_trial: int = 2000,
+    ) -> dict[str, Any]:
+        if self.tuner_worker is None:
+            return {"error": "Tuner unavailable."}
+        if self.training_worker.status.active:
+            return {"error": "Training is running — stop it before tuning."}
+        return self.tuner_worker.start(
+            algorithm=algorithm,
+            n_trials=max(1, min(50, int(n_trials))),
+            timesteps_per_trial=max(500, min(50_000, int(timesteps_per_trial))),
+        )
+
+    def _get_tuning_status(self) -> dict[str, Any]:
+        if self.tuner_worker is None:
+            return {"error": "Tuner unavailable."}
+        status = dict(self.tuner_worker.status)
+        status["trials"] = status.get("trials", [])[-5:]
+        return status

@@ -17,6 +17,33 @@ MAX_HISTORY_POINTS = 2000
 KEEP_CHECKPOINTS = 3
 
 
+def build_algo_kwargs(req: TrainingStartRequest) -> dict[str, Any]:
+    """Map the request onto SB3 constructor kwargs, per algorithm."""
+    kwargs: dict[str, Any] = {
+        "learning_rate": req.learning_rate,
+        "gamma": req.gamma,
+        "verbose": 1,
+    }
+    if req.algorithm in ("PPO", "A2C"):
+        kwargs["n_steps"] = req.n_steps
+        if req.ent_coef is not None:
+            kwargs["ent_coef"] = req.ent_coef
+    if req.algorithm == "PPO" and req.clip_range is not None:
+        kwargs["clip_range"] = req.clip_range
+    if req.algorithm in ("PPO", "SAC", "TD3"):
+        kwargs["batch_size"] = req.batch_size
+    if req.algorithm in ("SAC", "TD3"):
+        if req.tau is not None:
+            kwargs["tau"] = req.tau
+        if req.buffer_size is not None:
+            kwargs["buffer_size"] = req.buffer_size
+        if req.train_freq is not None:
+            kwargs["train_freq"] = req.train_freq
+    if req.net_arch:
+        kwargs["policy_kwargs"] = {"net_arch": [int(n) for n in req.net_arch]}
+    return kwargs
+
+
 class TrainingWorker:
     def __init__(self, runs_dir: Path):
         self.runs_dir = runs_dir
@@ -168,15 +195,7 @@ class TrainingWorker:
                         )
                     return not worker._stop.is_set()
 
-            kwargs: dict[str, Any] = {
-                "learning_rate": req.learning_rate,
-                "gamma": req.gamma,
-                "verbose": 1,
-            }
-            if req.algorithm in ("PPO", "A2C"):
-                kwargs["n_steps"] = req.n_steps
-            if req.algorithm in ("PPO", "SAC", "TD3"):
-                kwargs["batch_size"] = req.batch_size
+            kwargs = build_algo_kwargs(req)
 
             if req.resume_from:
                 resume_path = Path(req.resume_from)

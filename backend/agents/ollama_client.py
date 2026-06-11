@@ -57,6 +57,23 @@ class OllamaClient:
 
     MAX_TOOL_ROUNDS = 6
 
+    async def show_model(self) -> dict[str, Any]:
+        """Model metadata from Ollama, including tool-calling capability."""
+        data = await asyncio.to_thread(
+            self._request, "POST", "/api/show", {"model": self.settings.model_name}
+        )
+        capabilities = [str(c) for c in data.get("capabilities", [])]
+        info = data.get("model_info", {}) or {}
+        context_length = next(
+            (v for k, v in info.items() if k.endswith("context_length")), None
+        )
+        return {
+            "model": self.settings.model_name,
+            "supports_tools": "tools" in capabilities,
+            "capabilities": capabilities,
+            "context_length": context_length,
+        }
+
     async def stream_chat_events(
         self,
         system_prompt: str,
@@ -64,15 +81,24 @@ class OllamaClient:
         context: dict[str, Any] | None = None,
         tools: list[dict[str, Any]] | None = None,
         tool_executor: Any = None,
+        history: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream chat as events, executing tool calls between rounds.
 
         Event types: chunk (assistant text), tool_call, tool_result, notice.
+        ``history`` is prior conversation turns: [{role, content}, ...].
         """
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": self.settings.system_prompt_override or system_prompt},
-            {"role": "user", "content": self._compose_user_message(message, context or {})},
         ]
+        for turn in history or []:
+            role = str(turn.get("role", ""))
+            content = str(turn.get("content", ""))
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+        messages.append(
+            {"role": "user", "content": self._compose_user_message(message, context or {})}
+        )
         tools_enabled = bool(tools) and tool_executor is not None
 
         for _ in range(self.MAX_TOOL_ROUNDS):

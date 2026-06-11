@@ -9,6 +9,12 @@ if [[ -z "${PYTHON:-}" && -x .venv/bin/python ]]; then
 fi
 PYTHON="${PYTHON:-python3}"
 
+# EASYRTG_SUPERVISE=0 → run uvicorn directly (no restart loop). Used by the
+# desktop app's launcher so killing this process kills the server too.
+if [[ "${EASYRTG_SUPERVISE:-1}" == "0" ]]; then
+  exec "$PYTHON" -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+fi
+
 RESTART_DELAY=2
 while true; do
   "$PYTHON" -m uvicorn backend.main:app --host 127.0.0.1 --port 8000

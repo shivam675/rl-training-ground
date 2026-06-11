@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from backend.agents.ollama_client import OllamaClient
-from backend.agents.tools import AgentToolbox
+from backend.agents.tools import AGENT_TOOL_SCOPES, AgentToolbox
 from backend.models import OllamaSettings
 
 PROACTIVE_GUIDELINES = (
@@ -34,6 +34,10 @@ class BaseAgent:
             return self.system_prompt
         return self.system_prompt + PROACTIVE_GUIDELINES
 
+    @property
+    def tool_scope(self) -> set[str] | None:
+        return AGENT_TOOL_SCOPES.get(self.name)
+
     async def run(self, message: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         reply = await self.client.chat(self._full_prompt(), message, context)
         return {"agent": self.name, "reply": reply}
@@ -44,11 +48,26 @@ class BaseAgent:
                 yield event["text"]
 
     async def stream_events(
-        self, message: str, context: dict[str, Any] | None = None
+        self,
+        message: str,
+        context: dict[str, Any] | None = None,
+        history: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        tools = self.toolbox.definitions() if self.toolbox else None
-        executor = self.toolbox.execute if self.toolbox else None
+        tools = None
+        executor = None
+        if self.toolbox is not None:
+            scope = self.tool_scope
+            tools = self.toolbox.definitions(scope)
+
+            async def executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
+                return await self.toolbox.execute(name, args, allowed=scope)
+
         async for event in self.client.stream_chat_events(
-            self._full_prompt(), message, context, tools=tools, tool_executor=executor
+            self._full_prompt(),
+            message,
+            context,
+            tools=tools,
+            tool_executor=executor,
+            history=history,
         ):
             yield event

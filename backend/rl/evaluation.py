@@ -188,6 +188,11 @@ class EvaluationWorker:
                 broadcast=self.broadcast if visualize else None,
                 label=f"Evaluation · {run_name}",
             )
+            # A user-requested stop returns whatever episodes finished; don't
+            # record it as a real result or fire a "complete" notification.
+            if self._stop.is_set():
+                self.status.update(active=False, message="cancelled", result=None)
+                return
             summary["run_name"] = run_name
             self.registry.record_evaluation(run_name, summary)
             self.status.update(active=False, message="complete", result=summary)

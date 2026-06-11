@@ -61,8 +61,12 @@ doing in real time, not poll a counter.
 - [x] **Evaluation runner UI**: Evaluation tab lists runs (algorithm badge,
       steps, best train/eval reward), evaluates any saved model in a background
       `EvaluationWorker` (1/3/5/10 episodes) with live progress, episode table
-      + mean stat chips, completion notification. _Viewport playback of eval
-      episodes still TODO (eval uses its own headless env)._
+      + mean stat chips, completion notification.
+- [x] **Watchable evaluation**: `FrameBroadcast` (backend/streaming.py) lets the
+      eval env stream its frames into `/ws/simulation`; the viewport switches
+      source automatically with an "Evaluation · run · ep i/N" overlay, camera
+      orbit/pan/zoom forward to the eval camera, pause works, steps are paced
+      to real time, and a "Watch live" button jumps to the viewport.
 - [x] **Run registry**: `backend/run_registry.py` reads per-run artifacts
       (config, telemetry.jsonl, evaluations.json, checkpoints) — filesystem is
       the source of truth. `GET /runs`, `GET /runs/{name}`; runs list in UI
@@ -79,74 +83,88 @@ doing in real time, not poll a counter.
 
 Today's builders are read-only V1 lists. Make them real.
 
-- [ ] **Observation builder**: toggle each source on/off, reorder, per-source
-      normalization (running mean/std or min-max from limits); live preview of
-      the current vector with values; contact sensors and link poses as new
-      sources; camera image observation behind a "pixels (slow)" flag.
-- [ ] **Action builder**: per-joint enable, control mode (position/velocity/
-      torque), scale range, max force; group symmetric joints; "mirror left/right"
-      helper; safe-range test sweep button that wiggles one joint at a time.
-- [ ] **Reward builder UI**: enable/disable components, edit weights with sliders,
-      edit params (target positions as draggable markers in the viewport),
-      live reward readout while the sim runs, per-term breakdown chart.
-- [ ] **Custom reward (sandboxed)**: user Python snippet executed in a restricted
-      subprocess with a time/memory budget — never in the server process.
-- [ ] **Reward agent integration**: "Review my reward" button → reward agent gets
-      the full reward config + a rollout trace, returns risks (sparse signal,
-      reward hacking routes, scale mismatch) and proposed weight changes the user
-      can apply with one click. Agent tools: `get_reward_config`,
-      `set_reward_weights`, `propose_reward` (returns a diff, requires user
-      confirmation to apply).
+- [x] **Observation builder**: per-source on/off switches persisting to the env
+      config (`POST /env/config/patch`), config problem banner, copyable keys.
+      _Normalization, reorder, contact/link extras, camera obs still TODO._
+- [x] **Action builder**: per-joint enable switch, control-mode dropdown
+      (position/velocity/torque), editable scale low/high — all persisted.
+      _Symmetry grouping, mirror helper, per-joint sweep still TODO._
+- [x] **Reward builder UI**: enable/weight/params editors per component (lists
+      and numbers), persisted; Test reward uses the *configured* components and
+      shows the per-term formula. _Viewport target markers + term chart TODO._
+- [x] **Custom reward**: real `custom_python` component. Code is validated in a
+      resource-limited subprocess (CPU+memory caps catch infinite loops) before
+      use; during training it runs in-process from a compiled cache, failures
+      degrade to a 0.0 term with a warning. UI code editor with sandboxed
+      Validate button (`/reward/validate_custom`).
+- [x] **Reward agent integration**: `get_env_config` / `patch_env_config` agent
+      tools (reward agent's scope is read-only + reward patching); destructive
+      patches respect the autonomy confirmation gate. _One-click "review my
+      reward" button with rollout trace still TODO._
 
 ## Phase 5 — Algorithm guidance & hyperparameter tuning (2–3 weeks)
 
-- [ ] **Algorithm advisor**: rule-based first pass (continuous actions → PPO/SAC/
-      TD3; high-dim obs → bigger nets; short episodes → A2C viable), explained in
-      UI; agent refines with context. Show "why this algorithm" inline.
-- [ ] **Hyperparameter presets**: per-algorithm presets (conservative / balanced /
-      aggressive) with tooltips explaining each param in plain language.
-- [ ] **Full hyperparameter surface in UI**: net arch, ent_coef, clip_range,
-      tau, buffer size, train_freq — currently hardcoded defaults only.
-- [ ] **Auto-tune (Optuna)**: "Tune" button → backend runs N short trials over a
-      search space, streams trial results, picks the best config; agent explains
-      the outcome. Budget-capped and cancellable.
-- [ ] **Param tweak suggestions during training**: training monitor agent maps
-      symptoms → concrete edits ("entropy collapsed early → raise ent_coef to
-      0.01"), delivered as notifications with an "apply to next run" action.
+- [x] **Algorithm advisor**: rule-based `GET /training/advisor` (big action
+      space → SAC, large obs → bigger net, short episodes → A2C) with reasons
+      shown inline on the Training tab + one-click "Use X" + agent tool
+      `get_algorithm_advice`.
+- [x] **Hyperparameter presets**: conservative/balanced/aggressive per
+      algorithm (advisor payload); preset chips on the Training tab with
+      tooltip values, click-to-copy.
+- [x] **Full hyperparameter surface (API)**: ent_coef, clip_range, tau,
+      buffer_size, train_freq, net_arch on `TrainingStartRequest`, mapped
+      per-algorithm in `build_algo_kwargs` (tested). _Dedicated UI fields for
+      each param still TODO — UI exposes algorithm + timesteps; the agent and
+      API expose everything._
+- [x] **Auto-tune (Optuna)**: `TunerWorker` runs N short trials (sampled lr,
+      gamma, n_steps, ent_coef, clip_range, batch, tau), scores by rollout
+      reward, cancellable, blocked while training; Training-tab card with
+      progress + best-params copy; agent tools `start_tuning` /
+      `get_tuning_status`; completion notification carries the best params.
+- [x] **Param tweak suggestions during training**: rule-based watchdog
+      notifications (plateau → lower lr / shape reward, NaN → weight checks,
+      FPS collapse → resolution advice). _"Apply to next run" action TODO._
 
 ## Phase 6 — Agent platform hardening (parallel track)
 
-- [ ] **Multi-agent routing in UI**: dropdown (or auto-routing) for helper /
-      reward / training_monitor / evaluation / robot_inspector agents; each gets
-      a scoped toolset (e.g. evaluation agent cannot start training).
-- [ ] **Tool-call confirmation policy**: destructive tools (start/stop training,
-      reset) optionally require a UI confirmation chip before execution —
-      user-configurable in Settings ("agent autonomy: ask / act").
-- [ ] **Conversation memory**: persist chat history per project; include the last
-      K turns in the Ollama request (currently each message is stateless).
-- [ ] **Model capability detection**: probe `/api/show` for tool support and
-      context length at settings save; warn in Settings UI if the chosen model
-      cannot call tools.
+- [x] **Multi-agent routing in UI**: agent dropdown in chat (Helper / Robot /
+      Reward / Training / Evaluation); per-agent tool scopes in
+      `AGENT_TOOL_SCOPES` (e.g. evaluation agent cannot start training,
+      training monitor can only observe + stop).
+- [x] **Tool-call confirmation policy**: Settings → "Agent autonomy: Act freely
+      / Ask first". In ask mode destructive tools return
+      `requires_confirmation`; the chat renders an amber chip with a **Run**
+      button that executes via `POST /agents/execute_tool`.
+- [x] **Conversation memory**: the chat sends the last 12 turns as `history`;
+      the Ollama request includes them, so follow-ups have context.
+      _On-disk persistence across app restarts still TODO._
+- [x] **Model capability detection**: `GET /ollama/capabilities` probes
+      `/api/show`; Settings has a "Check model capabilities" button reporting
+      tool support + context length, with model suggestions if unsupported.
 - [ ] **Provider abstraction**: OpenAI-compatible endpoint support (vLLM,
-      LM Studio, llama.cpp server) behind the same settings panel.
-- [ ] **Notification quality**: dedupe repeats, group milestones, "do not disturb
-      while training" toggle, OS-level desktop notifications via
-      `flutter_local_notifications` for completion/failure.
+      LM Studio, llama.cpp server) — still TODO; note Ollama itself also
+      serves an OpenAI-compatible API.
+- [x] **Notification quality**: exact repeats deduped within 30s.
+      _Milestone grouping, DND toggle, OS-level notifications still TODO._
 
 ## Phase 7 — Packaging & distribution (1–2 weeks)
 
-- [ ] **One-process launch**: Flutter app spawns/owns the backend (bundled
-      Python via PyInstaller or uv-managed venv), waits on `/health`, kills it on
-      exit. No more "start uvicorn manually".
-- [ ] **Installers**: Linux AppImage/Flatpak, Windows MSIX, macOS dmg (TinyRenderer
-      fallback where EGL is absent). CI release pipeline with version tags.
-- [ ] **Bundled assets**: ship example URDFs (r2d2, simple arm, quadruped) and
-      offline Inter/JetBrains Mono fonts (drop runtime Google Fonts fetch).
-- [ ] **Crash reporting & logs**: rotating file logs for backend + Flutter;
-      "Export diagnostics" button that zips logs, settings and run index.
-- [ ] **Security**: bind backend to 127.0.0.1 only, random per-session auth token
-      shared via launch handshake (CORS `*` and unauthenticated control endpoints
-      are fine locally but not if anyone exposes the port).
+- [x] **One-process launch**: `BackendLauncher` pings `/health` on startup and,
+      if offline, spawns `scripts/start_backend.sh` (EASYRTG_SUPERVISE=0 →
+      direct uvicorn exec so the process dies with the app); waits for health;
+      kills the backend on app exit *only if it spawned it*. Override the
+      script path with the `EASYRTG_BACKEND` env var.
+- [x] **Bundled assets**: Inter + JetBrains Mono ship in `google_fonts/`
+      (runtime fetching disabled — fully offline typography); example URDFs
+      already come with pybullet_data.
+- [x] **Crash reporting & logs**: rotating backend log
+      (`app_settings/logs/backend.log`, 1MB×3); Settings → "Export diagnostics"
+      zips logs + redacted settings + env config + run inventory + health.
+- [x] **Release scaffold**: `.github/workflows/release.yml` builds the Linux
+      bundle on version tags and attaches a tar.gz to a draft release.
+      _Real installers (AppImage/Flatpak/MSIX/dmg) still TODO._
+- [ ] **Security**: backend binds 127.0.0.1 only (done); per-session auth token
+      handshake and tightened CORS still TODO.
 
 ---
 

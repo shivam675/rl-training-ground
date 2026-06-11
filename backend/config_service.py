@@ -23,10 +23,20 @@ DEFAULT_OBSERVATIONS = [
     {"key": "joint_velocities", "enabled": True},
 ]
 
-DEFAULT_REWARDS = [
-    {"key": "stay_alive", "enabled": True, "weight": 1.0, "params": {}},
-    {"key": "action_magnitude", "enabled": True, "weight": -0.01, "params": {}},
-]
+
+def default_rewards() -> list[dict[str, Any]]:
+    """Full reward catalog with sane defaults; custom_python starts disabled."""
+    from backend.rl.reward_builder import default_reward_components
+
+    return [
+        {
+            "key": item["key"],
+            "enabled": item["key"] != "custom_python",
+            "weight": item.get("weight", 1.0),
+            "params": item.get("params", {}),
+        }
+        for item in default_reward_components()
+    ]
 
 
 class ConfigService:
@@ -52,10 +62,57 @@ class ConfigService:
             urdf_path=urdf_path,
             observations=DEFAULT_OBSERVATIONS,
             actions=actions,
-            rewards=DEFAULT_REWARDS,
+            rewards=default_rewards(),
             terminations={"max_steps": 1000},
             algorithm={"name": algorithm},
         )
+
+    def apply_patch(self, config: EnvConfig, patch: dict[str, Any]) -> EnvConfig:
+        """Apply a partial update from the UI/agent and return the new config.
+
+        Lists are merged by identity key (observation key / joint_index /
+        reward key); unknown entries are appended; params dictionaries merge.
+        """
+        data = config.model_dump()
+
+        for obs_patch in patch.get("observations", []) or []:
+            key = obs_patch.get("key")
+            entry = next((o for o in data["observations"] if o["key"] == key), None)
+            if entry is None:
+                data["observations"].append(
+                    {"key": key, "enabled": bool(obs_patch.get("enabled", True))}
+                )
+            elif "enabled" in obs_patch:
+                entry["enabled"] = bool(obs_patch["enabled"])
+
+        for action_patch in patch.get("actions", []) or []:
+            index = action_patch.get("joint_index")
+            entry = next(
+                (a for a in data["actions"] if a["joint_index"] == index), None
+            )
+            if entry is None:
+                continue
+            for field in ("enabled", "control_mode", "scale_low", "scale_high"):
+                if field in action_patch:
+                    entry[field] = action_patch[field]
+
+        for reward_patch in patch.get("rewards", []) or []:
+            key = reward_patch.get("key")
+            entry = next((r for r in data["rewards"] if r["key"] == key), None)
+            if entry is None:
+                entry = {"key": key, "enabled": True, "weight": 1.0, "params": {}}
+                data["rewards"].append(entry)
+            if "enabled" in reward_patch:
+                entry["enabled"] = bool(reward_patch["enabled"])
+            if "weight" in reward_patch:
+                entry["weight"] = float(reward_patch["weight"])
+            if "params" in reward_patch and isinstance(reward_patch["params"], dict):
+                entry["params"] = {**entry.get("params", {}), **reward_patch["params"]}
+
+        if isinstance(patch.get("terminations"), dict):
+            data["terminations"] = {**data["terminations"], **patch["terminations"]}
+
+        return EnvConfig.model_validate(data)
 
     def validate(self, config: EnvConfig, sim) -> list[str]:
         """Return human-readable problems that would break a training run."""
