@@ -88,6 +88,13 @@ class TrainingStartRequest(BaseModel):
     gamma: float = 0.99
     n_steps: int = 2048
     policy_type: str = "MlpPolicy"
+    # Extended hyperparameters (Phase 5); None = SB3 default.
+    ent_coef: float | None = None  # PPO/A2C exploration bonus
+    clip_range: float | None = None  # PPO
+    tau: float | None = None  # SAC/TD3 target smoothing
+    buffer_size: int | None = None  # SAC/TD3 replay size
+    train_freq: int | None = None  # SAC/TD3
+    net_arch: list[int] | None = None  # policy network hidden sizes
     # Telemetry / robustness controls (Phase 2)
     checkpoint_every: int = 0  # timesteps between checkpoints, 0 = off
     resume_from: str | None = None  # path to a model.zip to continue from
@@ -130,6 +137,8 @@ class AppPreferences(BaseModel):
     schema_version: int = 1
     stream_resolution_scale: float = Field(default=1.0, ge=0.5, le=1.5)
     show_inspector_on_dashboard: bool = True
+    # "act": agent runs destructive tools freely; "ask": user confirms first.
+    agent_autonomy: Literal["act", "ask"] = "act"
 
 
 class AgentChatRequest(BaseModel):
@@ -142,4 +151,6 @@ class AgentChatRequest(BaseModel):
     ] = "helper"
     message: str
     context: dict[str, Any] = Field(default_factory=dict)
+    # Prior conversation turns: [{role: user|assistant, content: str}, ...]
+    history: list[dict[str, Any]] = Field(default_factory=list)
     settings: OllamaSettings | None = None

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import logging.handlers
 import time
+import zipfile
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -35,9 +39,11 @@ from backend.models import (
     SimulationResetRequest,
     TrainingStartRequest,
 )
+from backend.rl.advisor import advise
 from backend.rl.evaluation import EvaluationWorker, run_evaluation
 from backend.rl.reward_builder import default_reward_components, evaluate_reward
 from backend.rl.training_worker import TrainingWorker
+from backend.rl.tuner import TunerWorker
 from backend.run_registry import RunRegistry
 from backend.simulation.pybullet_manager import PyBulletManager
 from backend.streaming import FrameBroadcast
@@ -56,10 +62,38 @@ config_service = ConfigService(PROJECT_CONFIG_DIR)
 registry = RunRegistry(RUNS_DIR)
 broadcast = FrameBroadcast()
 evaluation_worker = EvaluationWorker(registry, notifier, broadcast)
+tuner_worker = TunerWorker(config_service, sim, notifier)
 toolbox = AgentToolbox(
-    sim, training_worker, RUNS_DIR, notifier, config_service, registry, evaluation_worker
+    sim,
+    training_worker,
+    RUNS_DIR,
+    notifier,
+    config_service,
+    registry,
+    evaluation_worker,
+    tuner_worker,
+    autonomy_provider=lambda: load_app_preferences().agent_autonomy,
 )
 STARTED_AT = time.time()
+
+
+def _setup_file_logging() -> None:
+    log_dir = APP_SETTINGS_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger()
+    if any(
+        isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers
+    ):
+        return
+    handler = logging.handlers.RotatingFileHandler(
+        log_dir / "backend.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8"
+    )
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
+    root.addHandler(handler)
+    if root.level > logging.INFO:
+        root.setLevel(logging.INFO)
 
 
 @asynccontextmanager
@@ -67,6 +101,8 @@ async def lifespan(_app: FastAPI):
     PROJECT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     APP_SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    _setup_file_logging()
+    logging.getLogger("easyrtg").info("backend starting")
     sim.connect()
     notifier.set_loop(asyncio.get_running_loop())
     watcher = asyncio.create_task(watch_training(notifier, training_worker))
@@ -214,9 +250,37 @@ async def save_config(config: EnvConfig | None = None) -> dict[str, Any]:
     return {"ok": True, "path": str(path)}
 
 
+@app.post("/env/config/patch")
+async def patch_env_config(patch: dict[str, Any]) -> dict[str, Any]:
+    """Partial config update from the builders UI or the agent."""
+    config = config_service.current_or_default(sim)
+    try:
+        updated = config_service.apply_patch(config, patch)
+    except Exception as exc:
+        raise fail(exc, code="invalid_config_patch")
+    config_service.save(updated)
+    return {
+        "ok": True,
+        "config": updated.model_dump(),
+        "problems": config_service.validate(updated, sim),
+    }
+
+
+@app.post("/reward/validate_custom")
+async def reward_validate_custom(payload: dict[str, Any]) -> dict[str, Any]:
+    """Sandbox-run user reward code with dummy inputs before accepting it."""
+    from backend.rl.custom_reward import validate_custom_reward
+
+    return await asyncio.to_thread(validate_custom_reward, str(payload.get("code", "")))
+
+
 @app.post("/reward/test")
 async def reward_test(req: RewardTestRequest) -> dict[str, Any]:
-    return evaluate_reward(sim, req.components)
+    components = req.components
+    if not components:
+        # No explicit components: test what is actually configured.
+        components = config_service.current_or_default(sim).rewards
+    return evaluate_reward(sim, components)
 
 
 @app.post("/training/start")
@@ -254,6 +318,42 @@ async def training_status() -> dict[str, Any]:
     return status
 
 
+@app.get("/training/advisor")
+async def training_advisor() -> dict[str, Any]:
+    """Rule-based algorithm recommendation + hyperparameter presets."""
+    return advise(sim, config_service)
+
+
+@app.post("/tuning/start")
+async def tuning_start(payload: dict[str, Any]) -> dict[str, Any]:
+    if training_worker.status.active:
+        raise fail(
+            "Training is running — tuning would compete for the CPU.",
+            code="tuning_blocked",
+            hint="Stop or finish the training run first.",
+        )
+    try:
+        return tuner_worker.start(
+            algorithm=str(payload.get("algorithm", "PPO")),
+            n_trials=max(1, min(50, int(payload.get("n_trials", 8)))),
+            timesteps_per_trial=max(
+                500, min(50_000, int(payload.get("timesteps_per_trial", 2000)))
+            ),
+        )
+    except Exception as exc:
+        raise fail(exc, code="tuning_start_failed")
+
+
+@app.get("/tuning/status")
+async def tuning_status() -> dict[str, Any]:
+    return tuner_worker.status
+
+
+@app.post("/tuning/stop")
+async def tuning_stop() -> dict[str, Any]:
+    return tuner_worker.stop()
+
+
 @app.get("/training/telemetry")
 async def training_telemetry(since: int = 0) -> dict[str, Any]:
     """Telemetry history for the current/most recent run, for live charts."""
@@ -283,6 +383,7 @@ async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
             run_name=str(payload.get("run_name", "")),
             episodes=int(payload.get("episodes", 3)),
             deterministic=bool(payload.get("deterministic", True)),
+            visualize=bool(payload.get("visualize", True)),
         )
     except Exception as exc:
         raise fail(
@@ -290,6 +391,11 @@ async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
             code="evaluation_start_failed",
             hint="Pick a run with a saved model; only one evaluation can run at a time.",
         )
+
+
+@app.post("/evaluation/stop")
+async def evaluation_stop() -> dict[str, Any]:
+    return evaluation_worker.stop()
 
 
 @app.get("/evaluation/status")
@@ -436,13 +542,82 @@ async def agents_chat_stream(req: AgentChatRequest) -> StreamingResponse:
         try:
             agent = agent_class(req.agent)(settings, toolbox)
             context = build_agent_context(req.context)
-            async for event in agent.stream_events(req.message, context):
+            async for event in agent.stream_events(
+                req.message, context, history=req.history[-16:]
+            ):
                 yield json.dumps(event, default=str) + "\n"
             yield json.dumps({"type": "done"}) + "\n"
         except Exception as exc:
             yield json.dumps({"type": "error", "detail": str(exc)}) + "\n"
 
     return StreamingResponse(events(), media_type="application/x-ndjson")
+
+
+@app.post("/diagnostics/export")
+async def diagnostics_export() -> dict[str, Any]:
+    """Zip logs, settings and a run inventory for bug reports."""
+
+    def build() -> Path:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        out = APP_SETTINGS_DIR / f"easyrtg-diagnostics-{stamp}.zip"
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+            log_dir = APP_SETTINGS_DIR / "logs"
+            if log_dir.exists():
+                for log_file in log_dir.glob("backend.log*"):
+                    archive.write(log_file, arcname=f"logs/{log_file.name}")
+            # Ollama settings carry a bearer token: export redacted.
+            ollama = load_ollama_settings().model_dump()
+            if ollama.get("bearer_token"):
+                ollama["bearer_token"] = "<redacted>"
+            archive.writestr("ollama.json", json.dumps(ollama, indent=2))
+            if APP_PREFERENCES_PATH.exists():
+                archive.write(APP_PREFERENCES_PATH, arcname=APP_PREFERENCES_PATH.name)
+            if config_service.path.exists():
+                archive.write(config_service.path, arcname=config_service.path.name)
+            archive.writestr(
+                "runs_inventory.json",
+                json.dumps(registry.list_runs(limit=100), indent=2, default=str),
+            )
+            archive.writestr(
+                "health.json",
+                json.dumps(
+                    {
+                        "renderer": sim.renderer_name,
+                        "uptime_seconds": round(time.time() - STARTED_AT, 1),
+                        "training": training_worker.status.model_dump(),
+                    },
+                    indent=2,
+                    default=str,
+                ),
+            )
+        return out
+
+    path = await asyncio.to_thread(build)
+    return {"ok": True, "path": str(path)}
+
+
+@app.post("/agents/execute_tool")
+async def agents_execute_tool(payload: dict[str, Any]) -> dict[str, Any]:
+    """User-confirmed execution of a tool the agent proposed in 'ask' mode."""
+    name = str(payload.get("name", ""))
+    args = payload.get("args") or {}
+    if not isinstance(args, dict):
+        raise fail("args must be an object", code="bad_request")
+    result = await toolbox.execute(name, args, confirmed=True)
+    return {"tool": name, "result": result}
+
+
+@app.get("/ollama/capabilities")
+async def ollama_capabilities() -> dict[str, Any]:
+    """Does the configured model support tool calling? (via /api/show)."""
+    try:
+        return await OllamaClient(load_ollama_settings()).show_model()
+    except Exception as exc:
+        raise fail(
+            exc,
+            code="ollama_unreachable",
+            hint="Is Ollama running and the model pulled? Try `ollama list`.",
+        )
 
 
 @app.websocket("/ws/simulation")
@@ -495,8 +670,30 @@ async def ws_simulation(ws: WebSocket):
                 quality = max(30, min(95, int(data.get("quality", quality))))
 
     recv_task = asyncio.create_task(receiver())
+    last_broadcast_seq = -1
+    last_status_at = 0.0
     try:
         while True:
+            if broadcast.active:
+                # A background job (evaluation playback) owns the viewport:
+                # relay its frames instead of rendering the interactive sim.
+                if broadcast.seq != last_broadcast_seq and broadcast.frame is not None:
+                    last_broadcast_seq = broadcast.seq
+                    await ws.send_bytes(broadcast.frame)
+                now = time.monotonic()
+                if now - last_status_at >= 0.5:
+                    last_status_at = now
+                    await ws.send_json(
+                        {
+                            "type": "status",
+                            **sim.status(),
+                            "mode": broadcast.label,
+                            "paused": broadcast.paused,
+                        }
+                    )
+                await asyncio.sleep(1 / 60)
+                continue
+            last_broadcast_seq = -1
             # PyBullet EGL contexts are thread-affine on NVIDIA drivers. Rendering
             # in asyncio.to_thread can segfault after the WebSocket opens.
             frame = sim.render_frame(width, height)

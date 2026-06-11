@@ -19,7 +19,7 @@ def default_reward_components() -> list[dict[str, Any]]:
         {"key": "target_base_position", "label": "Reward target base distance reduction", "weight": 1.0, "params": {"target": [1, 0, 0]}},
         {"key": "target_link_position", "label": "Reward reaching target link position", "weight": 1.0, "params": {"link_index": 0, "target": [0, 0, 1]}},
         {"key": "forbidden_contacts", "label": "Penalize forbidden link contacts", "weight": -1.0, "params": {"links": []}},
-        {"key": "custom_python", "label": "Custom Python reward placeholder", "weight": 0.0, "placeholder": True},
+        {"key": "custom_python", "label": "Custom Python reward", "weight": 1.0, "params": {"code": ""}},
     ]
 
 
@@ -71,8 +71,29 @@ def evaluate_reward(
             contacts = p.getContactPoints(bodyA=body, physicsClientId=manager.cid)
             raw = -float(sum(1 for c in contacts if c[3] in forbidden or c[4] in forbidden))
         elif key == "custom_python":
-            warnings.append("Custom Python reward is a V1 placeholder and was not executed.")
-            raw = 0.0
+            code = str(component.params.get("code", "")).strip()
+            if not code:
+                warnings.append("Custom Python reward has no code — define reward(obs, action, ctx).")
+                raw = 0.0
+            else:
+                from backend.rl.custom_reward import compiled_reward
+
+                ctx = {
+                    "base_position": list(base_pos),
+                    "joint_positions": [float(st[0]) for st in joint_states],
+                    "joint_velocities": [float(st[1]) for st in joint_states],
+                    "sim_time": manager.sim_time,
+                }
+                obs_vec = (
+                    list(base_pos)
+                    + ctx["joint_positions"]
+                    + ctx["joint_velocities"]
+                )
+                try:
+                    raw = float(compiled_reward(code)(obs_vec, action.tolist(), ctx))
+                except Exception as exc:
+                    warnings.append(f"Custom reward failed: {type(exc).__name__}: {exc}")
+                    raw = 0.0
         else:
             warnings.append(f"Unknown reward component: {key}")
             continue

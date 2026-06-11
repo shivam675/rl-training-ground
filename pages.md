@@ -56,8 +56,10 @@ breakdowns mean "why is my observation 23-dimensional?" never requires reading
 backend code.
 
 **What the user can do:**
-- Review every observation source (size, placeholder status) and copy its key.
-- Review every actuated joint: control mode, limits, max force.
+- Toggle every observation source on/off — changes persist into the training
+  config; copy source keys; see config problems flagged inline.
+- Edit every actuated joint: enable/disable, control mode (position/velocity/
+  torque), action scale range — all persisted.
 - Sanity-check actuation with one click: zero action and a safe random action.
 
 ## 4. Reward Builder
@@ -70,10 +72,12 @@ dedicated page because users iterate here more than anywhere else.
 instead of discovering a broken reward 10,000 timesteps into training.
 
 **What the user can do:**
-- See all reward components with enabled state and weights.
-- Run "Test reward" → get the total, the symbolic formula, and per-term
-  raw/weighted values (copyable).
-- Copy component keys for use in configs or agent conversations.
+- Enable/disable components, edit weights and parameters (targets, thresholds,
+  link lists) — all persisted into the training config.
+- Write a **custom Python reward** (`def reward(obs, action, ctx)`) with a
+  sandboxed Validate button that catches infinite loops before training.
+- Run "Test reward" against the live robot pose → total, symbolic formula and
+  per-term raw/weighted values (copyable).
 
 ## 5. Training
 
@@ -85,10 +89,13 @@ status.
 whether it is alive, how far along it is, and what spaces/builders it is using.
 
 **What the user can do:**
-- Start PPO training (algorithm, hyperparams currently defaulted; tunable
-  surface is planned), stop a run.
-- Watch live status: state message, timestep, observation/action vector sizes
-  (copyable stat chips).
+- Pick an algorithm (PPO/SAC/TD3/A2C) and timestep budget; start/stop runs.
+- Read the **algorithm advisor** (why this algorithm, with reasons) and copy
+  conservative/balanced/aggressive presets.
+- Run **Optuna auto-tuning** (4/8/16 short trials) and copy the best
+  hyperparameters.
+- Watch live: progress bar, mean-reward and FPS charts, timestep/reward/FPS
+  stat chips; runs ≥5k steps checkpoint automatically.
 - Apply zero/safe-random test actions, save the env config, test the reward —
   pre-flight checks without leaving the page.
 
@@ -98,14 +105,19 @@ whether it is alive, how far along it is, and what spaces/builders it is using.
 measured. Evaluation is split from Training because evaluating is a separate
 mental mode — comparing artifacts, not tweaking a live process.
 
-**Benefit to the user:** Will close the loop: run N deterministic episodes on a
-saved model, see per-episode returns, and compare runs side by side (the
-backend endpoint exists; the UI table and comparison view are the active
-roadmap items in plan.md Phase 3).
+**Benefit to the user:** Closes the loop: every run is measurable, watchable
+and comparable, so "did that change help?" always has a concrete answer.
 
-**What the user can do (today):** Check backend/renderer status. (Planned:
-pick any run → run episodes → score table → watch the policy in the viewport →
-compare two runs.)
+**What the user can do:**
+- Browse every training run (algorithm, steps, best train/eval reward, model
+  availability).
+- Evaluate any saved model (1/3/5/10 deterministic episodes) — and **watch the
+  learned policy live in the Simulation viewport** while it runs ("Watch live"
+  button; orbit/zoom/pause work during playback).
+- Read per-episode reward/length tables and mean stat chips.
+- Multi-select runs → side-by-side comparison dialog (hyperparams, train and
+  eval scores).
+- Export a portable bundle (model + config + telemetry + evaluations) per run.
 
 ## 7. Agents
 
@@ -119,11 +131,15 @@ runs), explains what it's doing with live tool chips, and guides the user to
 the next step.
 
 **What the user can do:**
-- Chat with the helper agent with streamed replies; watch tool calls execute
-  inline (spinner → ✓/✗).
+- Pick a specialist agent (Helper / Robot / Reward / Training / Evaluation) —
+  each has a scoped toolset matching its job.
+- Chat with streamed replies and conversation memory (recent turns are sent);
+  watch tool calls execute inline (spinner → ✓/✗).
+- In "Ask first" autonomy mode, approve state-changing tools via a Run button
+  on the tool chip before they execute.
 - Copy any message or the whole conversation; clear the chat.
-- Ask the agent to perform any workflow step ("load r2d2 and start a short PPO
-  run") and get proactive next-step suggestions.
+- Ask the agent to perform any workflow step ("load r2d2, tune PPO, train 50k
+  steps, then evaluate") and get proactive next-step suggestions.
 
 ## 8. Settings
 
@@ -137,8 +153,13 @@ persisted.
 **What the user can do:**
 - Theme: dark/light/system mode, 8 accent colors (persisted across restarts).
 - Viewport: stream resolution scale (FPS vs clarity trade-off).
+- Agent behavior: autonomy policy — "Act freely" or "Ask first" (confirmation
+  required for state-changing tools).
 - Ollama agent: provider, base URL (copyable), model, bearer token
-  (show/hide), timeout, temperature, top-p, max tokens; save or reset defaults.
+  (show/hide), timeout, temperature, top-p, max tokens; save or reset
+  defaults; **Check model capabilities** (does it support tool calling?).
+- Export a diagnostics bundle (logs + redacted settings + run inventory) for
+  bug reports.
 
 ## 9. Logs
 

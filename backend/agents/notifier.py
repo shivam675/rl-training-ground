@@ -32,6 +32,8 @@ class AgentNotifier:
     def unsubscribe(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
         self._subscribers.discard(queue)
 
+    DEDUPE_WINDOW_SECONDS = 30.0
+
     def notify(
         self,
         title: str,
@@ -40,6 +42,13 @@ class AgentNotifier:
         category: str = "general",
         next_steps: list[str] | None = None,
     ) -> dict[str, Any]:
+        # Drop exact repeats arriving in a tight window (e.g. retry loops).
+        now = time.time()
+        for recent in reversed(self.history):
+            if now - recent["timestamp"] > self.DEDUPE_WINDOW_SECONDS:
+                break
+            if recent["title"] == title and recent["body"] == body:
+                return recent
         event = {
             "type": "notification",
             "id": next(self._ids),
