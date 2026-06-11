@@ -1,0 +1,4 @@
+# Backend deps for the web viewer. pybullet + numpy are already in the project .venv.
+fastapi>=0.115
+uvicorn[standard]>=0.32
+python-multipart>=0.0.9   # required by FastAPI for file/form uploads (/api/upload)

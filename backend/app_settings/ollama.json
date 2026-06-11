@@ -1,0 +1,11 @@
+{
+  "provider_name": "Local/Remote Ollama",
+  "base_url": "https://gpupc2.office.intelimek.com",
+  "bearer_token": "PMV4b2aJs8NHvGxJtsB6ud5jp9x7EvhphJTLJDJvZetk5eB2hQeeajzHB76H75yaYoDJYR7hMZasrk1p",
+  "model_name": "ministral-3:3b",
+  "temperature": 0.3,
+  "top_p": 0.9,
+  "num_predict": 2048,
+  "timeout_seconds": 30.0,
+  "system_prompt_override": ""
+}
