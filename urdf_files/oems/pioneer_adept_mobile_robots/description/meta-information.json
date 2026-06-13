@@ -1,0 +1,52 @@
+{
+    "robots": [
+        {
+            "name": "Pioneer 3-AT",
+            "type": "robotic arm",
+            "manufacturer": "Adept Mobile Robots",
+            "xacro-generated": false,
+            "urdf": [
+                "urdf/pioneer3at.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/MobileRobots/amr-ros-config/tree/43715c9a5880d0d2f6354ad7ea5d2f6ac65def40",
+            "id": 57
+        },
+        {
+            "name": "Pioneer 3-DX",
+            "type": "robotic arm",
+            "manufacturer": "Adept Mobile Robots",
+            "xacro-generated": false,
+            "urdf": [
+                "urdf/pioneer3dx.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/MobileRobots/amr-ros-config/tree/43715c9a5880d0d2f6354ad7ea5d2f6ac65def40",
+            "id": 58
+        },
+        {
+            "name": "Pioneer LX",
+            "type": "robotic arm",
+            "manufacturer": "Adept Mobile Robots",
+            "xacro-generated": false,
+            "urdf": [
+                "urdf/pioneer-lx.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/MobileRobots/amr-ros-config/tree/43715c9a5880d0d2f6354ad7ea5d2f6ac65def40",
+            "id": 59
+        },
+        {
+            "name": "Pioneer LX",
+            "type": "robotic arm",
+            "manufacturer": "Adept Mobile Robots",
+            "xacro-generated": false,
+            "urdf": [
+                "urdf/pioneer-lx-devil.urdf"
+            ],
+            "variant": "Devil",
+            "source-link": "https://github.com/MobileRobots/amr-ros-config/tree/43715c9a5880d0d2f6354ad7ea5d2f6ac65def40",
+            "id": 261
+        }
+    ]
+}

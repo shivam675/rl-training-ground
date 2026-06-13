@@ -1,0 +1,16 @@
+{
+    "robots": [
+        {
+            "name": "YuMi",
+            "type": "dual arm robot",
+            "manufacturer": "ABB",
+            "xacro-generated": false,
+            "urdf": [
+                "yumi.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/ankurhanda/robot-assets/tree/12f1a3c89c9975194551afaed0dfae1e09fdb27c/urdfs/robots/yumi",
+            "id": 96
+        }
+    ]
+}

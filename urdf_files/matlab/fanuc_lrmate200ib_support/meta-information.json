@@ -1,0 +1,16 @@
+{
+    "robots": [
+        {
+            "name": "LR Mate 200iB",
+            "type": "robotic arm",
+            "manufacturer": "Fanuc",
+            "xacro-generated": false,
+            "urdf": [
+                "urdf/fanucLRMate200ib.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://se.mathworks.com/matlabcentral/fileexchange/98714-robotics-system-toolbox-robot-library-data",
+            "id": 12
+        }
+    ]
+}

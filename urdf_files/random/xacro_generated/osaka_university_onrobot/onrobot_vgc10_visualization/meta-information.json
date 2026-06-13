@@ -1,0 +1,28 @@
+{
+    "robots": [
+        {
+            "name": "VGC10 gripper - 1 cup model",
+            "type": "end effector",
+            "manufacturer": "Onrobot",
+            "xacro-generated": true,
+            "urdf": [
+                "urdf/onrobot_vgc10_1cup_model.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/Osaka-University-Harada-Laboratory/onrobot/tree/4016460d8bd53ab17917ebb7ace0fbd8dc849ad3/onrobot_vgc10_visualization",
+            "id": 105
+        },
+        {
+            "name": "VGC10 gripper - 4 cups model",
+            "type": "end effector",
+            "manufacturer": "Onrobot",
+            "xacro-generated": true,
+            "urdf": [
+                "urdf/onrobot_vgc10_4cups_model.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/Osaka-University-Harada-Laboratory/onrobot/tree/4016460d8bd53ab17917ebb7ace0fbd8dc849ad3/onrobot_vgc10_visualization",
+            "id": 106
+        }
+    ]
+}

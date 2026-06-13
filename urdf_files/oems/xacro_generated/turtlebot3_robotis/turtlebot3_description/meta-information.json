@@ -1,0 +1,88 @@
+{
+    "robots": [
+        {
+            "name": "Turtlebot 3 Burger",
+            "type": "mobile robot",
+            "manufacturer": "ROBOTIS",
+            "xacro-generated": true,
+            "urdf": [
+                "urdf/turtlebot3_burger.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/ROBOTIS-GIT/turtlebot3/tree/66681b33749c44e7d9022253ac210ef2da7843a0/turtlebot3_description",
+            "id": 80
+        },
+        {
+            "name": "Turtlebot 3 Waffle",
+            "type": "mobile robot",
+            "manufacturer": "ROBOTIS",
+            "xacro-generated": true,
+            "urdf": [
+                "urdf/turtlebot3_waffle.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/ROBOTIS-GIT/turtlebot3/tree/66681b33749c44e7d9022253ac210ef2da7843a0/turtlebot3_description",
+            "id": 81
+        },
+        {
+            "name": "Turtlebot 3 Waffle",
+            "type": "mobile robot",
+            "manufacturer": "ROBOTIS",
+            "xacro-generated": true,
+            "urdf": [
+                "urdf/turtlebot3_waffle_for_open_manipulator.urdf"
+            ],
+            "variant": "for Open Manipulator",
+            "source-link": "https://github.com/ROBOTIS-GIT/turtlebot3/tree/66681b33749c44e7d9022253ac210ef2da7843a0/turtlebot3_description",
+            "id": 263
+        },
+        {
+            "name": "Turtlebot 3 Waffle Pi",
+            "type": "mobile robot",
+            "manufacturer": "ROBOTIS",
+            "xacro-generated": true,
+            "urdf": [
+                "urdf/turtlebot3_waffle_pi.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/ROBOTIS-GIT/turtlebot3/tree/66681b33749c44e7d9022253ac210ef2da7843a0/turtlebot3_description",
+            "id": 82
+        },
+        {
+            "name": "Turtlebot 3 Waffle Pi",
+            "type": "mobile robot",
+            "manufacturer": "ROBOTIS",
+            "xacro-generated": true,
+            "urdf": [
+                "urdf/turtlebot3_waffle_pi_for_open_manipulator.urdf"
+            ],
+            "variant": "for Open Manipulator",
+            "source-link": "https://github.com/ROBOTIS-GIT/turtlebot3/tree/66681b33749c44e7d9022253ac210ef2da7843a0/turtlebot3_description",
+            "id": 264
+        },
+        {
+            "name": "Turtlebot 3 Burger",
+            "type": "mobile robot",
+            "manufacturer": "ROBOTIS",
+            "xacro-generated": true,
+            "urdf": [
+                "urdf/turtlebot3_burger_for_autorace_2020.urdf"
+            ],
+            "variant": "for autorace 2020",
+            "source-link": "https://github.com/ROBOTIS-GIT/turtlebot3/tree/66681b33749c44e7d9022253ac210ef2da7843a0/turtlebot3_description",
+            "id": 265
+        },
+        {
+            "name": "Turtlebot 3 Burger",
+            "type": "mobile robot",
+            "manufacturer": "ROBOTIS",
+            "xacro-generated": true,
+            "urdf": [
+                "urdf/turtlebot3_burger_for_autorace.urdf"
+            ],
+            "variant": "for autorace",
+            "source-link": "https://github.com/ROBOTIS-GIT/turtlebot3/tree/66681b33749c44e7d9022253ac210ef2da7843a0/turtlebot3_description",
+            "id": 266
+        }
+    ]
+}

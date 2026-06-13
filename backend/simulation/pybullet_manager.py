@@ -19,10 +19,22 @@ import pybullet_data
 from backend.models import ActionTestRequest, LoadUrdfRequest
 from backend.simulation.camera_controller import OrbitCamera
 from backend.simulation.robot_inspector import inspect_robot
+from backend.simulation.urdf_preprocessor import prepare_urdf_for_pybullet
 
 SIM_HZ = 240
 SIM_SUBSTEPS = 4
 PLANE_URDF = os.path.join(pybullet_data.getDataPath(), "plane.urdf")
+
+# PyBullet's Python bindings keep PROCESS-GLOBAL state and are NOT thread-safe,
+# even across distinct DIRECT client ids. Two threads calling into pybullet at
+# once (e.g. the live viewport rendering the main sim while a training thread
+# steps its own env, or an evaluation playing back) corrupts that global state
+# and surfaces as "Not connected to physics server" — which used to kill a
+# long training run right before its model was saved. A single lock shared by
+# EVERY manager serialises all pybullet access process-wide and prevents it.
+# It is re-entrant so nested calls within one thread (e.g. apply_action_test ->
+# step) don't deadlock.
+_PYBULLET_LOCK = threading.RLock()
 
 OBSERVATION_CATALOG = [
     {"key": "base_position", "label": "Base position", "size": 3},
@@ -43,7 +55,8 @@ OBSERVATION_CATALOG = [
 
 class PyBulletManager:
     def __init__(self) -> None:
-        self.lock = threading.RLock()
+        # Shared process-wide so no two managers/threads touch pybullet at once.
+        self.lock = _PYBULLET_LOCK
         self.cid: int | None = None
         self.camera = OrbitCamera()
         self.hardware_renderer = False
@@ -59,6 +72,7 @@ class PyBulletManager:
         self.plane_body: int | None = None
         self.current_request: LoadUrdfRequest | None = None
         self.gravity = (0.0, 0.0, -9.81)
+        self.urdf_report: dict[str, Any] | None = None
 
     @property
     def connected(self) -> bool:
@@ -76,7 +90,7 @@ class PyBulletManager:
             p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.cid)
             p.setTimeStep(1.0 / SIM_HZ, physicsClientId=self.cid)
             self.hardware_renderer = self._load_egl_plugin()
-            self.reset_scene(load_default=True)
+            self.reset_scene(load_default=False)
 
     def disconnect(self) -> None:
         with self.lock:
@@ -97,6 +111,11 @@ class PyBulletManager:
             return False
 
     def reset_scene(self, load_default: bool = False) -> None:
+        with self.lock:
+            assert self.cid is not None
+            self._reset_scene_locked(load_default)
+
+    def _reset_scene_locked(self, load_default: bool = False) -> None:
         assert self.cid is not None
         p.resetSimulation(physicsClientId=self.cid)
         p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.cid)
@@ -121,23 +140,36 @@ class PyBulletManager:
                 raise ValueError("Path must point to a .urdf file.")
             if not os.path.isfile(path):
                 raise FileNotFoundError(f"URDF not found: {req.path}")
+            search_paths = self._candidate_search_paths(path)
+            self.urdf_report = prepare_urdf_for_pybullet(
+                path,
+                Path(__file__).resolve().parents[1] / "app_settings" / "prepared_urdfs",
+                search_paths,
+            )
+            prepared_path = self.urdf_report["path"]
             p.resetSimulation(physicsClientId=self.cid)
             p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.cid)
             self._add_urdf_search_paths(path)
+            self._add_urdf_search_paths(prepared_path)
             p.setGravity(*self.gravity, physicsClientId=self.cid)
             if req.add_plane:
                 self.plane_body = p.loadURDF(PLANE_URDF, physicsClientId=self.cid)
             else:
                 self.plane_body = None
+            flags = 0
+            for flag_name in ("URDF_USE_MATERIAL_COLORS_FROM_MTL",):
+                flags |= int(getattr(p, flag_name, 0))
             self.robot_body = p.loadURDF(
-                path,
+                prepared_path,
                 req.base_position,
                 req.base_orientation,
                 useFixedBase=req.fixed_base,
+                flags=flags,
                 physicsClientId=self.cid,
             )
             self.current_request = req.model_copy(update={"path": path})
             self.sim_time = 0.0
+            self._frame_loaded_robot()
             return self.robot_info()
 
     @staticmethod
@@ -315,10 +347,44 @@ class PyBulletManager:
 
     def robot_info(self) -> dict[str, Any]:
         with self.lock:
-            return inspect_robot(
+            info = inspect_robot(
                 self.robot_body,
                 self.current_request.path if self.current_request else None,
             )
+            if self.urdf_report is not None:
+                report = dict(self.urdf_report)
+                info["source_path"] = report.get("source_path")
+                info["prepared_urdf_path"] = report.get("path")
+                info["urdf_preprocess"] = report
+                warnings = info.setdefault("warnings", [])
+                missing = report.get("missing_meshes") or []
+                if missing:
+                    warnings.append(f"{len(missing)} mesh file(s) could not be resolved.")
+            return info
+
+    def _frame_loaded_robot(self) -> None:
+        if self.robot_body is None or self.cid is None:
+            return
+        lows: list[tuple[float, float, float]] = []
+        highs: list[tuple[float, float, float]] = []
+        for link_index in [-1, *range(p.getNumJoints(self.robot_body, physicsClientId=self.cid))]:
+            try:
+                low, high = p.getAABB(self.robot_body, link_index, physicsClientId=self.cid)
+            except Exception:
+                continue
+            if all(math.isfinite(float(v)) for v in (*low, *high)):
+                lows.append(low)
+                highs.append(high)
+        if not lows:
+            return
+        low_arr = np.asarray(lows, dtype=np.float64).min(axis=0)
+        high_arr = np.asarray(highs, dtype=np.float64).max(axis=0)
+        center = ((low_arr + high_arr) / 2.0).tolist()
+        extent = float(np.max(high_arr - low_arr))
+        if not math.isfinite(extent) or extent <= 0:
+            return
+        self.camera.target = [float(v) for v in center]
+        self.camera.distance = max(1.2, min(30.0, extent * 1.8))
 
     def actions(self) -> dict[str, Any]:
         info = self.robot_info()

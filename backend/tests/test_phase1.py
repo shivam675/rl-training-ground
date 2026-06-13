@@ -30,9 +30,8 @@ def test_health_reports_supervision_fields(client):
     assert "training_active" in body
 
 
-# Note: the simulation auto-loads a default robot on connect, so a
-# "no robot" state is unreachable through the API. The reachable failure
-# mode is an explicitly invalid config — that is what gets tested.
+# The app starts blank; training is locked until a robot is loaded and the
+# current environment config has been explicitly saved.
 
 
 def test_training_start_with_invalid_config_is_structured(client):
@@ -49,12 +48,16 @@ def test_training_start_with_invalid_config_is_structured(client):
 
 
 def test_env_config_endpoint_returns_valid_default(client):
+    # Start from a clean slate so the assertion isn't perturbed by a config
+    # saved earlier in the session (tests share the on-disk config).
+    client.post("/project/new")
     body = client.get("/env/config").json()
     assert isinstance(body["problems"], list)
-    # Default robot is auto-loaded, so the derived config must be valid.
-    assert body["problems"] == []
-    assert body["config"]["urdf_path"]
-    assert body["config"]["actions"]
+    assert body["saved"] is False
+    if body["config"]["urdf_path"] is None:
+        assert any("No URDF path" in problem for problem in body["problems"])
+    else:
+        assert body["config"]["actions"]
 
 
 # ----------------------------------------------------------- structured errors
@@ -77,6 +80,19 @@ def test_config_roundtrip_with_robot(client, tmp_path):
     config = service.build_default(sim)
     assert config.urdf_path
     assert config.actions, "r2d2 has actuated joints"
+    # A fresh config starts blank — nothing enabled, so it is intentionally
+    # invalid until the user/agent configure it.
+    assert any("observation" in p.lower() for p in service.validate(config, sim))
+
+    # Enabling a minimal valid set clears the problems.
+    config = service.apply_patch(
+        config,
+        {
+            "observations": [{"key": "base_position", "enabled": True}],
+            "actions": [{"joint_index": config.actions[0].joint_index, "enabled": True}],
+            "rewards": [{"key": "stay_alive", "enabled": True}],
+        },
+    )
     assert service.validate(config, sim) == []
 
     service.save(config)
@@ -98,6 +114,18 @@ def test_validate_flags_bad_action_scales(client):
 
 def test_save_config_endpoint_uses_server_defaults(client):
     client.post("/simulation/load_urdf", json={"path": "r2d2.urdf"})
+    # Fresh config is blank, so configure a minimal valid setup first; the
+    # endpoint then derives + saves the server-side config (no client payload).
+    actions = client.get("/robot/actions").json().get("actions", [])
+    assert actions, "r2d2 has actuated joints"
+    client.post(
+        "/env/config/patch",
+        json={
+            "observations": [{"key": "base_position", "enabled": True}],
+            "actions": [{"joint_index": actions[0]["joint_index"], "enabled": True}],
+            "rewards": [{"key": "stay_alive", "enabled": True}],
+        },
+    )
     res = client.post("/env/save_config", json=None)
     assert res.status_code == 200
     saved = json.loads(config_service.path.read_text(encoding="utf-8"))
@@ -134,6 +162,8 @@ def test_toolbox_rejects_unknown_tool():
 
 
 def test_toolbox_start_training_end_to_end(client):
+    client.post("/simulation/load_urdf", json={"path": "r2d2.urdf"})
+    client.post("/env/save_config", json=None)
     result = asyncio.run(
         toolbox.execute("start_training", {"total_timesteps": 64, "n_steps": 32})
     )

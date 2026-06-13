@@ -20,6 +20,7 @@ from backend.agents.evaluation_agent import EvaluationAgent
 from backend.agents.helper_agent import HelperAgent
 from backend.agents.notifier import AgentNotifier, watch_training
 from backend.agents.ollama_client import OllamaClient
+from backend.agents.openai_client import OpenAIClient
 from backend.agents.reward_agent import RewardAgent
 from backend.agents.robot_inspector_agent import RobotInspectorAgent
 from backend.agents.tools import AgentToolbox
@@ -27,6 +28,7 @@ from backend.agents.training_monitor_agent import TrainingMonitorAgent
 from backend.config_service import ConfigService
 from backend.models import (
     ActionTestRequest,
+    AgentSettings,
     AppPreferences,
     AgentChatRequest,
     EnvConfig,
@@ -35,16 +37,19 @@ from backend.models import (
     HealthResponse,
     LoadUrdfRequest,
     OllamaSettings,
+    OpenAISettings,
     RewardTestRequest,
     SimulationResetRequest,
     TrainingStartRequest,
 )
 from backend.rl.advisor import advise
 from backend.rl.evaluation import EvaluationWorker, run_evaluation
+from backend.rl.goal_rewards import apply_behavior_goal
 from backend.rl.reward_builder import default_reward_components, evaluate_reward
 from backend.rl.training_worker import TrainingWorker
 from backend.rl.tuner import TunerWorker
 from backend.run_registry import RunRegistry
+from backend.simulation.dynamics_check import check_dynamics, fix_dynamics
 from backend.simulation.pybullet_manager import PyBulletManager
 from backend.streaming import FrameBroadcast
 
@@ -53,6 +58,7 @@ PROJECT_CONFIG_DIR = ROOT / "project_configs"
 APP_SETTINGS_DIR = ROOT / "app_settings"
 RUNS_DIR = ROOT / "runs"
 OLLAMA_SETTINGS_PATH = APP_SETTINGS_DIR / "ollama.json"
+AGENT_SETTINGS_PATH = APP_SETTINGS_DIR / "agent_settings.json"
 APP_PREFERENCES_PATH = APP_SETTINGS_DIR / "preferences.json"
 
 sim = PyBulletManager()
@@ -104,6 +110,7 @@ async def lifespan(_app: FastAPI):
     _setup_file_logging()
     logging.getLogger("easyrtg").info("backend starting")
     sim.connect()
+    _restore_saved_robot()
     notifier.set_loop(asyncio.get_running_loop())
     watcher = asyncio.create_task(watch_training(notifier, training_worker))
     try:
@@ -120,6 +127,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _restore_saved_robot() -> None:
+    """Restore the user's saved URDF, but never spawn the old bundled demo by default."""
+    saved = config_service.load()
+    if saved is None or not saved.urdf_path:
+        return
+    path = saved.urdf_path
+    if Path(path).name == "r2d2.urdf" and "pybullet_data" in Path(path).parts:
+        logging.getLogger("easyrtg").info("skipping bundled r2d2 startup restore")
+        return
+    try:
+        sim.set_gravity(saved.gravity)
+        sim.load_urdf(
+            LoadUrdfRequest(
+                path=path,
+                fixed_base=saved.fixed_base,
+                add_plane=True,
+            )
+        )
+        logging.getLogger("easyrtg").info("restored saved robot %s", path)
+    except Exception as exc:
+        logging.getLogger("easyrtg").warning("saved robot restore failed: %s", exc)
 
 
 def fail(
@@ -172,6 +202,7 @@ async def load_urdf(req: LoadUrdfRequest) -> dict[str, Any]:
             "Test the reward, then start a short training run.",
         ],
     )
+    _notify_dynamics(robot)
     return {"ok": True, "robot": robot}
 
 
@@ -182,7 +213,7 @@ async def reset(req: SimulationResetRequest) -> dict[str, Any]:
             sim.reset_scene(load_default=False)
         else:
             sim.current_request = None
-            sim.reset_scene(load_default=True)
+            sim.reset_scene(load_default=False)
         return {"ok": True, "status": sim.status()}
     except Exception as exc:
         raise fail(exc)
@@ -200,9 +231,75 @@ async def set_gravity(req: GravityRequest) -> dict[str, Any]:
     return {"ok": True, "gravity": req.gravity}
 
 
+def _notify_dynamics(robot: dict[str, Any]) -> dict[str, Any]:
+    """Inspect the freshly-loaded robot's physics and tell the user what we found
+    (and what the preprocessor already auto-fixed). Returns the dynamics report."""
+    report = (robot.get("urdf_preprocess") or {}) if isinstance(robot, dict) else {}
+    auto = []
+    if report.get("inertials_added"):
+        auto.append(f"added {len(report['inertials_added'])} missing inertial(s)")
+    if report.get("inertials_repaired"):
+        auto.append(f"repaired {len(report['inertials_repaired'])} bad inertial(s)")
+    if report.get("collisions_added"):
+        auto.append(f"added {len(report['collisions_added'])} collision shape(s) from visuals")
+    check = check_dynamics(sim)
+    errors, warnings = check.get("error_count", 0), check.get("warning_count", 0)
+    if not auto and not check["issues"]:
+        return check
+    parts = []
+    if auto:
+        parts.append("Auto-fixed on load: " + ", ".join(auto) + ".")
+    if check["issues"]:
+        parts.append(check["summary"])
+    next_steps = ["Open Robot Setup to review the joint/inertia table."]
+    if errors or warnings:
+        next_steps = [
+            "Click 'Auto-fix dynamics' in Robot Setup, or ask the assistant to fix the robot's physics.",
+            "Then Test reward and start a short run.",
+        ]
+    notifier.notify(
+        title="Robot physics checked",
+        body=" ".join(parts),
+        severity="error" if errors else ("warning" if warnings else "info"),
+        category="robot",
+        next_steps=next_steps,
+    )
+    return check
+
+
 @app.get("/robot/info")
 async def robot_info() -> dict[str, Any]:
-    return sim.robot_info()
+    info = sim.robot_info()
+    try:
+        check = check_dynamics(sim)
+        info["dynamics"] = {
+            "ok": check["ok"],
+            "error_count": check.get("error_count", 0),
+            "warning_count": check.get("warning_count", 0),
+            "summary": check.get("summary"),
+        }
+    except Exception:
+        info["dynamics"] = None
+    return info
+
+
+@app.get("/robot/dynamics")
+async def robot_dynamics() -> dict[str, Any]:
+    """Full mass/inertia/collision check for every link of the loaded robot."""
+    return check_dynamics(sim)
+
+
+@app.post("/robot/fix_dynamics")
+async def robot_fix_dynamics() -> dict[str, Any]:
+    result = await asyncio.to_thread(fix_dynamics, sim)
+    if result.get("fixed"):
+        notifier.notify(
+            title="Robot physics repaired",
+            body=result.get("summary", "Dynamics repaired."),
+            severity="success",
+            category="robot",
+        )
+    return result
 
 
 @app.get("/robot/observations")
@@ -231,7 +328,7 @@ async def get_env_config() -> dict[str, Any]:
     return {
         "config": config.model_dump(),
         "problems": config_service.validate(config, sim),
-        "saved": config_service.path.exists(),
+        "saved": config_service.saved_matches(sim),
     }
 
 
@@ -266,6 +363,111 @@ async def patch_env_config(patch: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+PROJECT_FORMAT = "easyrtg-project"
+
+
+@app.post("/project/new")
+async def project_new() -> dict[str, Any]:
+    """Fresh project: unload the robot and clear the saved environment config."""
+    try:
+        sim.current_request = None
+        sim.reset_scene(load_default=False)
+    except Exception as exc:
+        raise fail(exc, code="reset_failed")
+    try:
+        if config_service.path.exists():
+            config_service.path.unlink()
+    except OSError:
+        pass
+    notifier.notify(
+        title="New project",
+        body="Workspace cleared — load a URDF to begin.",
+        severity="info",
+        category="project",
+    )
+    return {"ok": True}
+
+
+@app.get("/project/export")
+async def project_export(name: str | None = None) -> dict[str, Any]:
+    """Current environment config wrapped as a portable .rtg project payload.
+
+    Stamps a stable project_id (and optional name) so the exported .rtg — and
+    every training run made under it — stay tied to this project.
+    """
+    config = config_service.ensure_identity(config_service.current_or_default(sim), name)
+    if config.urdf_path:
+        # Persist the identity so subsequent runs are tagged consistently.
+        config_service.save(config)
+    return {
+        "format": PROJECT_FORMAT,
+        "version": 1,
+        "config": config.model_dump(),
+        "problems": config_service.validate(config, sim),
+    }
+
+
+@app.post("/project/open")
+async def project_open(payload: dict[str, Any]) -> dict[str, Any]:
+    """Open a .rtg project: validate it, load its URDF, then apply + save config."""
+    raw = payload.get("config", payload)
+    if not isinstance(raw, dict):
+        raise fail("Project file has no config object.", code="invalid_project")
+    try:
+        config = EnvConfig.model_validate(raw)
+    except ValidationError as exc:
+        raise fail(
+            str(exc),
+            code="invalid_project",
+            hint="The file is not a valid EasyRTG project.",
+        )
+    # An opened project keeps its embedded id; older .rtg files without one get
+    # a fresh id so their future runs are still grouped together. The display
+    # name follows the file the user opened.
+    config = config_service.ensure_identity(config, payload.get("name"))
+    if config.urdf_path:
+        try:
+            sim.set_gravity(config.gravity)
+            sim.load_urdf(
+                LoadUrdfRequest(
+                    path=config.urdf_path,
+                    fixed_base=config.fixed_base,
+                    add_plane=True,
+                )
+            )
+        except Exception as exc:
+            raise fail(
+                exc,
+                code="urdf_load_failed",
+                hint="The project's URDF path could not be loaded; check the file still exists.",
+            )
+        # Re-sync to the path the sim reports so saved_matches() lines up.
+        loaded_path = sim.robot_info().get("path")
+        if loaded_path:
+            config = config.model_copy(update={"urdf_path": loaded_path})
+    config_service.save(config)
+    problems = config_service.validate(config, sim)
+    notifier.notify(
+        title="Project opened",
+        body=(
+            f"{Path(config.urdf_path).name} loaded."
+            if config.urdf_path
+            else "Project loaded."
+        ),
+        severity="warning" if problems else "success",
+        category="project",
+    )
+    robot = sim.robot_info()
+    if config.urdf_path:
+        _notify_dynamics(robot)
+    return {
+        "ok": True,
+        "config": config.model_dump(),
+        "problems": problems,
+        "robot": robot,
+    }
+
+
 @app.post("/reward/validate_custom")
 async def reward_validate_custom(payload: dict[str, Any]) -> dict[str, Any]:
     """Sandbox-run user reward code with dummy inputs before accepting it."""
@@ -283,10 +485,36 @@ async def reward_test(req: RewardTestRequest) -> dict[str, Any]:
     return evaluate_reward(sim, components)
 
 
+@app.post("/reward/apply_goal")
+async def reward_apply_goal(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        result = apply_behavior_goal(str(payload.get("goal", "")), sim, config_service)
+    except Exception as exc:
+        raise fail(exc, code="reward_goal_failed")
+    notifier.notify(
+        title="Reward configured",
+        body=result["summary"],
+        severity="success",
+        category="agent_action",
+        next_steps=[
+            "Review the reward components in Rewards.",
+            "Check the action space before training.",
+            "Start a short training run when the setup checklist is clear.",
+        ],
+    )
+    return result
+
+
 @app.post("/training/start")
 async def training_start(req: TrainingStartRequest) -> dict[str, Any]:
     if req.config is None:
-        req.config = config_service.current_or_default(sim)
+        if not config_service.saved_matches(sim):
+            raise fail(
+                "Environment setup has not been saved for the loaded robot.",
+                code="env_not_ready",
+                hint="Load a robot, configure observations/actions/rewards, then Save env.",
+            )
+        req.config = config_service.load()
     problems = config_service.validate(req.config, sim)
     if problems:
         raise fail(
@@ -331,6 +559,12 @@ async def tuning_start(payload: dict[str, Any]) -> dict[str, Any]:
             "Training is running — tuning would compete for the CPU.",
             code="tuning_blocked",
             hint="Stop or finish the training run first.",
+        )
+    if not config_service.saved_matches(sim):
+        raise fail(
+            "Environment setup has not been saved for the loaded robot.",
+            code="env_not_ready",
+            hint="Load a robot, configure observations/actions/rewards, then Save env.",
         )
     try:
         return tuner_worker.start(
@@ -404,8 +638,10 @@ async def evaluation_status() -> dict[str, Any]:
 
 
 @app.get("/runs")
-async def list_runs() -> dict[str, Any]:
-    return {"runs": registry.list_runs()}
+async def list_runs(project_id: str | None = None) -> dict[str, Any]:
+    """All runs, or — when project_id is given — only that project's runs."""
+    pid = project_id or None
+    return {"runs": registry.list_runs(project_id=pid), "project_id": pid}
 
 
 @app.get("/runs/{name}")
@@ -437,12 +673,7 @@ async def compare_runs(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_ollama_settings() -> OllamaSettings:
-    if not OLLAMA_SETTINGS_PATH.exists():
-        return OllamaSettings()
-    try:
-        return OllamaSettings.model_validate_json(OLLAMA_SETTINGS_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValidationError):
-        return OllamaSettings()
+    return load_agent_settings().ollama
 
 
 def load_app_preferences() -> AppPreferences:
@@ -452,6 +683,44 @@ def load_app_preferences() -> AppPreferences:
         return AppPreferences.model_validate_json(APP_PREFERENCES_PATH.read_text(encoding="utf-8"))
     except (OSError, ValidationError):
         return AppPreferences()
+
+
+def load_agent_settings() -> AgentSettings:
+    """All providers + the active one. Migrates the legacy ollama.json once."""
+    if AGENT_SETTINGS_PATH.exists():
+        try:
+            return AgentSettings.model_validate_json(
+                AGENT_SETTINGS_PATH.read_text(encoding="utf-8")
+            )
+        except (OSError, ValidationError):
+            pass
+    settings = AgentSettings()
+    if OLLAMA_SETTINGS_PATH.exists():
+        try:
+            settings.ollama = OllamaSettings.model_validate_json(
+                OLLAMA_SETTINGS_PATH.read_text(encoding="utf-8")
+            )
+        except (OSError, ValidationError):
+            pass
+    return settings
+
+
+def save_agent_settings(settings: AgentSettings) -> None:
+    AGENT_SETTINGS_PATH.write_text(
+        settings.model_dump_json(indent=2), encoding="utf-8"
+    )
+    # Keep the legacy ollama.json in sync for any other readers.
+    OLLAMA_SETTINGS_PATH.write_text(
+        settings.ollama.model_dump_json(indent=2), encoding="utf-8"
+    )
+
+
+def build_active_client():
+    """Provider client for whichever provider is currently active."""
+    settings = load_agent_settings()
+    if settings.active_provider == "openai":
+        return OpenAIClient(settings.openai)
+    return OllamaClient(settings.ollama)
 
 
 def agent_class(name: str):
@@ -488,8 +757,80 @@ async def ollama_models() -> dict[str, Any]:
 
 @app.post("/ollama/save_settings")
 async def ollama_save_settings(settings: OllamaSettings) -> dict[str, Any]:
-    OLLAMA_SETTINGS_PATH.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
-    return {"ok": True, "path": str(OLLAMA_SETTINGS_PATH)}
+    agent = load_agent_settings()
+    agent.ollama = settings
+    save_agent_settings(agent)
+    return {"ok": True, "path": str(AGENT_SETTINGS_PATH)}
+
+
+@app.get("/agent/providers")
+async def agent_providers() -> AgentSettings:
+    """Full multi-provider settings (active + every provider's saved config)."""
+    return load_agent_settings()
+
+
+@app.post("/agent/providers")
+async def agent_save_providers(settings: AgentSettings) -> dict[str, Any]:
+    save_agent_settings(settings)
+    return {"ok": True, "active_provider": settings.active_provider}
+
+
+@app.get("/agent/health")
+async def agent_health() -> dict[str, Any]:
+    """Reachability of the ACTIVE provider — powers the chat connection dot."""
+    settings = load_agent_settings()
+    provider = settings.active_provider
+    model = (
+        settings.openai.model_name
+        if provider == "openai"
+        else settings.ollama.model_name
+    )
+    try:
+        if provider == "openai":
+            cfg = settings.openai.model_copy(
+                update={"timeout_seconds": min(settings.openai.timeout_seconds, 6.0)}
+            )
+            data = await OpenAIClient(cfg).list_models()
+        else:
+            cfg = settings.ollama.model_copy(
+                update={"timeout_seconds": min(settings.ollama.timeout_seconds, 4.0)}
+            )
+            data = await OllamaClient(cfg).list_models()
+        models = [
+            str(m.get("name") or m.get("model") or "")
+            for m in data.get("models", [])
+        ]
+        return {
+            "ok": True,
+            "reachable": True,
+            "provider": provider,
+            "model": model,
+            "model_available": any(model == m or model in m for m in models),
+        }
+    except Exception as exc:  # noqa: BLE001 — surface as data, never 500 a poll
+        return {
+            "ok": False,
+            "reachable": False,
+            "provider": provider,
+            "model": model,
+            "detail": str(exc),
+        }
+
+
+@app.get("/agent/capabilities")
+async def agent_capabilities() -> dict[str, Any]:
+    """Capability probe for the ACTIVE provider's model."""
+    settings = load_agent_settings()
+    try:
+        if settings.active_provider == "openai":
+            return await OpenAIClient(settings.openai).show_model()
+        return await OllamaClient(settings.ollama).show_model()
+    except Exception as exc:
+        raise fail(
+            exc,
+            code="provider_unreachable",
+            hint="Check the provider's base URL, key/token and model name.",
+        )
 
 
 @app.get("/app/preferences")
@@ -504,31 +845,58 @@ async def app_save_preferences(preferences: AppPreferences) -> dict[str, Any]:
 
 
 def build_agent_context(client_context: dict[str, Any]) -> dict[str, Any]:
-    """Give agents a live snapshot of the app so they start informed."""
+    """A SMALL curated snapshot of the app so the agent starts informed.
+
+    Deliberately compact: dumping the full robot/joint/observation tables here
+    made models summarize that blob instead of acting. The agent fetches detail
+    on demand with get_robot_info / get_actions / get_env_config.
+    """
     context: dict[str, Any] = {}
     try:
         info = sim.robot_info()
+        warnings = info.get("warnings", []) or []
         context["robot"] = {
             "name": info.get("name"),
-            "path": info.get("path"),
             "joint_count": info.get("joint_count"),
-            "warnings": info.get("warnings", []),
+            "warning_count": len(warnings),
         }
+        try:
+            dyn = check_dynamics(sim)
+            if not dyn["ok"] or dyn.get("warning_count"):
+                context["robot"]["dynamics_issues"] = {
+                    "errors": dyn.get("error_count", 0),
+                    "warnings": dyn.get("warning_count", 0),
+                    "hint": "call get_robot_dynamics, then fix_robot_dynamics if errors",
+                }
+        except Exception:
+            pass
         context["observation_vector_size"] = sim.observations().get("vector_size")
         context["action_vector_size"] = sim.actions().get("action_vector_size")
     except Exception:
         context["robot"] = None
-    context["training"] = training_worker.status.model_dump()
-    if client_context:
-        context["client"] = client_context
+    status = training_worker.status
+    context["training"] = {"active": status.active, "message": status.message}
+    try:
+        env_config = config_service.current_or_default(sim)
+        context["setup"] = {
+            "saved": config_service.saved_matches(sim),
+            "observations_enabled": [
+                o.key for o in env_config.observations if o.enabled
+            ],
+            "actions_total": len(env_config.actions),
+            "actions_enabled": [a.joint_index for a in env_config.actions if a.enabled],
+            "rewards_enabled": [r.key for r in env_config.rewards if r.enabled],
+            "problems": config_service.validate(env_config, sim),
+        }
+    except Exception:
+        context["setup"] = None
     return context
 
 
 @app.post("/agents/chat")
 async def agents_chat(req: AgentChatRequest) -> dict[str, Any]:
-    settings = req.settings or load_ollama_settings()
     try:
-        agent = agent_class(req.agent)(settings, toolbox)
+        agent = agent_class(req.agent)(build_active_client(), toolbox)
         return await agent.run(req.message, build_agent_context(req.context))
     except Exception as exc:
         raise fail(exc)
@@ -536,11 +904,9 @@ async def agents_chat(req: AgentChatRequest) -> dict[str, Any]:
 
 @app.post("/agents/chat/stream")
 async def agents_chat_stream(req: AgentChatRequest) -> StreamingResponse:
-    settings = req.settings or load_ollama_settings()
-
     async def events():
         try:
-            agent = agent_class(req.agent)(settings, toolbox)
+            agent = agent_class(req.agent)(build_active_client(), toolbox)
             context = build_agent_context(req.context)
             async for event in agent.stream_events(
                 req.message, context, history=req.history[-16:]
@@ -605,6 +971,43 @@ async def agents_execute_tool(payload: dict[str, Any]) -> dict[str, Any]:
         raise fail("args must be an object", code="bad_request")
     result = await toolbox.execute(name, args, confirmed=True)
     return {"tool": name, "result": result}
+
+
+@app.get("/ollama/health")
+async def ollama_health() -> dict[str, Any]:
+    """Fast reachability check for the agent's LLM backend.
+
+    Powers the chat panel's connection dot: it reflects whether the configured
+    Ollama endpoint actually answers (and whether the chosen model is present),
+    not merely whether this backend process is up.
+    """
+    settings = load_ollama_settings()
+    fast = settings.model_copy(
+        update={"timeout_seconds": min(settings.timeout_seconds, 4.0)}
+    )
+    try:
+        data = await OllamaClient(fast).list_models()
+        models = [
+            str(m.get("name") or m.get("model") or "")
+            for m in data.get("models", [])
+        ]
+        model_available = any(
+            settings.model_name == m or settings.model_name in m for m in models
+        )
+        return {
+            "ok": True,
+            "reachable": True,
+            "model": settings.model_name,
+            "model_available": model_available,
+            "models": models,
+        }
+    except Exception as exc:  # noqa: BLE001 — surface as data, never 500 a poll
+        return {
+            "ok": False,
+            "reachable": False,
+            "model": settings.model_name,
+            "detail": str(exc),
+        }
 
 
 @app.get("/ollama/capabilities")

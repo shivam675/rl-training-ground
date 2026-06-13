@@ -30,14 +30,25 @@ class RunRegistry:
 
     # ------------------------------------------------------------------- list
 
-    def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_runs(
+        self, limit: int = 50, project_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """List run summaries, newest first.
+
+        When ``project_id`` is given, only runs tagged with that project are
+        returned. Legacy/untagged runs (no project_id) are kept out of a
+        project-scoped list — they surface in the unfiltered "All runs" view.
+        """
         runs: list[dict[str, Any]] = []
         if not self.runs_dir.exists():
             return runs
         for run_dir in sorted(self.runs_dir.iterdir(), reverse=True):
             if not run_dir.is_dir():
                 continue
-            runs.append(self._summary(run_dir))
+            summary = self._summary(run_dir)
+            if project_id is not None and summary.get("project_id") != project_id:
+                continue
+            runs.append(summary)
             if len(runs) >= limit:
                 break
         return runs
@@ -52,7 +63,10 @@ class RunRegistry:
             entry["algorithm"] = config.get("algorithm")
             entry["total_timesteps"] = config.get("total_timesteps")
             entry["learning_rate"] = config.get("learning_rate")
-            entry["urdf_path"] = (config.get("config") or {}).get("urdf_path")
+            env_config = config.get("config") or {}
+            entry["urdf_path"] = env_config.get("urdf_path")
+            entry["project_id"] = env_config.get("project_id")
+            entry["project_name"] = env_config.get("project_name")
         rewards = self._telemetry_rewards(run_dir)
         if rewards:
             entry["reward_best"] = max(rewards)
@@ -103,6 +117,8 @@ class RunRegistry:
                 "monitor.csv",
                 "evaluations.json",
                 "training_log.txt",
+                "vecnormalize.pkl",
+                "normalization.json",
             ):
                 path = run_dir / artifact
                 if path.exists():

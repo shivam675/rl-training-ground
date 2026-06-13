@@ -1,0 +1,16 @@
+{
+    "robots": [
+        {
+            "name": "LBR iiwa 7",
+            "type": "robotic arm",
+            "manufacturer": "KUKA",
+            "xacro-generated": false,
+            "urdf": [
+                "model.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/ankurhanda/robot-assets/tree/12f1a3c89c9975194551afaed0dfae1e09fdb27c/urdfs/robots/kuka_iiwa",
+            "id": 90
+        }
+    ]
+}

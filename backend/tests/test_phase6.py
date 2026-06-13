@@ -16,6 +16,7 @@ from backend.main import app, toolbox
 def client():
     with TestClient(app) as test_client:
         test_client.post("/simulation/load_urdf", json={"path": "r2d2.urdf"})
+        test_client.post("/env/save_config", json=None)
         yield test_client
 
 

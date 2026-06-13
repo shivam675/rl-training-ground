@@ -18,6 +18,7 @@ from backend.models import (
     TrainingStartRequest,
 )
 from backend.rl.reward_builder import default_reward_components, evaluate_reward
+from backend.rl.goal_rewards import apply_behavior_goal
 
 
 # Tools that mutate state; in "ask" autonomy mode these require an explicit
@@ -30,20 +31,24 @@ DESTRUCTIVE_TOOLS = {
     "start_training",
     "stop_training",
     "patch_env_config",
+    "apply_behavior_goal",
     "evaluate_run",
     "start_tuning",
+    "fix_robot_dynamics",
 }
 
 # Read-only tools, safe for every agent in every mode.
 READ_TOOLS = {
     "get_health",
     "get_robot_info",
+    "get_robot_dynamics",
     "get_observations",
     "get_actions",
     "get_training_status",
     "get_training_telemetry",
     "test_reward",
     "get_env_config",
+    "validate_reward_code",
     "list_runs",
     "get_run_details",
     "compare_runs",
@@ -55,7 +60,7 @@ READ_TOOLS = {
 # Per-agent tool scopes; None means every tool.
 AGENT_TOOL_SCOPES: dict[str, set[str] | None] = {
     "helper": None,
-    "reward": READ_TOOLS | {"patch_env_config"},
+    "reward": READ_TOOLS | {"patch_env_config", "apply_behavior_goal"},
     "training_monitor": READ_TOOLS | {"stop_training"},
     "evaluation": READ_TOOLS | {"evaluate_run"},
     "robot_inspector": READ_TOOLS | {"load_urdf", "apply_test_action"},
@@ -113,6 +118,21 @@ class AgentToolbox:
         return [
             tool("get_health", "Backend health: renderer name and PyBullet connection state."),
             tool("get_robot_info", "Currently loaded robot: name, joints, links, limits, warnings."),
+            tool(
+                "get_robot_dynamics",
+                "Validate the loaded robot's physics: per-link mass, inertia tensor "
+                "and collision geometry. Returns issues (errors/warnings) such as "
+                "zero/negative mass, degenerate inertia, missing collisions, or huge "
+                "mass ratios. Bad dynamics make training unstable — check this after "
+                "loading a robot.",
+            ),
+            tool(
+                "fix_robot_dynamics",
+                "Repair the loaded robot's physics in place: clamp implausible masses "
+                "to a physical range and rebuild degenerate inertia tensors from each "
+                "link's bounding box. Call this when get_robot_dynamics reports errors. "
+                "Tell the user what was changed.",
+            ),
             tool("get_observations", "Observation sources, vector size and a live preview of values."),
             tool("get_actions", "Actuated joints, control modes, limits and action vector size."),
             tool("get_training_status", "Current training run: active flag, timestep, message, run dir."),
@@ -158,11 +178,32 @@ class AgentToolbox:
             ),
             tool(
                 "patch_env_config",
-                "Update parts of the environment config. Merge semantics: "
-                "observations match by key, actions by joint_index, rewards by key "
-                "(params merge). Example: {\"rewards\": [{\"key\": \"action_magnitude\", "
-                "\"weight\": -0.05}], \"observations\": [{\"key\": \"contact_points\", "
-                "\"enabled\": true}]}",
+                "Update the environment config — the main tool for configuring a "
+                "goal. A fresh project starts with EVERYTHING disabled, so you "
+                "enable the observations and joint actions the goal needs and add "
+                "reward components. Merge semantics: observations by key, actions "
+                "by joint_index, rewards by key (params merge). "
+                "Reward components (value = weight × raw; PENALTIES use NEGATIVE "
+                "weights): stay_alive, forward_velocity{target_speed,axis}, upright, "
+                "target_height{height}, target_base_position{target}, "
+                "target_link_position{link_index,target}, energy, action_magnitude, "
+                "action_smoothness, joint_velocity, falling_height{min_height}, "
+                "forbidden_contacts{links}, custom_python{code}. PREFER these toggles. "
+                "All enabled components are SUMMED — do NOT double-count (e.g. don't "
+                "penalize effort in both energy AND custom_python). "
+                "custom_python is a free-form reward(obs, action, ctx)->float, used "
+                "only when the toggles can't express the goal. ctx keys: "
+                "base_position[x,y,z], base_orientation[x,y,z,w quaternion], "
+                "base_linear_velocity[vx,vy,vz], base_angular_velocity[wx,wy,wz], "
+                "joint_positions[], joint_velocities[], prev_action[], sim_time. 'obs' "
+                "is the exact policy observation vector; 'action' is the applied action. "
+                "Observations are auto-normalized in training — keep reward magnitudes "
+                "O(1). Validate code with validate_reward_code before saving. "
+                "Example enabling a forward-walk reward: "
+                "{\"observations\": [{\"key\": \"base_linear_velocity\", \"enabled\": true}], "
+                "\"actions\": [{\"joint_index\": 3, \"enabled\": true}], "
+                "\"rewards\": [{\"key\": \"custom_python\", \"enabled\": true, \"weight\": 1.0, "
+                "\"params\": {\"code\": \"def reward(obs, action, ctx):\\n    return ctx['base_linear_velocity'][0]\"}}]}",
                 {
                     "patch": {
                         "type": "object",
@@ -170,6 +211,25 @@ class AgentToolbox:
                     }
                 },
                 ["patch"],
+            ),
+            tool(
+                "validate_reward_code",
+                "Sandbox-run custom Python reward code with dummy inputs before you "
+                "save it (catches syntax errors, bad ctx keys, crashes, infinite "
+                "loops). Returns {ok, value} or {ok: false, error}. Always validate "
+                "before writing custom_python via patch_env_config.",
+                {"code": {"type": "string", "description": "def reward(obs, action, ctx): ..."}},
+                ["code"],
+            ),
+            tool(
+                "apply_behavior_goal",
+                "Optional shortcut that sets observations, actions, rewards and "
+                "terminations for a few common goals (walk straight, run straight, "
+                "balance/stand, reach target). Prefer authoring a tailored reward "
+                "with patch_env_config for anything else (sit, jump, crouch, wave, "
+                "custom goals).",
+                {"goal": {"type": "string", "description": "User goal, e.g. walk straight"}},
+                ["goal"],
             ),
             tool(
                 "start_training",
@@ -289,6 +349,8 @@ class AgentToolbox:
         handlers: dict[str, Callable[..., Any]] = {
             "get_health": self._get_health,
             "get_robot_info": self._get_robot_info,
+            "get_robot_dynamics": self._get_robot_dynamics,
+            "fix_robot_dynamics": self._fix_robot_dynamics,
             "get_observations": self._get_observations,
             "get_actions": self._get_actions,
             "get_training_status": self._get_training_status,
@@ -297,8 +359,10 @@ class AgentToolbox:
             "set_gravity": self._set_gravity,
             "apply_test_action": self._apply_test_action,
             "test_reward": self._test_reward,
+            "validate_reward_code": self._validate_reward_code,
             "get_env_config": self._get_env_config,
             "patch_env_config": self._patch_env_config,
+            "apply_behavior_goal": self._apply_behavior_goal,
             "start_training": self._start_training,
             "stop_training": self._stop_training,
             "get_training_telemetry": self._get_training_telemetry,
@@ -332,6 +396,24 @@ class AgentToolbox:
 
     def _get_robot_info(self) -> dict[str, Any]:
         return self.sim.robot_info()
+
+    def _get_robot_dynamics(self) -> dict[str, Any]:
+        from backend.simulation.dynamics_check import check_dynamics
+
+        return check_dynamics(self.sim)
+
+    def _fix_robot_dynamics(self) -> dict[str, Any]:
+        from backend.simulation.dynamics_check import fix_dynamics
+
+        result = fix_dynamics(self.sim)
+        if self.notifier is not None and result.get("fixed"):
+            self.notifier.notify_threadsafe(
+                title="Agent repaired robot physics",
+                body=result.get("summary", "Dynamics repaired."),
+                severity="success",
+                category="agent_action",
+            )
+        return result
 
     def _get_observations(self) -> dict[str, Any]:
         data = self.sim.observations()
@@ -385,6 +467,11 @@ class AgentToolbox:
             ]
         return evaluate_reward(self.sim, components)
 
+    def _validate_reward_code(self, code: str) -> dict[str, Any]:
+        from backend.rl.custom_reward import validate_custom_reward
+
+        return validate_custom_reward(str(code))
+
     def _get_env_config(self) -> dict[str, Any]:
         if self.config_service is None:
             return {"error": "Config service unavailable."}
@@ -410,6 +497,19 @@ class AgentToolbox:
             )
         return {"ok": True, "problems": problems, "rewards": updated.model_dump()["rewards"]}
 
+    def _apply_behavior_goal(self, goal: str) -> dict[str, Any]:
+        if self.config_service is None:
+            return {"error": "Config service unavailable."}
+        result = apply_behavior_goal(goal, self.sim, self.config_service)
+        if self.notifier is not None:
+            self.notifier.notify_threadsafe(
+                title="Reward configured",
+                body=result["summary"],
+                severity="success",
+                category="agent_action",
+            )
+        return result
+
     def _start_training(
         self,
         algorithm: str = "PPO",
@@ -421,7 +521,16 @@ class AgentToolbox:
     ) -> dict[str, Any]:
         if self.config_service is None:
             return {"error": "Config service unavailable."}
-        config = self.config_service.current_or_default(self.sim)
+        if not self.config_service.saved_matches(self.sim):
+            return {
+                "error": (
+                    "Training is locked until the current robot's environment config "
+                    "is saved. Configure observations/actions/rewards, then Save env."
+                )
+            }
+        config = self.config_service.load()
+        if config is None:
+            return {"error": "Saved environment config could not be loaded."}
         config.algorithm = {"name": algorithm}
         problems = self.config_service.validate(config, self.sim)
         if problems:
@@ -524,6 +633,13 @@ class AgentToolbox:
             return {"error": "Tuner unavailable."}
         if self.training_worker.status.active:
             return {"error": "Training is running — stop it before tuning."}
+        if self.config_service is not None and not self.config_service.saved_matches(self.sim):
+            return {
+                "error": (
+                    "Tuning is locked until the current robot's environment config "
+                    "is saved. Configure observations/actions/rewards, then Save env."
+                )
+            }
         return self.tuner_worker.start(
             algorithm=algorithm,
             n_trials=max(1, min(50, int(n_trials))),
