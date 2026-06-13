@@ -1,0 +1,17 @@
+intelimek@intelimek-pc-gpu2:~$ ollama list
+NAME                                         ID              SIZE      MODIFIED       
+llama3.1:latest                              46e0c10c039e    4.9 GB    37 seconds ago    
+qwen3.5:4b                                   2a654d98e6fb    3.4 GB    2 weeks ago       
+qwen3.5:9b-q8_0                              441ec31e4d2a    10 GB     2 weeks ago       
+ministral-3:3b                               f04aa1c738f6    3.0 GB    2 weeks ago       
+qwen2.5:7b-instruct                          845dbda0ea48    4.7 GB    2 weeks ago       
+qwen2.5-coder:3b                             f72c60cabf62    1.9 GB    2 weeks ago       
+Mistral-Nemo-Claude-Gemini-Heretic:latest    20767d399e9b    13 GB     2 weeks ago       
+ministral-3:14b                              4760c35aeb9d    9.1 GB    2 weeks ago       
+finalend/hermes-3-llama-3.1:8b               c9c6e4af4d7a    4.9 GB    3 weeks ago       
+mistral-nemo:12b                             e7e06d107c6c    7.1 GB    3 weeks ago       
+cogito:14b                                   d0cac86a2347    9.0 GB    7 weeks ago       
+nemotron-3-nano:4b                           6cc467f05439    2.8 GB    2 months ago      
+qwen3.5:9b                                   6488c96fa5fa    6.6 GB    2 months ago      
+ministral-3:8b                               1922accd5827    6.0 GB    2 months ago      
+gpt-oss:latest                               17052f91a42e    13 GB     2 months ago

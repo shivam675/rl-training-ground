@@ -7,6 +7,7 @@ loading and saving so they can never drift apart.
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -16,22 +17,26 @@ from backend.models import EnvConfig
 
 CONFIG_FILENAME = "current_env.json"
 
+# A fresh project starts blank: the catalog of observations/actions/rewards is
+# present so the UI and agent can see the options, but nothing is enabled. The
+# user and the assistant decide together what to observe, control and reward
+# before training unlocks — see [[easyrtg-production-flow]].
 DEFAULT_OBSERVATIONS = [
-    {"key": "base_position", "enabled": True},
-    {"key": "base_orientation", "enabled": True},
-    {"key": "joint_positions", "enabled": True},
-    {"key": "joint_velocities", "enabled": True},
+    {"key": "base_position", "enabled": False},
+    {"key": "base_orientation", "enabled": False},
+    {"key": "joint_positions", "enabled": False},
+    {"key": "joint_velocities", "enabled": False},
 ]
 
 
 def default_rewards() -> list[dict[str, Any]]:
-    """Full reward catalog with sane defaults; custom_python starts disabled."""
+    """Full reward catalog, all disabled — the assistant/user enable + tune."""
     from backend.rl.reward_builder import default_reward_components
 
     return [
         {
             "key": item["key"],
-            "enabled": item["key"] != "custom_python",
+            "enabled": False,
             "weight": item.get("weight", 1.0),
             "params": item.get("params", {}),
         }
@@ -51,7 +56,9 @@ class ConfigService:
         actions = [
             {
                 "joint_index": item["joint_index"],
-                "enabled": True,
+                # Joints are listed but disabled by default; the assistant/user
+                # choose which ones the policy controls for the goal.
+                "enabled": False,
                 "control_mode": item.get("control_mode", "position"),
                 "scale_low": -1.0,
                 "scale_high": 1.0,
@@ -139,7 +146,20 @@ class ConfigService:
                 )
         return problems
 
+    @staticmethod
+    def ensure_identity(config: EnvConfig, name: str | None = None) -> EnvConfig:
+        """Guarantee the config carries a stable project_id (and optionally set
+        its name). Returns the same object if nothing changed, else a copy."""
+        updates: dict[str, Any] = {}
+        if not config.project_id:
+            updates["project_id"] = uuid.uuid4().hex
+        if name is not None and name != config.project_name:
+            updates["project_name"] = name
+        return config.model_copy(update=updates) if updates else config
+
     def save(self, config: EnvConfig) -> Path:
+        # Anything we persist becomes "a project", so it always gets an id.
+        config = self.ensure_identity(config)
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.path.write_text(config.model_dump_json(indent=2), encoding="utf-8")
         return self.path
@@ -152,13 +172,33 @@ class ConfigService:
         except (OSError, ValidationError):
             return None
 
+    def saved_matches(self, sim) -> bool:
+        saved = self.load()
+        if saved is None or not saved.urdf_path:
+            return False
+        info = sim.robot_info()
+        return saved.urdf_path == info.get("path") and bool(saved.actions)
+
+    @staticmethod
+    def ensure_reward_catalog(config: EnvConfig) -> EnvConfig:
+        """Append any reward components missing from an older saved config so the
+        UI/agent always see the full (current) catalog. New components are added
+        disabled, so this never changes training behaviour."""
+        present = {r.key for r in config.rewards}
+        missing = [c for c in default_rewards() if c["key"] not in present]
+        if not missing:
+            return config
+        data = config.model_dump()
+        data["rewards"].extend(missing)
+        return EnvConfig.model_validate(data)
+
     def current_or_default(self, sim) -> EnvConfig:
         """Saved config if it matches the loaded robot, else a fresh default."""
         saved = self.load()
         info = sim.robot_info()
         urdf_path = info.get("path")
         if saved is not None and saved.urdf_path == urdf_path and saved.actions:
-            return saved
+            return self.ensure_reward_catalog(saved)
         return self.build_default(sim)
 
     def as_dict(self, config: EnvConfig) -> dict[str, Any]:

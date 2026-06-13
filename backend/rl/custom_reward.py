@@ -37,12 +37,18 @@ except BaseException as exc:
     print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
 """
 
-_SAMPLE_OBS = [0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0]
+_SAMPLE_OBS = [0.0, 0.0, 0.5, 0.0, 0.1, 0.0, 0.0]
 _SAMPLE_ACTION = [0.0, 0.1]
+# Must mirror the ctx the training loop builds (reward_builder.py) so that
+# valid code using e.g. base_linear_velocity validates instead of KeyError-ing.
 _SAMPLE_CTX = {
     "base_position": [0.0, 0.0, 0.5],
+    "base_orientation": [0.0, 0.0, 0.0, 1.0],
+    "base_linear_velocity": [0.0, 0.0, 0.0],
+    "base_angular_velocity": [0.0, 0.0, 0.0],
     "joint_positions": [0.0, 0.1],
     "joint_velocities": [0.0, 0.0],
+    "prev_action": [0.0, 0.0],
     "sim_time": 0.0,
 }
 
