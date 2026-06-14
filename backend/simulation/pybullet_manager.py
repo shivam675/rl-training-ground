@@ -248,7 +248,7 @@ class PyBulletManager:
                 p.stepSimulation(physicsClientId=self.cid)
             self.sim_time += substeps / SIM_HZ
 
-    def render_frame(self, width: int, height: int) -> bytes:
+    def render_frame(self, width: int, height: int, quality: int = 80) -> bytes:
         with self.lock:
             if self.cid is None:
                 raise RuntimeError("PyBullet is not connected.")
@@ -270,7 +270,10 @@ class PyBulletManager:
             frame = np.asarray(rgb, dtype=np.uint8).reshape(rh, rw, 4)
             self._adapt_resolution(time.monotonic() - t0)
             self._count_fps()
-            return b"RTGF" + struct.pack("<II", rw, rh) + np.ascontiguousarray(frame).tobytes()
+            # JPEG, not raw RGBA: ~20x smaller on the wire, so higher render
+            # resolutions stream smoothly. The Flutter client decodes any
+            # non-"RTGF" payload via Image.memory, so no protocol change needed.
+            return self._encode_frame(frame[:, :, :3], quality)
 
     def render_jpeg(self, width: int, height: int, quality: int = 80) -> bytes:
         with self.lock:
@@ -334,7 +337,15 @@ class PyBulletManager:
     def _adapt_resolution(self, grab_dt: float) -> None:
         ema = self._grab_ema
         self._grab_ema = grab_dt if ema is None else ema * 0.8 + grab_dt * 0.2
-        min_scale = 0.75 if self.hardware_renderer and self.numpy_fast else 0.35
+        # numpy-enabled getCameraImage returns the buffer cheaply, so even the
+        # CPU TinyRenderer can hold a sharper floor; without numpy the per-frame
+        # copy is the bottleneck and we keep the conservative 0.35 floor.
+        if self.hardware_renderer and self.numpy_fast:
+            min_scale = 0.75
+        elif self.numpy_fast:
+            min_scale = 0.5
+        else:
+            min_scale = 0.35
         high_budget = 0.030 if self.hardware_renderer else 0.040
         low_budget = 0.020 if self.hardware_renderer else 0.026
         if self._grab_ema > high_budget and self.render_scale > min_scale:

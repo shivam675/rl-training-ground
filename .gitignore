@@ -34,6 +34,8 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# ...but Flutter's Windows runner manifest is not PyInstaller output — keep it.
+!frontend/rtg-flutter-app/windows/runner/runner.exe.manifest
 
 # Installer logs
 pip-log.txt
