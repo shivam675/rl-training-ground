@@ -1184,7 +1184,7 @@ async def ws_simulation(ws: WebSocket):
                 continue
             # PyBullet EGL contexts are thread-affine on NVIDIA drivers. Rendering
             # in asyncio.to_thread can segfault after the WebSocket opens.
-            frame = sim.render_frame(width, height)
+            frame = sim.render_frame(width, height, quality)
             await ws.send_bytes(frame)
             if int(sim.sim_time * 10) % 10 == 0:
                 await ws.send_json({"type": "status", **sim.status()})

@@ -25,15 +25,16 @@ class BackendLauncher {
     }
   }
 
-  String? _findScript() {
-    final override = Platform.environment['EASYRTG_BACKEND'];
-    if (override != null && File(override).existsSync()) return override;
-    // Walk up from the working directory looking for the repo's script —
-    // covers `flutter run` from the app dir and the built bundle in-place.
+  /// Repo root: walk up from the working directory until we find both the
+  /// backend package and the scripts dir. Covers `flutter run` from the app
+  /// dir and a built bundle run in-place.
+  String? _findRepoRoot() {
     var dir = Directory.current;
-    for (var depth = 0; depth < 6; depth++) {
-      final candidate = File('${dir.path}/scripts/start_backend.sh');
-      if (candidate.existsSync()) return candidate.path;
+    for (var depth = 0; depth < 8; depth++) {
+      if (Directory('${dir.path}/backend').existsSync() &&
+          Directory('${dir.path}/scripts').existsSync()) {
+        return dir.path;
+      }
       final parent = dir.parent;
       if (parent.path == dir.path) break;
       dir = parent;
@@ -41,31 +42,75 @@ class BackendLauncher {
     return null;
   }
 
+  String _windowsPython(String root) {
+    for (final rel in [r'.venv\Scripts\python.exe', r'.venv-rtg\Scripts\python.exe']) {
+      final candidate = File('$root\\$rel');
+      if (candidate.existsSync()) return candidate.path;
+    }
+    return 'python';
+  }
+
+  /// Start the backend for the current platform. Returns null when it can't be
+  /// located — the caller then logs and gives up; the app still runs and will
+  /// connect to a manually-started backend. EASYRTG_SUPERVISE=0 makes the
+  /// child exec uvicorn directly, so killing it actually stops the server.
+  Future<Process?> _spawnBackend() async {
+    final env = {'EASYRTG_SUPERVISE': '0'};
+
+    // Explicit override always wins: a .ps1, a .sh, or any executable.
+    final override = Platform.environment['EASYRTG_BACKEND'];
+    if (override != null && File(override).existsSync()) {
+      final lower = override.toLowerCase();
+      if (Platform.isWindows && lower.endsWith('.ps1')) {
+        return Process.start(
+          'powershell',
+          ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', override],
+          environment: env,
+        );
+      }
+      if (lower.endsWith('.sh')) {
+        return Process.start('bash', [override], environment: env);
+      }
+      return Process.start(override, const [], environment: env);
+    }
+
+    final root = _findRepoRoot();
+    if (root == null) return null;
+
+    if (Platform.isWindows) {
+      // Run uvicorn directly: no bash, no PowerShell execution-policy hurdles.
+      return Process.start(
+        _windowsPython(root),
+        ['-m', 'uvicorn', 'backend.main:app', '--host', '127.0.0.1', '--port', '8000'],
+        workingDirectory: root,
+        environment: env,
+      );
+    }
+
+    // POSIX: the supervised script in direct mode.
+    final script = '$root/scripts/start_backend.sh';
+    if (!File(script).existsSync()) return null;
+    return Process.start('bash', [script], environment: env);
+  }
+
   /// Returns true once the backend is reachable (whether or not we spawned it).
   Future<bool> ensureRunning() async {
     if (await _healthy()) return true;
-    final script = _findScript();
-    if (script == null) {
-      debugPrint(
-        'BackendLauncher: backend offline and start_backend.sh not found '
-        '(set EASYRTG_BACKEND to override).',
-      );
-      return false;
-    }
     try {
-      // EASYRTG_SUPERVISE=0 → the script execs uvicorn directly, so killing
-      // this process actually stops the server (no orphaned child).
-      _process = await Process.start(
-        'bash',
-        [script],
-        environment: {'EASYRTG_SUPERVISE': '0'},
-      );
-      _process!.stdout.drain<void>();
-      _process!.stderr.drain<void>();
+      _process = await _spawnBackend();
     } catch (e) {
       debugPrint('BackendLauncher: failed to spawn backend: $e');
       return false;
     }
+    if (_process == null) {
+      debugPrint(
+        'BackendLauncher: backend offline and could not be located '
+        '(set EASYRTG_BACKEND to a start script, or start it manually).',
+      );
+      return false;
+    }
+    _process!.stdout.drain<void>();
+    _process!.stderr.drain<void>();
     for (var i = 0; i < 60; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       if (await _healthy()) {
