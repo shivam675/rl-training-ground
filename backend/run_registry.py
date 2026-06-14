@@ -9,6 +9,7 @@ runs survive backend restarts and can be copied between machines.
 from __future__ import annotations
 
 import json
+import shutil
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -124,6 +125,15 @@ class RunRegistry:
                 if path.exists():
                     archive.write(path, arcname=artifact)
         return bundle
+
+    def delete_run(self, name: str) -> bool:
+        """Permanently remove a run's entire directory. Returns False if the
+        name doesn't resolve to a run dir (path-traversal-safe via run_dir)."""
+        run_dir = self.run_dir(name)
+        if run_dir is None:
+            return False
+        shutil.rmtree(run_dir, ignore_errors=True)
+        return True
 
     # ---------------------------------------------------------------- compare
 

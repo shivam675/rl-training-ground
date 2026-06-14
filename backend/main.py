@@ -329,6 +329,7 @@ async def get_env_config() -> dict[str, Any]:
         "config": config.model_dump(),
         "problems": config_service.validate(config, sim),
         "saved": config_service.saved_matches(sim),
+        "vector_sizes": config_service.vector_sizes(config, sim),
     }
 
 
@@ -360,6 +361,7 @@ async def patch_env_config(patch: dict[str, Any]) -> dict[str, Any]:
         "ok": True,
         "config": updated.model_dump(),
         "problems": config_service.validate(updated, sim),
+        "vector_sizes": config_service.vector_sizes(updated, sim),
     }
 
 
@@ -505,8 +507,31 @@ async def reward_apply_goal(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _other_job_active(*, exclude: str) -> str | None:
+    """Name of a heavy background job (other than ``exclude``) currently running.
+
+    Training, tuning and evaluation all drive the shared, single-threaded
+    PyBullet world and are CPU-bound, so only one may run at a time — the start
+    endpoints use this to refuse a second concurrent job.
+    """
+    if exclude != "training" and training_worker.status.active:
+        return "a training run"
+    if exclude != "tuning" and bool(tuner_worker.status.get("active")):
+        return "hyperparameter tuning"
+    if exclude != "evaluation" and bool(evaluation_worker.status.get("active")):
+        return "an evaluation"
+    return None
+
+
 @app.post("/training/start")
 async def training_start(req: TrainingStartRequest) -> dict[str, Any]:
+    busy = _other_job_active(exclude="training")
+    if busy:
+        raise fail(
+            f"Can't start training while {busy} is running.",
+            code="backend_busy",
+            hint="Only one job runs at a time — wait for it to finish or stop it.",
+        )
     if req.config is None:
         if not config_service.saved_matches(sim):
             raise fail(
@@ -554,11 +579,12 @@ async def training_advisor() -> dict[str, Any]:
 
 @app.post("/tuning/start")
 async def tuning_start(payload: dict[str, Any]) -> dict[str, Any]:
-    if training_worker.status.active:
+    busy = _other_job_active(exclude="tuning")
+    if busy:
         raise fail(
-            "Training is running — tuning would compete for the CPU.",
-            code="tuning_blocked",
-            hint="Stop or finish the training run first.",
+            f"Can't start tuning while {busy} is running.",
+            code="backend_busy",
+            hint="Only one job runs at a time — wait for it to finish or stop it.",
         )
     if not config_service.saved_matches(sim):
         raise fail(
@@ -612,6 +638,13 @@ async def evaluation_run(req: EvaluationRequest) -> dict[str, Any]:
 
 @app.post("/evaluation/start")
 async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
+    busy = _other_job_active(exclude="evaluation")
+    if busy:
+        raise fail(
+            f"Can't evaluate while {busy} is running.",
+            code="backend_busy",
+            hint="Only one job runs at a time — wait for it to finish or stop it.",
+        )
     try:
         return evaluation_worker.start(
             run_name=str(payload.get("run_name", "")),
@@ -637,6 +670,21 @@ async def evaluation_status() -> dict[str, Any]:
     return evaluation_worker.status
 
 
+@app.get("/logs/backend")
+async def backend_logs(lines: int = 400) -> dict[str, Any]:
+    """Tail of the rotating backend log — the real terminal output — for the
+    Logs tab. Capped so a large log can't blow up the response."""
+    log_file = APP_SETTINGS_DIR / "logs" / "backend.log"
+    count = max(1, min(2000, lines))
+    if not log_file.exists():
+        return {"lines": [], "path": str(log_file)}
+    try:
+        text = log_file.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        raise fail(f"Could not read backend log: {exc}", code="log_read_failed")
+    return {"lines": text.splitlines()[-count:], "path": str(log_file)}
+
+
 @app.get("/runs")
 async def list_runs(project_id: str | None = None) -> dict[str, Any]:
     """All runs, or — when project_id is given — only that project's runs."""
@@ -658,6 +706,29 @@ async def export_run(name: str) -> dict[str, Any]:
     if bundle is None:
         raise fail(f"Unknown run: {name}", code="unknown_run", status_code=404)
     return {"ok": True, "path": str(bundle)}
+
+
+@app.post("/runs/{name}/delete")
+async def delete_run(name: str) -> dict[str, Any]:
+    """Permanently delete a run's directory (model, telemetry, evaluations, …)."""
+    status = training_worker.status
+    if status.active and status.run_dir and Path(status.run_dir).name == name:
+        raise fail(
+            "Can't delete a run while it is training.",
+            code="run_busy",
+            status_code=409,
+        )
+    eval_status = evaluation_worker.status
+    if eval_status.get("active") and eval_status.get("run_name") == name:
+        raise fail(
+            "Can't delete a run while it is being evaluated.",
+            code="run_busy",
+            status_code=409,
+        )
+    ok = await asyncio.to_thread(registry.delete_run, name)
+    if not ok:
+        raise fail(f"Unknown run: {name}", code="unknown_run", status_code=404)
+    return {"ok": True}
 
 
 @app.post("/runs/compare")
@@ -1097,6 +1168,20 @@ async def ws_simulation(ws: WebSocket):
                 await asyncio.sleep(1 / 60)
                 continue
             last_broadcast_seq = -1
+            if training_worker.status.active or bool(tuner_worker.status.get("active")):
+                # Pause live rendering while training/tuning runs. render_frame holds
+                # the process-global PyBullet lock for the whole EGL getCameraImage;
+                # the training thread shares that lock, so continuous rendering of a
+                # heavy robot starved it (the ~3s/timestep bug). Send a heartbeat so
+                # the viewport can show a "training in progress" placeholder.
+                now = time.monotonic()
+                if now - last_status_at >= 0.5:
+                    last_status_at = now
+                    await ws.send_json(
+                        {"type": "status", **sim.status(), "training": True}
+                    )
+                await asyncio.sleep(0.2)
+                continue
             # PyBullet EGL contexts are thread-affine on NVIDIA drivers. Rendering
             # in asyncio.to_thread can segfault after the WebSocket opens.
             frame = sim.render_frame(width, height)

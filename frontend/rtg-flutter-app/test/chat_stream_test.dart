@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:rtg_flutter_app/src/api_client.dart';
 import 'package:rtg_flutter_app/src/app_state.dart';
-import 'package:rtg_flutter_app/src/panels/agents_panel.dart';
+import 'package:rtg_flutter_app/src/agent/chat_view.dart';
 
 /// Emits a fast burst of chunks the way Ollama does, plus a tool round.
 class BurstApi extends BackendApi {
@@ -51,7 +51,7 @@ void main() {
         overrides: [
           appStateProvider.overrideWith((ref) => AppState(BurstApi())),
         ],
-        child: const MaterialApp(home: Scaffold(body: AgentsPanel())),
+        child: const MaterialApp(home: Scaffold(body: AssistantChat())),
       ),
     );
 

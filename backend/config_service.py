@@ -203,3 +203,22 @@ class ConfigService:
 
     def as_dict(self, config: EnvConfig) -> dict[str, Any]:
         return config.model_dump()
+
+    def vector_sizes(self, config: EnvConfig, sim) -> dict[str, int]:
+        """Effective observation/action dimensions for the *enabled* entries —
+        the sizes the policy actually sees (mirrors ``rl/gym_env.py``).
+
+        The ``/robot/observations`` and ``/robot/actions`` endpoints report the
+        full catalog regardless of what is enabled; these are the numbers that
+        must change when the builders toggle a source on or off.
+        """
+        obs_keys = [item.key for item in config.observations if item.enabled]
+        try:
+            obs_size = len(sim.observation_vector(obs_keys)) if obs_keys else 0
+        except Exception:
+            obs_size = 0
+        action_size = sum(1 for item in config.actions if item.enabled)
+        return {
+            "observation_vector_size": obs_size,
+            "action_vector_size": action_size,
+        }
