@@ -79,6 +79,7 @@ def test_tuning_blocked_while_training(client):
     try:
         res = client.post("/tuning/start", json={"n_trials": 1})
         assert res.status_code == 400
-        assert res.json()["detail"]["code"] == "tuning_blocked"
+        # Unified "one heavy job at a time" guard (was tuning_blocked).
+        assert res.json()["detail"]["code"] == "backend_busy"
     finally:
         training_worker.status.active = False

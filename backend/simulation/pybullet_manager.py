@@ -68,6 +68,10 @@ class PyBulletManager:
         self.fps = 0.0
         self.running = True
         self.sim_time = 0.0
+        # Per-joint (max_force, max_velocity), static for a loaded robot — cached
+        # so the control loop doesn't call getJointInfo every step. Cleared on
+        # (re)load. This + skipping unused obs queries is the per-step speedup.
+        self._motor_limits: dict[int, tuple[float, float]] = {}
         self.robot_body: int | None = None
         self.plane_body: int | None = None
         self.current_request: LoadUrdfRequest | None = None
@@ -122,6 +126,7 @@ class PyBulletManager:
         p.setGravity(*self.gravity, physicsClientId=self.cid)
         p.setTimeStep(1.0 / SIM_HZ, physicsClientId=self.cid)
         self.robot_body = None
+        self._motor_limits.clear()
         self.plane_body = p.loadURDF(PLANE_URDF, physicsClientId=self.cid)
         self.sim_time = 0.0
         if load_default:
@@ -135,6 +140,7 @@ class PyBulletManager:
     def load_urdf(self, req: LoadUrdfRequest) -> dict[str, Any]:
         with self.lock:
             assert self.cid is not None
+            self._motor_limits.clear()
             path = self._resolve_urdf_path(req.path)
             if not path.lower().endswith(".urdf"):
                 raise ValueError("Path must point to a .urdf file.")
@@ -429,14 +435,60 @@ class PyBulletManager:
                 return []
             body = self.robot_body
             out: list[float] = []
-            base_pos, base_orn = p.getBasePositionAndOrientation(body, physicsClientId=self.cid)
-            lin_vel, ang_vel = p.getBaseVelocity(body, physicsClientId=self.cid)
+            # Only run each PyBullet query when an enabled key actually needs it.
+            # getLinkStates(computeLinkVelocity=1) over every link is the most
+            # expensive call here, so skipping it when no link obs are enabled is
+            # a large per-step win for typical (base+joint) observation spaces.
+            needs_base_pose = "base_position" in keys or "base_orientation" in keys
+            needs_base_vel = (
+                "base_linear_velocity" in keys or "base_angular_velocity" in keys
+            )
+            needs_joint_states = any(
+                k in keys
+                for k in (
+                    "joint_positions",
+                    "joint_velocities",
+                    "joint_reaction_forces",
+                )
+            )
+            needs_link = any(
+                k in keys
+                for k in (
+                    "link_world_positions",
+                    "link_orientations",
+                    "link_linear_velocities",
+                    "link_angular_velocities",
+                )
+            )
+            needs_link_vel = (
+                "link_linear_velocities" in keys
+                or "link_angular_velocities" in keys
+            )
+            base_pos, base_orn = (
+                p.getBasePositionAndOrientation(body, physicsClientId=self.cid)
+                if needs_base_pose
+                else ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0))
+            )
+            lin_vel, ang_vel = (
+                p.getBaseVelocity(body, physicsClientId=self.cid)
+                if needs_base_vel
+                else ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+            )
             joint_count = p.getNumJoints(body, physicsClientId=self.cid)
             joint_indices = list(range(joint_count))
-            states = p.getJointStates(body, joint_indices, physicsClientId=self.cid) if joint_indices else []
+            states = (
+                p.getJointStates(body, joint_indices, physicsClientId=self.cid)
+                if needs_joint_states and joint_indices
+                else []
+            )
             link_states = (
-                p.getLinkStates(body, joint_indices, computeLinkVelocity=1, physicsClientId=self.cid)
-                if joint_indices
+                p.getLinkStates(
+                    body,
+                    joint_indices,
+                    computeLinkVelocity=1 if needs_link_vel else 0,
+                    physicsClientId=self.cid,
+                )
+                if needs_link and joint_indices
                 else []
             )
             if "base_position" in keys:
@@ -480,9 +532,14 @@ class PyBulletManager:
             if len(req.values) != len(joint_indices):
                 raise ValueError(f"Expected {len(joint_indices)} action values, got {len(req.values)}.")
             for joint_index, value in zip(joint_indices, req.values):
-                joint_info = p.getJointInfo(self.robot_body, joint_index, physicsClientId=self.cid)
-                force = float(joint_info[10]) if float(joint_info[10]) > 0 else 50.0
-                velocity = float(joint_info[11]) if float(joint_info[11]) > 0 else 10.0
+                limits = self._motor_limits.get(joint_index)
+                if limits is None:
+                    info = p.getJointInfo(self.robot_body, joint_index, physicsClientId=self.cid)
+                    force = float(info[10]) if float(info[10]) > 0 else 50.0
+                    velocity = float(info[11]) if float(info[11]) > 0 else 10.0
+                    limits = (force, velocity)
+                    self._motor_limits[joint_index] = limits
+                force, velocity = limits
                 if req.mode == "position":
                     p.setJointMotorControl2(
                         self.robot_body,
