@@ -17,6 +17,99 @@ MAX_HISTORY_POINTS = 2000
 KEEP_CHECKPOINTS = 3
 
 
+def _save_model_atomic(model, run_dir: Path) -> bool:
+    """Write model.zip via a temp file + rename so a crash mid-write can never
+    leave a half-written, unloadable model.zip. Returns True on success."""
+    target = run_dir / "model.zip"
+    tmp = run_dir / "model.zip.tmp"
+    try:
+        model.save(str(tmp))
+        tmp.replace(target)
+        return True
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        return False
+
+
+def _promote_latest_checkpoint(run_dir: Path) -> bool:
+    """Last-resort salvage: if no model.zip exists but checkpoints do, copy the
+    most recent checkpoint to model.zip so the run is still usable. Returns
+    True if a checkpoint was promoted."""
+    if (run_dir / "model.zip").exists():
+        return False
+    checkpoint_dir = run_dir / "checkpoints"
+    if not checkpoint_dir.exists():
+        return False
+    checkpoints = sorted(
+        checkpoint_dir.glob("step_*.zip"),
+        key=lambda p: int(p.stem.split("_")[1]),
+    )
+    if not checkpoints:
+        return False
+    import shutil
+
+    shutil.copy2(checkpoints[-1], run_dir / "model.zip")
+    return True
+
+
+def _save_vecnormalize(model, run_dir: Path) -> None:
+    """Persist the observation/reward normalization stats next to the model.
+
+    ``vecnormalize.pkl`` lets a run resume with its stats intact;
+    ``normalization.json`` lets evaluation normalize observations the exact same
+    way the policy was trained on, without reconstructing a vec env. Best-effort:
+    a model trained without VecNormalize simply writes nothing."""
+    try:
+        vec = model.get_vec_normalize_env()
+    except Exception:
+        vec = None
+    if vec is None:
+        return
+    try:
+        vec.save(str(run_dir / "vecnormalize.pkl"))
+        rms = vec.obs_rms
+        (run_dir / "normalization.json").write_text(
+            json.dumps(
+                {
+                    "obs_mean": list(rms.mean.tolist()),
+                    "obs_var": list(rms.var.tolist()),
+                    "clip_obs": float(vec.clip_obs),
+                    "epsilon": float(vec.epsilon),
+                }
+            ),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def build_algo_kwargs(req: TrainingStartRequest) -> dict[str, Any]:
+    """Map the request onto SB3 constructor kwargs, per algorithm."""
+    kwargs: dict[str, Any] = {
+        "learning_rate": req.learning_rate,
+        "gamma": req.gamma,
+        "verbose": 1,
+    }
+    if req.algorithm in ("PPO", "A2C"):
+        kwargs["n_steps"] = req.n_steps
+        if req.ent_coef is not None:
+            kwargs["ent_coef"] = req.ent_coef
+    if req.algorithm == "PPO" and req.clip_range is not None:
+        kwargs["clip_range"] = req.clip_range
+    if req.algorithm in ("PPO", "SAC", "TD3"):
+        kwargs["batch_size"] = req.batch_size
+    if req.algorithm in ("SAC", "TD3"):
+        if req.tau is not None:
+            kwargs["tau"] = req.tau
+        if req.buffer_size is not None:
+            kwargs["buffer_size"] = req.buffer_size
+        if req.train_freq is not None:
+            kwargs["train_freq"] = req.train_freq
+    if req.net_arch:
+        kwargs["policy_kwargs"] = {"net_arch": [int(n) for n in req.net_arch]}
+    return kwargs
+
+
 class TrainingWorker:
     def __init__(self, runs_dir: Path):
         self.runs_dir = runs_dir
@@ -78,13 +171,38 @@ class TrainingWorker:
 
     def _run(self, req: TrainingStartRequest, run_dir: Path) -> None:
         log_path = run_dir / "training_log.txt"
+        model = None
         try:
             from stable_baselines3 import A2C, PPO, SAC, TD3
             from stable_baselines3.common.callbacks import BaseCallback
             from stable_baselines3.common.monitor import Monitor
+            from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
             algorithms = {"PPO": PPO, "SAC": SAC, "TD3": TD3, "A2C": A2C}
-            env = Monitor(RtgGymEnv(req.config), filename=str(run_dir / "monitor.csv"))
+            # Monitor (inside) logs RAW episode rewards for telemetry/eval, while
+            # VecNormalize (outside) feeds the policy zero-mean/unit-var
+            # observations and scaled rewards — without this, raw-scale obs make
+            # PPO struggle to learn. The Monitor-before-VecNormalize order keeps
+            # the reward chart in real units.
+            monitored = Monitor(RtgGymEnv(req.config), filename=str(run_dir / "monitor.csv"))
+            venv = DummyVecEnv([lambda: monitored])
+            resume_stats = (
+                Path(req.resume_from).parent / "vecnormalize.pkl"
+                if req.resume_from
+                else None
+            )
+            if resume_stats is not None and resume_stats.exists():
+                env = VecNormalize.load(str(resume_stats), venv)
+                env.training = True
+                env.norm_reward = True
+            else:
+                env = VecNormalize(
+                    venv,
+                    norm_obs=True,
+                    norm_reward=True,
+                    clip_obs=10.0,
+                    gamma=req.gamma,
+                )
 
             worker = self
 
@@ -163,20 +281,18 @@ class TrainingWorker:
                         )
                         for old in checkpoints[:-KEEP_CHECKPOINTS]:
                             old.unlink(missing_ok=True)
+                        # Refresh the canonical model.zip + normalization stats
+                        # too, so the run always has a usable, correctly-
+                        # normalized latest model even if training is later
+                        # killed or crashes before the final save.
+                        _save_model_atomic(self.model, run_dir)
+                        _save_vecnormalize(self.model, run_dir)
                         worker.events.put(
                             {"type": "checkpoint", "timestep": int(self.num_timesteps)}
                         )
                     return not worker._stop.is_set()
 
-            kwargs: dict[str, Any] = {
-                "learning_rate": req.learning_rate,
-                "gamma": req.gamma,
-                "verbose": 1,
-            }
-            if req.algorithm in ("PPO", "A2C"):
-                kwargs["n_steps"] = req.n_steps
-            if req.algorithm in ("PPO", "SAC", "TD3"):
-                kwargs["batch_size"] = req.batch_size
+            kwargs = build_algo_kwargs(req)
 
             if req.resume_from:
                 resume_path = Path(req.resume_from)
@@ -199,9 +315,16 @@ class TrainingWorker:
                 callback=callback,
                 reset_num_timesteps=reset_num_timesteps,
             )
-            model.save(str(run_dir / "model.zip"))
+            if not _save_model_atomic(model, run_dir):
+                _promote_latest_checkpoint(run_dir)
+            _save_vecnormalize(model, run_dir)
             env.close()
-            message = callback.stop_reason or "complete"
+            if callback.stop_reason:
+                message = callback.stop_reason
+            elif worker._stop.is_set():
+                message = "stopped by user (model saved)"
+            else:
+                message = "complete"
             self.status = TrainingStatus(
                 active=False,
                 run_dir=str(run_dir),
@@ -213,11 +336,28 @@ class TrainingWorker:
             )
             self.events.put({"type": "training_complete", "run_dir": str(run_dir)})
         except Exception as exc:
-            log_path.write_text(f"Training failed: {exc}\n", encoding="utf-8")
+            # Salvage whatever we can: training that ran for thousands of steps
+            # (e.g. when a concurrent op disconnected the physics server) must
+            # not be thrown away. Try to save the in-memory model; failing that,
+            # promote the latest checkpoint to model.zip.
+            salvaged = False
+            if model is not None:
+                salvaged = _save_model_atomic(model, run_dir)
+                _save_vecnormalize(model, run_dir)
+            if not salvaged:
+                salvaged = _promote_latest_checkpoint(run_dir)
+            note = " (recovered model saved)" if salvaged else ""
+            log_path.write_text(f"Training failed: {exc}{note}\n", encoding="utf-8")
             self.status = TrainingStatus(
-                active=False, run_dir=str(run_dir), message=f"failed: {exc}"
+                active=False,
+                run_dir=str(run_dir),
+                timestep=self.status.timestep,
+                total_timesteps=req.total_timesteps,
+                message=f"failed: {exc}{note}",
             )
-            self.events.put({"type": "training_error", "error": str(exc)})
+            self.events.put(
+                {"type": "training_error", "error": str(exc), "salvaged": salvaged}
+            )
         finally:
             time.sleep(0.05)
 

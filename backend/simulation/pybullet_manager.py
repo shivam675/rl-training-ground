@@ -19,10 +19,22 @@ import pybullet_data
 from backend.models import ActionTestRequest, LoadUrdfRequest
 from backend.simulation.camera_controller import OrbitCamera
 from backend.simulation.robot_inspector import inspect_robot
+from backend.simulation.urdf_preprocessor import prepare_urdf_for_pybullet
 
 SIM_HZ = 240
 SIM_SUBSTEPS = 4
 PLANE_URDF = os.path.join(pybullet_data.getDataPath(), "plane.urdf")
+
+# PyBullet's Python bindings keep PROCESS-GLOBAL state and are NOT thread-safe,
+# even across distinct DIRECT client ids. Two threads calling into pybullet at
+# once (e.g. the live viewport rendering the main sim while a training thread
+# steps its own env, or an evaluation playing back) corrupts that global state
+# and surfaces as "Not connected to physics server" — which used to kill a
+# long training run right before its model was saved. A single lock shared by
+# EVERY manager serialises all pybullet access process-wide and prevents it.
+# It is re-entrant so nested calls within one thread (e.g. apply_action_test ->
+# step) don't deadlock.
+_PYBULLET_LOCK = threading.RLock()
 
 OBSERVATION_CATALOG = [
     {"key": "base_position", "label": "Base position", "size": 3},
@@ -43,7 +55,8 @@ OBSERVATION_CATALOG = [
 
 class PyBulletManager:
     def __init__(self) -> None:
-        self.lock = threading.RLock()
+        # Shared process-wide so no two managers/threads touch pybullet at once.
+        self.lock = _PYBULLET_LOCK
         self.cid: int | None = None
         self.camera = OrbitCamera()
         self.hardware_renderer = False
@@ -55,10 +68,15 @@ class PyBulletManager:
         self.fps = 0.0
         self.running = True
         self.sim_time = 0.0
+        # Per-joint (max_force, max_velocity), static for a loaded robot — cached
+        # so the control loop doesn't call getJointInfo every step. Cleared on
+        # (re)load. This + skipping unused obs queries is the per-step speedup.
+        self._motor_limits: dict[int, tuple[float, float]] = {}
         self.robot_body: int | None = None
         self.plane_body: int | None = None
         self.current_request: LoadUrdfRequest | None = None
         self.gravity = (0.0, 0.0, -9.81)
+        self.urdf_report: dict[str, Any] | None = None
 
     @property
     def connected(self) -> bool:
@@ -76,7 +94,7 @@ class PyBulletManager:
             p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.cid)
             p.setTimeStep(1.0 / SIM_HZ, physicsClientId=self.cid)
             self.hardware_renderer = self._load_egl_plugin()
-            self.reset_scene(load_default=True)
+            self.reset_scene(load_default=False)
 
     def disconnect(self) -> None:
         with self.lock:
@@ -97,12 +115,18 @@ class PyBulletManager:
             return False
 
     def reset_scene(self, load_default: bool = False) -> None:
+        with self.lock:
+            assert self.cid is not None
+            self._reset_scene_locked(load_default)
+
+    def _reset_scene_locked(self, load_default: bool = False) -> None:
         assert self.cid is not None
         p.resetSimulation(physicsClientId=self.cid)
         p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.cid)
         p.setGravity(*self.gravity, physicsClientId=self.cid)
         p.setTimeStep(1.0 / SIM_HZ, physicsClientId=self.cid)
         self.robot_body = None
+        self._motor_limits.clear()
         self.plane_body = p.loadURDF(PLANE_URDF, physicsClientId=self.cid)
         self.sim_time = 0.0
         if load_default:
@@ -116,28 +140,42 @@ class PyBulletManager:
     def load_urdf(self, req: LoadUrdfRequest) -> dict[str, Any]:
         with self.lock:
             assert self.cid is not None
+            self._motor_limits.clear()
             path = self._resolve_urdf_path(req.path)
             if not path.lower().endswith(".urdf"):
                 raise ValueError("Path must point to a .urdf file.")
             if not os.path.isfile(path):
                 raise FileNotFoundError(f"URDF not found: {req.path}")
+            search_paths = self._candidate_search_paths(path)
+            self.urdf_report = prepare_urdf_for_pybullet(
+                path,
+                Path(__file__).resolve().parents[1] / "app_settings" / "prepared_urdfs",
+                search_paths,
+            )
+            prepared_path = self.urdf_report["path"]
             p.resetSimulation(physicsClientId=self.cid)
             p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.cid)
             self._add_urdf_search_paths(path)
+            self._add_urdf_search_paths(prepared_path)
             p.setGravity(*self.gravity, physicsClientId=self.cid)
             if req.add_plane:
                 self.plane_body = p.loadURDF(PLANE_URDF, physicsClientId=self.cid)
             else:
                 self.plane_body = None
+            flags = 0
+            for flag_name in ("URDF_USE_MATERIAL_COLORS_FROM_MTL",):
+                flags |= int(getattr(p, flag_name, 0))
             self.robot_body = p.loadURDF(
-                path,
+                prepared_path,
                 req.base_position,
                 req.base_orientation,
                 useFixedBase=req.fixed_base,
+                flags=flags,
                 physicsClientId=self.cid,
             )
             self.current_request = req.model_copy(update={"path": path})
             self.sim_time = 0.0
+            self._frame_loaded_robot()
             return self.robot_info()
 
     @staticmethod
@@ -210,7 +248,7 @@ class PyBulletManager:
                 p.stepSimulation(physicsClientId=self.cid)
             self.sim_time += substeps / SIM_HZ
 
-    def render_frame(self, width: int, height: int) -> bytes:
+    def render_frame(self, width: int, height: int, quality: int = 80) -> bytes:
         with self.lock:
             if self.cid is None:
                 raise RuntimeError("PyBullet is not connected.")
@@ -232,7 +270,10 @@ class PyBulletManager:
             frame = np.asarray(rgb, dtype=np.uint8).reshape(rh, rw, 4)
             self._adapt_resolution(time.monotonic() - t0)
             self._count_fps()
-            return b"RTGF" + struct.pack("<II", rw, rh) + np.ascontiguousarray(frame).tobytes()
+            # JPEG, not raw RGBA: ~20x smaller on the wire, so higher render
+            # resolutions stream smoothly. The Flutter client decodes any
+            # non-"RTGF" payload via Image.memory, so no protocol change needed.
+            return self._encode_frame(frame[:, :, :3], quality)
 
     def render_jpeg(self, width: int, height: int, quality: int = 80) -> bytes:
         with self.lock:
@@ -296,7 +337,15 @@ class PyBulletManager:
     def _adapt_resolution(self, grab_dt: float) -> None:
         ema = self._grab_ema
         self._grab_ema = grab_dt if ema is None else ema * 0.8 + grab_dt * 0.2
-        min_scale = 0.75 if self.hardware_renderer and self.numpy_fast else 0.35
+        # numpy-enabled getCameraImage returns the buffer cheaply, so even the
+        # CPU TinyRenderer can hold a sharper floor; without numpy the per-frame
+        # copy is the bottleneck and we keep the conservative 0.35 floor.
+        if self.hardware_renderer and self.numpy_fast:
+            min_scale = 0.75
+        elif self.numpy_fast:
+            min_scale = 0.5
+        else:
+            min_scale = 0.35
         high_budget = 0.030 if self.hardware_renderer else 0.040
         low_budget = 0.020 if self.hardware_renderer else 0.026
         if self._grab_ema > high_budget and self.render_scale > min_scale:
@@ -315,10 +364,44 @@ class PyBulletManager:
 
     def robot_info(self) -> dict[str, Any]:
         with self.lock:
-            return inspect_robot(
+            info = inspect_robot(
                 self.robot_body,
                 self.current_request.path if self.current_request else None,
             )
+            if self.urdf_report is not None:
+                report = dict(self.urdf_report)
+                info["source_path"] = report.get("source_path")
+                info["prepared_urdf_path"] = report.get("path")
+                info["urdf_preprocess"] = report
+                warnings = info.setdefault("warnings", [])
+                missing = report.get("missing_meshes") or []
+                if missing:
+                    warnings.append(f"{len(missing)} mesh file(s) could not be resolved.")
+            return info
+
+    def _frame_loaded_robot(self) -> None:
+        if self.robot_body is None or self.cid is None:
+            return
+        lows: list[tuple[float, float, float]] = []
+        highs: list[tuple[float, float, float]] = []
+        for link_index in [-1, *range(p.getNumJoints(self.robot_body, physicsClientId=self.cid))]:
+            try:
+                low, high = p.getAABB(self.robot_body, link_index, physicsClientId=self.cid)
+            except Exception:
+                continue
+            if all(math.isfinite(float(v)) for v in (*low, *high)):
+                lows.append(low)
+                highs.append(high)
+        if not lows:
+            return
+        low_arr = np.asarray(lows, dtype=np.float64).min(axis=0)
+        high_arr = np.asarray(highs, dtype=np.float64).max(axis=0)
+        center = ((low_arr + high_arr) / 2.0).tolist()
+        extent = float(np.max(high_arr - low_arr))
+        if not math.isfinite(extent) or extent <= 0:
+            return
+        self.camera.target = [float(v) for v in center]
+        self.camera.distance = max(1.2, min(30.0, extent * 1.8))
 
     def actions(self) -> dict[str, Any]:
         info = self.robot_info()
@@ -363,14 +446,60 @@ class PyBulletManager:
                 return []
             body = self.robot_body
             out: list[float] = []
-            base_pos, base_orn = p.getBasePositionAndOrientation(body, physicsClientId=self.cid)
-            lin_vel, ang_vel = p.getBaseVelocity(body, physicsClientId=self.cid)
+            # Only run each PyBullet query when an enabled key actually needs it.
+            # getLinkStates(computeLinkVelocity=1) over every link is the most
+            # expensive call here, so skipping it when no link obs are enabled is
+            # a large per-step win for typical (base+joint) observation spaces.
+            needs_base_pose = "base_position" in keys or "base_orientation" in keys
+            needs_base_vel = (
+                "base_linear_velocity" in keys or "base_angular_velocity" in keys
+            )
+            needs_joint_states = any(
+                k in keys
+                for k in (
+                    "joint_positions",
+                    "joint_velocities",
+                    "joint_reaction_forces",
+                )
+            )
+            needs_link = any(
+                k in keys
+                for k in (
+                    "link_world_positions",
+                    "link_orientations",
+                    "link_linear_velocities",
+                    "link_angular_velocities",
+                )
+            )
+            needs_link_vel = (
+                "link_linear_velocities" in keys
+                or "link_angular_velocities" in keys
+            )
+            base_pos, base_orn = (
+                p.getBasePositionAndOrientation(body, physicsClientId=self.cid)
+                if needs_base_pose
+                else ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0))
+            )
+            lin_vel, ang_vel = (
+                p.getBaseVelocity(body, physicsClientId=self.cid)
+                if needs_base_vel
+                else ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+            )
             joint_count = p.getNumJoints(body, physicsClientId=self.cid)
             joint_indices = list(range(joint_count))
-            states = p.getJointStates(body, joint_indices, physicsClientId=self.cid) if joint_indices else []
+            states = (
+                p.getJointStates(body, joint_indices, physicsClientId=self.cid)
+                if needs_joint_states and joint_indices
+                else []
+            )
             link_states = (
-                p.getLinkStates(body, joint_indices, computeLinkVelocity=1, physicsClientId=self.cid)
-                if joint_indices
+                p.getLinkStates(
+                    body,
+                    joint_indices,
+                    computeLinkVelocity=1 if needs_link_vel else 0,
+                    physicsClientId=self.cid,
+                )
+                if needs_link and joint_indices
                 else []
             )
             if "base_position" in keys:
@@ -414,9 +543,14 @@ class PyBulletManager:
             if len(req.values) != len(joint_indices):
                 raise ValueError(f"Expected {len(joint_indices)} action values, got {len(req.values)}.")
             for joint_index, value in zip(joint_indices, req.values):
-                joint_info = p.getJointInfo(self.robot_body, joint_index, physicsClientId=self.cid)
-                force = float(joint_info[10]) if float(joint_info[10]) > 0 else 50.0
-                velocity = float(joint_info[11]) if float(joint_info[11]) > 0 else 10.0
+                limits = self._motor_limits.get(joint_index)
+                if limits is None:
+                    info = p.getJointInfo(self.robot_body, joint_index, physicsClientId=self.cid)
+                    force = float(info[10]) if float(info[10]) > 0 else 50.0
+                    velocity = float(info[11]) if float(info[11]) > 0 else 10.0
+                    limits = (force, velocity)
+                    self._motor_limits[joint_index] = limits
+                force, velocity = limits
                 if req.mode == "position":
                     p.setJointMotorControl2(
                         self.robot_body,
