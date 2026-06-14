@@ -1,0 +1,28 @@
+{
+    "robots": [
+        {
+            "name": "Spot",
+            "type": "quadrupedal robot",
+            "manufacturer": "Boston Dynamics",
+            "xacro-generated": false,
+            "urdf": [
+                "urdf/spot.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/heuristicus/spot_ros/tree/3f89ebedb2062e22282948333cb48fa6e478641b/spot_description",
+            "id": 98
+        },
+        {
+            "name": "Spot Arm",
+            "type": "robotic arm",
+            "manufacturer": "Boston Dynamics",
+            "xacro-generated": false,
+            "urdf": [
+                "urdf/spot_arm.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/heuristicus/spot_ros/tree/3f89ebedb2062e22282948333cb48fa6e478641b/spot_description",
+            "id": 99
+        }
+    ]
+}

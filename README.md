@@ -23,6 +23,34 @@ uvicorn backend.main:app --host 127.0.0.1 --port 8000
 
 PyBullet and the REST API can run without SB3 installed, but training/evaluation endpoints will report clear errors until the RL dependencies are installed.
 
+### Windows (PowerShell)
+
+Use Python 3.11–3.13. Create the venv in the repo root as `.venv` (the launch
+scripts and the desktop app auto-detect `.venv\Scripts\python.exe`):
+
+```powershell
+cd rl-training-ground
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+# CPU-only PyTorch (skip if you want the default CUDA build):
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r backend/requirements.txt
+```
+
+Then start the supervised backend (auto-restarts on crash, prefers the venv):
+
+```powershell
+.\scripts\start_backend.ps1
+```
+
+If running scripts is blocked, launch once with
+`powershell -ExecutionPolicy Bypass -File .\scripts\start_backend.ps1`, or set
+the policy for your user: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+On Windows there is no EGL renderer, so PyBullet automatically uses the CPU
+TinyRenderer — no extra configuration needed.
+
 ## Flutter Setup
 
 Install Linux desktop build prerequisites first. On Ubuntu/Debian:
@@ -50,6 +78,29 @@ If CMake still chooses `clang++` and fails with `cannot find -lstdc++`, clear th
 flutter clean
 CC=gcc CXX=g++ flutter run -d linux
 ```
+
+### Windows
+
+Install [Visual Studio](https://visualstudio.microsoft.com/) with the
+**Desktop development with C++** workload (Flutter Windows builds need MSVC and
+CMake). Confirm the toolchain with `flutter doctor`, then:
+
+```powershell
+cd rl-training-ground\frontend\rtg-flutter-app
+flutter pub get
+flutter run -d windows
+```
+
+Or run backend and app together from the repo root with one command:
+
+```powershell
+.\scripts\dev_run.ps1
+```
+
+The desktop app starts the backend itself if it isn't already running (on
+Windows it launches `uvicorn` from the detected venv directly — no Bash
+required), so a manually started backend and the app's auto-start never
+conflict.
 
 The app expects the backend at `http://127.0.0.1:8000`.
 

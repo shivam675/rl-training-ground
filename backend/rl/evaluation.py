@@ -7,8 +7,39 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+import numpy as np
+
 from backend.models import EnvConfig, EvaluationRequest
 from backend.rl.gym_env import RtgGymEnv
+
+
+def _load_normalization(run_dir: Path):
+    """Load the obs-normalization stats saved during training, if any. Returns
+    (mean, var, clip, epsilon) as numpy arrays/floats, or None. The policy was
+    trained on normalized observations, so eval MUST apply the same transform —
+    otherwise the model sees out-of-distribution inputs and acts randomly."""
+    path = run_dir / "normalization.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        mean = np.asarray(data["obs_mean"], dtype=np.float64)
+        var = np.asarray(data["obs_var"], dtype=np.float64)
+        clip = float(data.get("clip_obs", 10.0))
+        eps = float(data.get("epsilon", 1e-8))
+        if mean.shape != var.shape or mean.size == 0:
+            return None
+        return mean, var, clip, eps
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _normalize_obs(obs, norm) -> np.ndarray:
+    mean, var, clip, eps = norm
+    arr = np.asarray(obs, dtype=np.float64)
+    if arr.shape != mean.shape:
+        return arr  # shape drifted (e.g. obs set changed) — skip rather than crash
+    return np.clip((arr - mean) / np.sqrt(var + eps), -clip, clip)
 
 
 def _load_model(model_path: Path):
@@ -44,6 +75,7 @@ def evaluate_model(
     real-time pace so the user can watch the learned policy move.
     """
     model = _load_model(model_path)
+    norm = _load_normalization(model_path.parent)
     env = RtgGymEnv(config)
     step_dt = config.timestep * config.frame_skip  # wall-time per env step
     render_dt = 1.0 / 30.0
@@ -63,10 +95,16 @@ def evaluate_model(
             done = False
             last_render = 0.0
             while not done and length < 5000:
+                # Honour a Cancel request mid-episode. Episodes run real-time
+                # paced and can be thousands of steps long; checking only
+                # between episodes made the Stop button feel dead.
+                if should_stop is not None and should_stop():
+                    break
                 if broadcast is not None:
                     while broadcast.paused and not (should_stop and should_stop()):
                         time.sleep(0.05)
-                action, _ = model.predict(obs, deterministic=deterministic)
+                policy_obs = _normalize_obs(obs, norm) if norm is not None else obs
+                action, _ = model.predict(policy_obs, deterministic=deterministic)
                 obs, reward, terminated, truncated, _ = env.step(action)
                 total_reward += float(reward)
                 length += 1
@@ -188,6 +226,11 @@ class EvaluationWorker:
                 broadcast=self.broadcast if visualize else None,
                 label=f"Evaluation · {run_name}",
             )
+            # A user-requested stop returns whatever episodes finished; don't
+            # record it as a real result or fire a "complete" notification.
+            if self._stop.is_set():
+                self.status.update(active=False, message="cancelled", result=None)
+                return
             summary["run_name"] = run_name
             self.registry.record_evaluation(run_name, summary)
             self.status.update(active=False, message="complete", result=summary)

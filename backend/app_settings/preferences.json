@@ -1,4 +1,6 @@
 {
-  "stream_resolution_scale": 0.9,
-  "show_inspector_on_dashboard": true
+  "schema_version": 1,
+  "stream_resolution_scale": 1.0,
+  "show_inspector_on_dashboard": true,
+  "agent_autonomy": "act"
 }

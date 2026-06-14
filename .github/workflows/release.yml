@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  linux-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build Flutter bundle
+        working-directory: frontend/rtg-flutter-app
+        run: |
+          flutter pub get
+          flutter build linux --release
+      - name: Package
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p dist/easyrtg-$VERSION
+          cp -r frontend/rtg-flutter-app/build/linux/x64/release/bundle/* dist/easyrtg-$VERSION/
+          cp -r scripts backend/requirements.txt dist/easyrtg-$VERSION/ 2>/dev/null || true
+          tar -C dist -czf easyrtg-$VERSION-linux-x64.tar.gz easyrtg-$VERSION
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: easyrtg-*-linux-x64.tar.gz
+          draft: true
+          body: |
+            EasyRTG desktop bundle (Linux x64).
+            Backend requires Python 3.12+: `pip install -r requirements.txt`
+            (plus CPU torch: `pip install torch --index-url https://download.pytorch.org/whl/cpu`).

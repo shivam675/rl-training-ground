@@ -33,7 +33,7 @@ class OllamaClient:
             "model": self.settings.model_name,
             "stream": False,
             "messages": [
-                {"role": "system", "content": self.settings.system_prompt_override or system_prompt},
+                {"role": "system", "content": self._system_prompt(system_prompt)},
                 {"role": "user", "content": self._compose_user_message(message, context or {})},
             ],
             "options": {
@@ -57,6 +57,23 @@ class OllamaClient:
 
     MAX_TOOL_ROUNDS = 6
 
+    async def show_model(self) -> dict[str, Any]:
+        """Model metadata from Ollama, including tool-calling capability."""
+        data = await asyncio.to_thread(
+            self._request, "POST", "/api/show", {"model": self.settings.model_name}
+        )
+        capabilities = [str(c) for c in data.get("capabilities", [])]
+        info = data.get("model_info", {}) or {}
+        context_length = next(
+            (v for k, v in info.items() if k.endswith("context_length")), None
+        )
+        return {
+            "model": self.settings.model_name,
+            "supports_tools": "tools" in capabilities,
+            "capabilities": capabilities,
+            "context_length": context_length,
+        }
+
     async def stream_chat_events(
         self,
         system_prompt: str,
@@ -64,23 +81,40 @@ class OllamaClient:
         context: dict[str, Any] | None = None,
         tools: list[dict[str, Any]] | None = None,
         tool_executor: Any = None,
+        history: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream chat as events, executing tool calls between rounds.
 
         Event types: chunk (assistant text), tool_call, tool_result, notice.
+        ``history`` is prior conversation turns: [{role, content}, ...].
         """
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": self.settings.system_prompt_override or system_prompt},
-            {"role": "user", "content": self._compose_user_message(message, context or {})},
+            {"role": "system", "content": self._system_prompt(system_prompt)},
         ]
+        for turn in history or []:
+            role = str(turn.get("role", ""))
+            content = str(turn.get("content", ""))
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+        messages.append(
+            {"role": "user", "content": self._compose_user_message(message, context or {})}
+        )
         tools_enabled = bool(tools) and tool_executor is not None
+        # None = let the model decide; True/False = explicit. Degrades to None
+        # if the model rejects the option.
+        think: bool | None = self.settings.enable_thinking
 
         for _ in range(self.MAX_TOOL_ROUNDS):
             content_parts: list[str] = []
             tool_calls: list[dict[str, Any]] = []
             try:
-                async for item in self._stream_round(messages, tools if tools_enabled else None):
+                async for item in self._stream_round(
+                    messages, tools if tools_enabled else None, think=think
+                ):
                     msg = item.get("message", {})
+                    thinking = msg.get("thinking")
+                    if thinking:
+                        yield {"type": "thinking", "text": thinking}
                     content = msg.get("content")
                     if content:
                         content_parts.append(content)
@@ -90,7 +124,12 @@ class OllamaClient:
                     if item.get("done") is True:
                         break
             except RuntimeError as exc:
-                if tools_enabled and "does not support tools" in str(exc).lower():
+                lowered = str(exc).lower()
+                if think is not None and "think" in lowered:
+                    # Model can't toggle thinking: drop the option and retry.
+                    think = None
+                    continue
+                if tools_enabled and "does not support tools" in lowered:
                     # Model has no function calling: degrade gracefully to plain chat.
                     tools_enabled = False
                     yield {
@@ -140,6 +179,7 @@ class OllamaClient:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
+        think: bool | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         payload: dict[str, Any] = {
             "model": self.settings.model_name,
@@ -153,6 +193,8 @@ class OllamaClient:
         }
         if tools:
             payload["tools"] = tools
+        if think is not None:
+            payload["think"] = think
         queue: asyncio.Queue[dict[str, Any] | Exception | None] = asyncio.Queue()
         loop = asyncio.get_running_loop()
 
@@ -211,8 +253,25 @@ class OllamaClient:
         except URLError as exc:
             raise RuntimeError(f"Ollama unreachable: {exc.reason}") from exc
 
+    def _system_prompt(self, system_prompt: str) -> str:
+        override = self.settings.system_prompt_override.strip()
+        if not override:
+            return system_prompt
+        return (
+            f"{system_prompt}\n\n"
+            "Additional user prompt override follows. It may add style or domain notes, "
+            "but it must not remove the app workflow, tool-use, safety, or concision rules above.\n"
+            f"{override}"
+        )
+
     @staticmethod
     def _compose_user_message(message: str, context: dict[str, Any]) -> str:
         if not context:
             return message
-        return f"{message}\n\nContext:\n{context}"
+        # Compact + explicitly reference-only: a pretty-printed blob reads like a
+        # document to summarize, which is exactly the failure we are avoiding.
+        return (
+            f"{message}\n\n"
+            "[current app state — reference only; act on the request above, do "
+            f"not describe this]: {json.dumps(context, default=str)}"
+        )

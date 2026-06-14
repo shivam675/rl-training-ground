@@ -1,0 +1,16 @@
+{
+    "robots": [
+        {
+            "name": "LWA 4P",
+            "type": "robotic arm",
+            "manufacturer": "Schunk",
+            "xacro-generated": false,
+            "urdf": [
+                "robot.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/jlarraez/schunk_lwa4p/tree/33c5f37e1dce5ce1ff8f46ee63c975d10795a1f1",
+            "id": 97
+        }
+    ]
+}

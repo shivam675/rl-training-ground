@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import logging.handlers
 import time
+import zipfile
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +20,7 @@ from backend.agents.evaluation_agent import EvaluationAgent
 from backend.agents.helper_agent import HelperAgent
 from backend.agents.notifier import AgentNotifier, watch_training
 from backend.agents.ollama_client import OllamaClient
+from backend.agents.openai_client import OpenAIClient
 from backend.agents.reward_agent import RewardAgent
 from backend.agents.robot_inspector_agent import RobotInspectorAgent
 from backend.agents.tools import AgentToolbox
@@ -23,6 +28,7 @@ from backend.agents.training_monitor_agent import TrainingMonitorAgent
 from backend.config_service import ConfigService
 from backend.models import (
     ActionTestRequest,
+    AgentSettings,
     AppPreferences,
     AgentChatRequest,
     EnvConfig,
@@ -31,14 +37,19 @@ from backend.models import (
     HealthResponse,
     LoadUrdfRequest,
     OllamaSettings,
+    OpenAISettings,
     RewardTestRequest,
     SimulationResetRequest,
     TrainingStartRequest,
 )
+from backend.rl.advisor import advise
 from backend.rl.evaluation import EvaluationWorker, run_evaluation
+from backend.rl.goal_rewards import apply_behavior_goal
 from backend.rl.reward_builder import default_reward_components, evaluate_reward
 from backend.rl.training_worker import TrainingWorker
+from backend.rl.tuner import TunerWorker
 from backend.run_registry import RunRegistry
+from backend.simulation.dynamics_check import check_dynamics, fix_dynamics
 from backend.simulation.pybullet_manager import PyBulletManager
 from backend.streaming import FrameBroadcast
 
@@ -47,6 +58,7 @@ PROJECT_CONFIG_DIR = ROOT / "project_configs"
 APP_SETTINGS_DIR = ROOT / "app_settings"
 RUNS_DIR = ROOT / "runs"
 OLLAMA_SETTINGS_PATH = APP_SETTINGS_DIR / "ollama.json"
+AGENT_SETTINGS_PATH = APP_SETTINGS_DIR / "agent_settings.json"
 APP_PREFERENCES_PATH = APP_SETTINGS_DIR / "preferences.json"
 
 sim = PyBulletManager()
@@ -56,10 +68,38 @@ config_service = ConfigService(PROJECT_CONFIG_DIR)
 registry = RunRegistry(RUNS_DIR)
 broadcast = FrameBroadcast()
 evaluation_worker = EvaluationWorker(registry, notifier, broadcast)
+tuner_worker = TunerWorker(config_service, sim, notifier)
 toolbox = AgentToolbox(
-    sim, training_worker, RUNS_DIR, notifier, config_service, registry, evaluation_worker
+    sim,
+    training_worker,
+    RUNS_DIR,
+    notifier,
+    config_service,
+    registry,
+    evaluation_worker,
+    tuner_worker,
+    autonomy_provider=lambda: load_app_preferences().agent_autonomy,
 )
 STARTED_AT = time.time()
+
+
+def _setup_file_logging() -> None:
+    log_dir = APP_SETTINGS_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger()
+    if any(
+        isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers
+    ):
+        return
+    handler = logging.handlers.RotatingFileHandler(
+        log_dir / "backend.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8"
+    )
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
+    root.addHandler(handler)
+    if root.level > logging.INFO:
+        root.setLevel(logging.INFO)
 
 
 @asynccontextmanager
@@ -67,7 +107,10 @@ async def lifespan(_app: FastAPI):
     PROJECT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     APP_SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    _setup_file_logging()
+    logging.getLogger("easyrtg").info("backend starting")
     sim.connect()
+    _restore_saved_robot()
     notifier.set_loop(asyncio.get_running_loop())
     watcher = asyncio.create_task(watch_training(notifier, training_worker))
     try:
@@ -84,6 +127,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _restore_saved_robot() -> None:
+    """Restore the user's saved URDF, but never spawn the old bundled demo by default."""
+    saved = config_service.load()
+    if saved is None or not saved.urdf_path:
+        return
+    path = saved.urdf_path
+    if Path(path).name == "r2d2.urdf" and "pybullet_data" in Path(path).parts:
+        logging.getLogger("easyrtg").info("skipping bundled r2d2 startup restore")
+        return
+    try:
+        sim.set_gravity(saved.gravity)
+        sim.load_urdf(
+            LoadUrdfRequest(
+                path=path,
+                fixed_base=saved.fixed_base,
+                add_plane=True,
+            )
+        )
+        logging.getLogger("easyrtg").info("restored saved robot %s", path)
+    except Exception as exc:
+        logging.getLogger("easyrtg").warning("saved robot restore failed: %s", exc)
 
 
 def fail(
@@ -136,6 +202,7 @@ async def load_urdf(req: LoadUrdfRequest) -> dict[str, Any]:
             "Test the reward, then start a short training run.",
         ],
     )
+    _notify_dynamics(robot)
     return {"ok": True, "robot": robot}
 
 
@@ -146,7 +213,7 @@ async def reset(req: SimulationResetRequest) -> dict[str, Any]:
             sim.reset_scene(load_default=False)
         else:
             sim.current_request = None
-            sim.reset_scene(load_default=True)
+            sim.reset_scene(load_default=False)
         return {"ok": True, "status": sim.status()}
     except Exception as exc:
         raise fail(exc)
@@ -164,9 +231,75 @@ async def set_gravity(req: GravityRequest) -> dict[str, Any]:
     return {"ok": True, "gravity": req.gravity}
 
 
+def _notify_dynamics(robot: dict[str, Any]) -> dict[str, Any]:
+    """Inspect the freshly-loaded robot's physics and tell the user what we found
+    (and what the preprocessor already auto-fixed). Returns the dynamics report."""
+    report = (robot.get("urdf_preprocess") or {}) if isinstance(robot, dict) else {}
+    auto = []
+    if report.get("inertials_added"):
+        auto.append(f"added {len(report['inertials_added'])} missing inertial(s)")
+    if report.get("inertials_repaired"):
+        auto.append(f"repaired {len(report['inertials_repaired'])} bad inertial(s)")
+    if report.get("collisions_added"):
+        auto.append(f"added {len(report['collisions_added'])} collision shape(s) from visuals")
+    check = check_dynamics(sim)
+    errors, warnings = check.get("error_count", 0), check.get("warning_count", 0)
+    if not auto and not check["issues"]:
+        return check
+    parts = []
+    if auto:
+        parts.append("Auto-fixed on load: " + ", ".join(auto) + ".")
+    if check["issues"]:
+        parts.append(check["summary"])
+    next_steps = ["Open Robot Setup to review the joint/inertia table."]
+    if errors or warnings:
+        next_steps = [
+            "Click 'Auto-fix dynamics' in Robot Setup, or ask the assistant to fix the robot's physics.",
+            "Then Test reward and start a short run.",
+        ]
+    notifier.notify(
+        title="Robot physics checked",
+        body=" ".join(parts),
+        severity="error" if errors else ("warning" if warnings else "info"),
+        category="robot",
+        next_steps=next_steps,
+    )
+    return check
+
+
 @app.get("/robot/info")
 async def robot_info() -> dict[str, Any]:
-    return sim.robot_info()
+    info = sim.robot_info()
+    try:
+        check = check_dynamics(sim)
+        info["dynamics"] = {
+            "ok": check["ok"],
+            "error_count": check.get("error_count", 0),
+            "warning_count": check.get("warning_count", 0),
+            "summary": check.get("summary"),
+        }
+    except Exception:
+        info["dynamics"] = None
+    return info
+
+
+@app.get("/robot/dynamics")
+async def robot_dynamics() -> dict[str, Any]:
+    """Full mass/inertia/collision check for every link of the loaded robot."""
+    return check_dynamics(sim)
+
+
+@app.post("/robot/fix_dynamics")
+async def robot_fix_dynamics() -> dict[str, Any]:
+    result = await asyncio.to_thread(fix_dynamics, sim)
+    if result.get("fixed"):
+        notifier.notify(
+            title="Robot physics repaired",
+            body=result.get("summary", "Dynamics repaired."),
+            severity="success",
+            category="robot",
+        )
+    return result
 
 
 @app.get("/robot/observations")
@@ -195,7 +328,8 @@ async def get_env_config() -> dict[str, Any]:
     return {
         "config": config.model_dump(),
         "problems": config_service.validate(config, sim),
-        "saved": config_service.path.exists(),
+        "saved": config_service.saved_matches(sim),
+        "vector_sizes": config_service.vector_sizes(config, sim),
     }
 
 
@@ -214,15 +348,198 @@ async def save_config(config: EnvConfig | None = None) -> dict[str, Any]:
     return {"ok": True, "path": str(path)}
 
 
+@app.post("/env/config/patch")
+async def patch_env_config(patch: dict[str, Any]) -> dict[str, Any]:
+    """Partial config update from the builders UI or the agent."""
+    config = config_service.current_or_default(sim)
+    try:
+        updated = config_service.apply_patch(config, patch)
+    except Exception as exc:
+        raise fail(exc, code="invalid_config_patch")
+    config_service.save(updated)
+    return {
+        "ok": True,
+        "config": updated.model_dump(),
+        "problems": config_service.validate(updated, sim),
+        "vector_sizes": config_service.vector_sizes(updated, sim),
+    }
+
+
+PROJECT_FORMAT = "easyrtg-project"
+
+
+@app.post("/project/new")
+async def project_new() -> dict[str, Any]:
+    """Fresh project: unload the robot and clear the saved environment config."""
+    try:
+        sim.current_request = None
+        sim.reset_scene(load_default=False)
+    except Exception as exc:
+        raise fail(exc, code="reset_failed")
+    try:
+        if config_service.path.exists():
+            config_service.path.unlink()
+    except OSError:
+        pass
+    notifier.notify(
+        title="New project",
+        body="Workspace cleared — load a URDF to begin.",
+        severity="info",
+        category="project",
+    )
+    return {"ok": True}
+
+
+@app.get("/project/export")
+async def project_export(name: str | None = None) -> dict[str, Any]:
+    """Current environment config wrapped as a portable .rtg project payload.
+
+    Stamps a stable project_id (and optional name) so the exported .rtg — and
+    every training run made under it — stay tied to this project.
+    """
+    config = config_service.ensure_identity(config_service.current_or_default(sim), name)
+    if config.urdf_path:
+        # Persist the identity so subsequent runs are tagged consistently.
+        config_service.save(config)
+    return {
+        "format": PROJECT_FORMAT,
+        "version": 1,
+        "config": config.model_dump(),
+        "problems": config_service.validate(config, sim),
+    }
+
+
+@app.post("/project/open")
+async def project_open(payload: dict[str, Any]) -> dict[str, Any]:
+    """Open a .rtg project: validate it, load its URDF, then apply + save config."""
+    raw = payload.get("config", payload)
+    if not isinstance(raw, dict):
+        raise fail("Project file has no config object.", code="invalid_project")
+    try:
+        config = EnvConfig.model_validate(raw)
+    except ValidationError as exc:
+        raise fail(
+            str(exc),
+            code="invalid_project",
+            hint="The file is not a valid EasyRTG project.",
+        )
+    # An opened project keeps its embedded id; older .rtg files without one get
+    # a fresh id so their future runs are still grouped together. The display
+    # name follows the file the user opened.
+    config = config_service.ensure_identity(config, payload.get("name"))
+    if config.urdf_path:
+        try:
+            sim.set_gravity(config.gravity)
+            sim.load_urdf(
+                LoadUrdfRequest(
+                    path=config.urdf_path,
+                    fixed_base=config.fixed_base,
+                    add_plane=True,
+                )
+            )
+        except Exception as exc:
+            raise fail(
+                exc,
+                code="urdf_load_failed",
+                hint="The project's URDF path could not be loaded; check the file still exists.",
+            )
+        # Re-sync to the path the sim reports so saved_matches() lines up.
+        loaded_path = sim.robot_info().get("path")
+        if loaded_path:
+            config = config.model_copy(update={"urdf_path": loaded_path})
+    config_service.save(config)
+    problems = config_service.validate(config, sim)
+    notifier.notify(
+        title="Project opened",
+        body=(
+            f"{Path(config.urdf_path).name} loaded."
+            if config.urdf_path
+            else "Project loaded."
+        ),
+        severity="warning" if problems else "success",
+        category="project",
+    )
+    robot = sim.robot_info()
+    if config.urdf_path:
+        _notify_dynamics(robot)
+    return {
+        "ok": True,
+        "config": config.model_dump(),
+        "problems": problems,
+        "robot": robot,
+    }
+
+
+@app.post("/reward/validate_custom")
+async def reward_validate_custom(payload: dict[str, Any]) -> dict[str, Any]:
+    """Sandbox-run user reward code with dummy inputs before accepting it."""
+    from backend.rl.custom_reward import validate_custom_reward
+
+    return await asyncio.to_thread(validate_custom_reward, str(payload.get("code", "")))
+
+
 @app.post("/reward/test")
 async def reward_test(req: RewardTestRequest) -> dict[str, Any]:
-    return evaluate_reward(sim, req.components)
+    components = req.components
+    if not components:
+        # No explicit components: test what is actually configured.
+        components = config_service.current_or_default(sim).rewards
+    return evaluate_reward(sim, components)
+
+
+@app.post("/reward/apply_goal")
+async def reward_apply_goal(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        result = apply_behavior_goal(str(payload.get("goal", "")), sim, config_service)
+    except Exception as exc:
+        raise fail(exc, code="reward_goal_failed")
+    notifier.notify(
+        title="Reward configured",
+        body=result["summary"],
+        severity="success",
+        category="agent_action",
+        next_steps=[
+            "Review the reward components in Rewards.",
+            "Check the action space before training.",
+            "Start a short training run when the setup checklist is clear.",
+        ],
+    )
+    return result
+
+
+def _other_job_active(*, exclude: str) -> str | None:
+    """Name of a heavy background job (other than ``exclude``) currently running.
+
+    Training, tuning and evaluation all drive the shared, single-threaded
+    PyBullet world and are CPU-bound, so only one may run at a time — the start
+    endpoints use this to refuse a second concurrent job.
+    """
+    if exclude != "training" and training_worker.status.active:
+        return "a training run"
+    if exclude != "tuning" and bool(tuner_worker.status.get("active")):
+        return "hyperparameter tuning"
+    if exclude != "evaluation" and bool(evaluation_worker.status.get("active")):
+        return "an evaluation"
+    return None
 
 
 @app.post("/training/start")
 async def training_start(req: TrainingStartRequest) -> dict[str, Any]:
+    busy = _other_job_active(exclude="training")
+    if busy:
+        raise fail(
+            f"Can't start training while {busy} is running.",
+            code="backend_busy",
+            hint="Only one job runs at a time — wait for it to finish or stop it.",
+        )
     if req.config is None:
-        req.config = config_service.current_or_default(sim)
+        if not config_service.saved_matches(sim):
+            raise fail(
+                "Environment setup has not been saved for the loaded robot.",
+                code="env_not_ready",
+                hint="Load a robot, configure observations/actions/rewards, then Save env.",
+            )
+        req.config = config_service.load()
     problems = config_service.validate(req.config, sim)
     if problems:
         raise fail(
@@ -254,6 +571,49 @@ async def training_status() -> dict[str, Any]:
     return status
 
 
+@app.get("/training/advisor")
+async def training_advisor() -> dict[str, Any]:
+    """Rule-based algorithm recommendation + hyperparameter presets."""
+    return advise(sim, config_service)
+
+
+@app.post("/tuning/start")
+async def tuning_start(payload: dict[str, Any]) -> dict[str, Any]:
+    busy = _other_job_active(exclude="tuning")
+    if busy:
+        raise fail(
+            f"Can't start tuning while {busy} is running.",
+            code="backend_busy",
+            hint="Only one job runs at a time — wait for it to finish or stop it.",
+        )
+    if not config_service.saved_matches(sim):
+        raise fail(
+            "Environment setup has not been saved for the loaded robot.",
+            code="env_not_ready",
+            hint="Load a robot, configure observations/actions/rewards, then Save env.",
+        )
+    try:
+        return tuner_worker.start(
+            algorithm=str(payload.get("algorithm", "PPO")),
+            n_trials=max(1, min(50, int(payload.get("n_trials", 8)))),
+            timesteps_per_trial=max(
+                500, min(50_000, int(payload.get("timesteps_per_trial", 2000)))
+            ),
+        )
+    except Exception as exc:
+        raise fail(exc, code="tuning_start_failed")
+
+
+@app.get("/tuning/status")
+async def tuning_status() -> dict[str, Any]:
+    return tuner_worker.status
+
+
+@app.post("/tuning/stop")
+async def tuning_stop() -> dict[str, Any]:
+    return tuner_worker.stop()
+
+
 @app.get("/training/telemetry")
 async def training_telemetry(since: int = 0) -> dict[str, Any]:
     """Telemetry history for the current/most recent run, for live charts."""
@@ -278,11 +638,19 @@ async def evaluation_run(req: EvaluationRequest) -> dict[str, Any]:
 
 @app.post("/evaluation/start")
 async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
+    busy = _other_job_active(exclude="evaluation")
+    if busy:
+        raise fail(
+            f"Can't evaluate while {busy} is running.",
+            code="backend_busy",
+            hint="Only one job runs at a time — wait for it to finish or stop it.",
+        )
     try:
         return evaluation_worker.start(
             run_name=str(payload.get("run_name", "")),
             episodes=int(payload.get("episodes", 3)),
             deterministic=bool(payload.get("deterministic", True)),
+            visualize=bool(payload.get("visualize", True)),
         )
     except Exception as exc:
         raise fail(
@@ -292,14 +660,36 @@ async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
 
+@app.post("/evaluation/stop")
+async def evaluation_stop() -> dict[str, Any]:
+    return evaluation_worker.stop()
+
+
 @app.get("/evaluation/status")
 async def evaluation_status() -> dict[str, Any]:
     return evaluation_worker.status
 
 
+@app.get("/logs/backend")
+async def backend_logs(lines: int = 400) -> dict[str, Any]:
+    """Tail of the rotating backend log — the real terminal output — for the
+    Logs tab. Capped so a large log can't blow up the response."""
+    log_file = APP_SETTINGS_DIR / "logs" / "backend.log"
+    count = max(1, min(2000, lines))
+    if not log_file.exists():
+        return {"lines": [], "path": str(log_file)}
+    try:
+        text = log_file.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        raise fail(f"Could not read backend log: {exc}", code="log_read_failed")
+    return {"lines": text.splitlines()[-count:], "path": str(log_file)}
+
+
 @app.get("/runs")
-async def list_runs() -> dict[str, Any]:
-    return {"runs": registry.list_runs()}
+async def list_runs(project_id: str | None = None) -> dict[str, Any]:
+    """All runs, or — when project_id is given — only that project's runs."""
+    pid = project_id or None
+    return {"runs": registry.list_runs(project_id=pid), "project_id": pid}
 
 
 @app.get("/runs/{name}")
@@ -318,6 +708,29 @@ async def export_run(name: str) -> dict[str, Any]:
     return {"ok": True, "path": str(bundle)}
 
 
+@app.post("/runs/{name}/delete")
+async def delete_run(name: str) -> dict[str, Any]:
+    """Permanently delete a run's directory (model, telemetry, evaluations, …)."""
+    status = training_worker.status
+    if status.active and status.run_dir and Path(status.run_dir).name == name:
+        raise fail(
+            "Can't delete a run while it is training.",
+            code="run_busy",
+            status_code=409,
+        )
+    eval_status = evaluation_worker.status
+    if eval_status.get("active") and eval_status.get("run_name") == name:
+        raise fail(
+            "Can't delete a run while it is being evaluated.",
+            code="run_busy",
+            status_code=409,
+        )
+    ok = await asyncio.to_thread(registry.delete_run, name)
+    if not ok:
+        raise fail(f"Unknown run: {name}", code="unknown_run", status_code=404)
+    return {"ok": True}
+
+
 @app.post("/runs/compare")
 async def compare_runs(payload: dict[str, Any]) -> dict[str, Any]:
     names = [str(n) for n in payload.get("names", [])]
@@ -331,12 +744,7 @@ async def compare_runs(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_ollama_settings() -> OllamaSettings:
-    if not OLLAMA_SETTINGS_PATH.exists():
-        return OllamaSettings()
-    try:
-        return OllamaSettings.model_validate_json(OLLAMA_SETTINGS_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValidationError):
-        return OllamaSettings()
+    return load_agent_settings().ollama
 
 
 def load_app_preferences() -> AppPreferences:
@@ -346,6 +754,44 @@ def load_app_preferences() -> AppPreferences:
         return AppPreferences.model_validate_json(APP_PREFERENCES_PATH.read_text(encoding="utf-8"))
     except (OSError, ValidationError):
         return AppPreferences()
+
+
+def load_agent_settings() -> AgentSettings:
+    """All providers + the active one. Migrates the legacy ollama.json once."""
+    if AGENT_SETTINGS_PATH.exists():
+        try:
+            return AgentSettings.model_validate_json(
+                AGENT_SETTINGS_PATH.read_text(encoding="utf-8")
+            )
+        except (OSError, ValidationError):
+            pass
+    settings = AgentSettings()
+    if OLLAMA_SETTINGS_PATH.exists():
+        try:
+            settings.ollama = OllamaSettings.model_validate_json(
+                OLLAMA_SETTINGS_PATH.read_text(encoding="utf-8")
+            )
+        except (OSError, ValidationError):
+            pass
+    return settings
+
+
+def save_agent_settings(settings: AgentSettings) -> None:
+    AGENT_SETTINGS_PATH.write_text(
+        settings.model_dump_json(indent=2), encoding="utf-8"
+    )
+    # Keep the legacy ollama.json in sync for any other readers.
+    OLLAMA_SETTINGS_PATH.write_text(
+        settings.ollama.model_dump_json(indent=2), encoding="utf-8"
+    )
+
+
+def build_active_client():
+    """Provider client for whichever provider is currently active."""
+    settings = load_agent_settings()
+    if settings.active_provider == "openai":
+        return OpenAIClient(settings.openai)
+    return OllamaClient(settings.ollama)
 
 
 def agent_class(name: str):
@@ -382,8 +828,80 @@ async def ollama_models() -> dict[str, Any]:
 
 @app.post("/ollama/save_settings")
 async def ollama_save_settings(settings: OllamaSettings) -> dict[str, Any]:
-    OLLAMA_SETTINGS_PATH.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
-    return {"ok": True, "path": str(OLLAMA_SETTINGS_PATH)}
+    agent = load_agent_settings()
+    agent.ollama = settings
+    save_agent_settings(agent)
+    return {"ok": True, "path": str(AGENT_SETTINGS_PATH)}
+
+
+@app.get("/agent/providers")
+async def agent_providers() -> AgentSettings:
+    """Full multi-provider settings (active + every provider's saved config)."""
+    return load_agent_settings()
+
+
+@app.post("/agent/providers")
+async def agent_save_providers(settings: AgentSettings) -> dict[str, Any]:
+    save_agent_settings(settings)
+    return {"ok": True, "active_provider": settings.active_provider}
+
+
+@app.get("/agent/health")
+async def agent_health() -> dict[str, Any]:
+    """Reachability of the ACTIVE provider — powers the chat connection dot."""
+    settings = load_agent_settings()
+    provider = settings.active_provider
+    model = (
+        settings.openai.model_name
+        if provider == "openai"
+        else settings.ollama.model_name
+    )
+    try:
+        if provider == "openai":
+            cfg = settings.openai.model_copy(
+                update={"timeout_seconds": min(settings.openai.timeout_seconds, 6.0)}
+            )
+            data = await OpenAIClient(cfg).list_models()
+        else:
+            cfg = settings.ollama.model_copy(
+                update={"timeout_seconds": min(settings.ollama.timeout_seconds, 4.0)}
+            )
+            data = await OllamaClient(cfg).list_models()
+        models = [
+            str(m.get("name") or m.get("model") or "")
+            for m in data.get("models", [])
+        ]
+        return {
+            "ok": True,
+            "reachable": True,
+            "provider": provider,
+            "model": model,
+            "model_available": any(model == m or model in m for m in models),
+        }
+    except Exception as exc:  # noqa: BLE001 — surface as data, never 500 a poll
+        return {
+            "ok": False,
+            "reachable": False,
+            "provider": provider,
+            "model": model,
+            "detail": str(exc),
+        }
+
+
+@app.get("/agent/capabilities")
+async def agent_capabilities() -> dict[str, Any]:
+    """Capability probe for the ACTIVE provider's model."""
+    settings = load_agent_settings()
+    try:
+        if settings.active_provider == "openai":
+            return await OpenAIClient(settings.openai).show_model()
+        return await OllamaClient(settings.ollama).show_model()
+    except Exception as exc:
+        raise fail(
+            exc,
+            code="provider_unreachable",
+            hint="Check the provider's base URL, key/token and model name.",
+        )
 
 
 @app.get("/app/preferences")
@@ -398,31 +916,58 @@ async def app_save_preferences(preferences: AppPreferences) -> dict[str, Any]:
 
 
 def build_agent_context(client_context: dict[str, Any]) -> dict[str, Any]:
-    """Give agents a live snapshot of the app so they start informed."""
+    """A SMALL curated snapshot of the app so the agent starts informed.
+
+    Deliberately compact: dumping the full robot/joint/observation tables here
+    made models summarize that blob instead of acting. The agent fetches detail
+    on demand with get_robot_info / get_actions / get_env_config.
+    """
     context: dict[str, Any] = {}
     try:
         info = sim.robot_info()
+        warnings = info.get("warnings", []) or []
         context["robot"] = {
             "name": info.get("name"),
-            "path": info.get("path"),
             "joint_count": info.get("joint_count"),
-            "warnings": info.get("warnings", []),
+            "warning_count": len(warnings),
         }
+        try:
+            dyn = check_dynamics(sim)
+            if not dyn["ok"] or dyn.get("warning_count"):
+                context["robot"]["dynamics_issues"] = {
+                    "errors": dyn.get("error_count", 0),
+                    "warnings": dyn.get("warning_count", 0),
+                    "hint": "call get_robot_dynamics, then fix_robot_dynamics if errors",
+                }
+        except Exception:
+            pass
         context["observation_vector_size"] = sim.observations().get("vector_size")
         context["action_vector_size"] = sim.actions().get("action_vector_size")
     except Exception:
         context["robot"] = None
-    context["training"] = training_worker.status.model_dump()
-    if client_context:
-        context["client"] = client_context
+    status = training_worker.status
+    context["training"] = {"active": status.active, "message": status.message}
+    try:
+        env_config = config_service.current_or_default(sim)
+        context["setup"] = {
+            "saved": config_service.saved_matches(sim),
+            "observations_enabled": [
+                o.key for o in env_config.observations if o.enabled
+            ],
+            "actions_total": len(env_config.actions),
+            "actions_enabled": [a.joint_index for a in env_config.actions if a.enabled],
+            "rewards_enabled": [r.key for r in env_config.rewards if r.enabled],
+            "problems": config_service.validate(env_config, sim),
+        }
+    except Exception:
+        context["setup"] = None
     return context
 
 
 @app.post("/agents/chat")
 async def agents_chat(req: AgentChatRequest) -> dict[str, Any]:
-    settings = req.settings or load_ollama_settings()
     try:
-        agent = agent_class(req.agent)(settings, toolbox)
+        agent = agent_class(req.agent)(build_active_client(), toolbox)
         return await agent.run(req.message, build_agent_context(req.context))
     except Exception as exc:
         raise fail(exc)
@@ -430,19 +975,123 @@ async def agents_chat(req: AgentChatRequest) -> dict[str, Any]:
 
 @app.post("/agents/chat/stream")
 async def agents_chat_stream(req: AgentChatRequest) -> StreamingResponse:
-    settings = req.settings or load_ollama_settings()
-
     async def events():
         try:
-            agent = agent_class(req.agent)(settings, toolbox)
+            agent = agent_class(req.agent)(build_active_client(), toolbox)
             context = build_agent_context(req.context)
-            async for event in agent.stream_events(req.message, context):
+            async for event in agent.stream_events(
+                req.message, context, history=req.history[-16:]
+            ):
                 yield json.dumps(event, default=str) + "\n"
             yield json.dumps({"type": "done"}) + "\n"
         except Exception as exc:
             yield json.dumps({"type": "error", "detail": str(exc)}) + "\n"
 
     return StreamingResponse(events(), media_type="application/x-ndjson")
+
+
+@app.post("/diagnostics/export")
+async def diagnostics_export() -> dict[str, Any]:
+    """Zip logs, settings and a run inventory for bug reports."""
+
+    def build() -> Path:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        out = APP_SETTINGS_DIR / f"easyrtg-diagnostics-{stamp}.zip"
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+            log_dir = APP_SETTINGS_DIR / "logs"
+            if log_dir.exists():
+                for log_file in log_dir.glob("backend.log*"):
+                    archive.write(log_file, arcname=f"logs/{log_file.name}")
+            # Ollama settings carry a bearer token: export redacted.
+            ollama = load_ollama_settings().model_dump()
+            if ollama.get("bearer_token"):
+                ollama["bearer_token"] = "<redacted>"
+            archive.writestr("ollama.json", json.dumps(ollama, indent=2))
+            if APP_PREFERENCES_PATH.exists():
+                archive.write(APP_PREFERENCES_PATH, arcname=APP_PREFERENCES_PATH.name)
+            if config_service.path.exists():
+                archive.write(config_service.path, arcname=config_service.path.name)
+            archive.writestr(
+                "runs_inventory.json",
+                json.dumps(registry.list_runs(limit=100), indent=2, default=str),
+            )
+            archive.writestr(
+                "health.json",
+                json.dumps(
+                    {
+                        "renderer": sim.renderer_name,
+                        "uptime_seconds": round(time.time() - STARTED_AT, 1),
+                        "training": training_worker.status.model_dump(),
+                    },
+                    indent=2,
+                    default=str,
+                ),
+            )
+        return out
+
+    path = await asyncio.to_thread(build)
+    return {"ok": True, "path": str(path)}
+
+
+@app.post("/agents/execute_tool")
+async def agents_execute_tool(payload: dict[str, Any]) -> dict[str, Any]:
+    """User-confirmed execution of a tool the agent proposed in 'ask' mode."""
+    name = str(payload.get("name", ""))
+    args = payload.get("args") or {}
+    if not isinstance(args, dict):
+        raise fail("args must be an object", code="bad_request")
+    result = await toolbox.execute(name, args, confirmed=True)
+    return {"tool": name, "result": result}
+
+
+@app.get("/ollama/health")
+async def ollama_health() -> dict[str, Any]:
+    """Fast reachability check for the agent's LLM backend.
+
+    Powers the chat panel's connection dot: it reflects whether the configured
+    Ollama endpoint actually answers (and whether the chosen model is present),
+    not merely whether this backend process is up.
+    """
+    settings = load_ollama_settings()
+    fast = settings.model_copy(
+        update={"timeout_seconds": min(settings.timeout_seconds, 4.0)}
+    )
+    try:
+        data = await OllamaClient(fast).list_models()
+        models = [
+            str(m.get("name") or m.get("model") or "")
+            for m in data.get("models", [])
+        ]
+        model_available = any(
+            settings.model_name == m or settings.model_name in m for m in models
+        )
+        return {
+            "ok": True,
+            "reachable": True,
+            "model": settings.model_name,
+            "model_available": model_available,
+            "models": models,
+        }
+    except Exception as exc:  # noqa: BLE001 — surface as data, never 500 a poll
+        return {
+            "ok": False,
+            "reachable": False,
+            "model": settings.model_name,
+            "detail": str(exc),
+        }
+
+
+@app.get("/ollama/capabilities")
+async def ollama_capabilities() -> dict[str, Any]:
+    """Does the configured model support tool calling? (via /api/show)."""
+    try:
+        return await OllamaClient(load_ollama_settings()).show_model()
+    except Exception as exc:
+        raise fail(
+            exc,
+            code="ollama_unreachable",
+            hint="Is Ollama running and the model pulled? Try `ollama list`.",
+        )
 
 
 @app.websocket("/ws/simulation")
@@ -495,11 +1144,47 @@ async def ws_simulation(ws: WebSocket):
                 quality = max(30, min(95, int(data.get("quality", quality))))
 
     recv_task = asyncio.create_task(receiver())
+    last_broadcast_seq = -1
+    last_status_at = 0.0
     try:
         while True:
+            if broadcast.active:
+                # A background job (evaluation playback) owns the viewport:
+                # relay its frames instead of rendering the interactive sim.
+                if broadcast.seq != last_broadcast_seq and broadcast.frame is not None:
+                    last_broadcast_seq = broadcast.seq
+                    await ws.send_bytes(broadcast.frame)
+                now = time.monotonic()
+                if now - last_status_at >= 0.5:
+                    last_status_at = now
+                    await ws.send_json(
+                        {
+                            "type": "status",
+                            **sim.status(),
+                            "mode": broadcast.label,
+                            "paused": broadcast.paused,
+                        }
+                    )
+                await asyncio.sleep(1 / 60)
+                continue
+            last_broadcast_seq = -1
+            if training_worker.status.active or bool(tuner_worker.status.get("active")):
+                # Pause live rendering while training/tuning runs. render_frame holds
+                # the process-global PyBullet lock for the whole EGL getCameraImage;
+                # the training thread shares that lock, so continuous rendering of a
+                # heavy robot starved it (the ~3s/timestep bug). Send a heartbeat so
+                # the viewport can show a "training in progress" placeholder.
+                now = time.monotonic()
+                if now - last_status_at >= 0.5:
+                    last_status_at = now
+                    await ws.send_json(
+                        {"type": "status", **sim.status(), "training": True}
+                    )
+                await asyncio.sleep(0.2)
+                continue
             # PyBullet EGL contexts are thread-affine on NVIDIA drivers. Rendering
             # in asyncio.to_thread can segfault after the WebSocket opens.
-            frame = sim.render_frame(width, height)
+            frame = sim.render_frame(width, height, quality)
             await ws.send_bytes(frame)
             if int(sim.sim_time * 10) % 10 == 0:
                 await ws.send_json({"type": "status", **sim.status()})

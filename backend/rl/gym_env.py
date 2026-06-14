@@ -56,6 +56,7 @@ class RtgGymEnv(gym.Env if gym else object):
             dtype=np.float32,
         )
         self.last_action: list[float] = []
+        self.prev_action: list[float] = []
         self.steps = 0
         self.max_steps = int(config.terminations.get("max_steps", 1000))
 
@@ -63,6 +64,8 @@ class RtgGymEnv(gym.Env if gym else object):
         super().reset(seed=seed)
         self.manager.reset_scene(load_default=False)
         self.steps = 0
+        self.last_action = []
+        self.prev_action = []
         return self._obs(), {"seed": seed}
 
     def step(self, action):
@@ -77,10 +80,19 @@ class RtgGymEnv(gym.Env if gym else object):
                 joint_indices=[a.joint_index for a in self.action_config],
             )
         )
+        self.prev_action = self.last_action
         self.last_action = [float(v) for v in action_values]
         self.steps += 1
-        reward_info = evaluate_reward(self.manager, self.config.rewards, self.last_action)
         obs = self._obs()
+        # Reward sees the post-step observation the policy will see, plus the
+        # action just applied and the one before it (for smoothness terms).
+        reward_info = evaluate_reward(
+            self.manager,
+            self.config.rewards,
+            self.last_action,
+            obs=obs.tolist(),
+            prev_action=self.prev_action,
+        )
         terminated = False
         min_height = self.config.terminations.get("min_base_height")
         if min_height is not None and len(obs) >= 3 and obs[2] < float(min_height):

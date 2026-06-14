@@ -1,0 +1,16 @@
+{
+    "robots": [
+        {
+            "name": "PR2",
+            "type": "mobile manipulator",
+            "manufacturer": "Willow Garage",
+            "xacro-generated": false,
+            "urdf": [
+                "pr2.urdf"
+            ],
+            "variant": null,
+            "source-link": "https://github.com/ankurhanda/robot-assets/tree/12f1a3c89c9975194551afaed0dfae1e09fdb27c/urdfs/robots/pr2",
+            "id": 91
+        }
+    ]
+}
