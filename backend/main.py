@@ -1100,10 +1100,11 @@ async def ws_simulation(ws: WebSocket):
     width = 960
     height = 540
     quality = 78
+    stream_scale = 1.0
     await ws.send_json({"type": "status", **sim.status()})
 
     async def receiver() -> None:
-        nonlocal width, height, quality
+        nonlocal width, height, quality, stream_scale
         while True:
             msg = await ws.receive()
             if msg.get("type") == "websocket.disconnect":
@@ -1121,6 +1122,10 @@ async def ws_simulation(ws: WebSocket):
             if cmd == "resize":
                 width = int(data.get("width", width))
                 height = int(data.get("height", height))
+                stream_scale = max(
+                    0.5,
+                    min(1.5, float(data.get("scale", stream_scale))),
+                )
                 broadcast.width = width
                 broadcast.height = height
             elif cmd == "orbit" and target is not None:
@@ -1184,7 +1189,7 @@ async def ws_simulation(ws: WebSocket):
                 continue
             # PyBullet EGL contexts are thread-affine on NVIDIA drivers. Rendering
             # in asyncio.to_thread can segfault after the WebSocket opens.
-            frame = sim.render_frame(width, height, quality)
+            frame = sim.render_frame(width, height, quality, stream_scale)
             await ws.send_bytes(frame)
             if int(sim.sim_time * 10) % 10 == 0:
                 await ws.send_json({"type": "status", **sim.status()})

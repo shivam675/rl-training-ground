@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from backend.config_service import ConfigService
 from backend.main import app, config_service, sim, toolbox, training_worker
 from backend.models import AppPreferences, EnvConfig, OllamaSettings, TrainingStartRequest
+from backend.simulation.pybullet_manager import PyBulletManager
 
 
 @pytest.fixture(scope="module")
@@ -144,6 +145,27 @@ def test_settings_schema_version_defaults():
 
     prefs = AppPreferences.model_validate({"stream_resolution_scale": 1.2})
     assert prefs.schema_version == 1
+
+
+def test_non_numpy_tinyrenderer_resolution_cap_tracks_user_scale():
+    manager = PyBulletManager()
+    manager.hardware_renderer = False
+    manager.numpy_fast = False
+    manager.render_scale = 1.0
+
+    assert manager._render_size(1600, 900, user_scale=1.0) == (640, 360)
+    assert manager.status()["viewport"]["limit"] == "cpu_tinyrenderer_no_numpy"
+
+    assert manager._render_size(1600, 900, user_scale=0.5) == (320, 180)
+    manager.render_scale = 0.5
+    manager._adapt_resolution(1.0)
+    assert manager.render_scale == 0.8
+
+    manager.gui_renderer = True
+    manager.hardware_renderer = True
+    assert manager.renderer_name == "OpenGL GUI (GPU)"
+    manager._render_size(1600, 900, user_scale=1.0)
+    assert manager.status()["viewport"]["limit"] == "opengl_gui_no_numpy"
 
 
 def test_training_request_config_optional():
