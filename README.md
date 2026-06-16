@@ -48,8 +48,11 @@ If running scripts is blocked, launch once with
 `powershell -ExecutionPolicy Bypass -File .\scripts\start_backend.ps1`, or set
 the policy for your user: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
-On Windows there is no EGL renderer, so PyBullet automatically uses the CPU
-TinyRenderer — no extra configuration needed.
+On Windows the packaged PyBullet build does not include the Linux EGL plugin, so
+the default backend uses CPU TinyRenderer. For a development-only GPU path, set
+`EASYRTG_PYBULLET_GUI=1` before starting the backend; PyBullet will open its own
+native OpenGL window and the EasyRTG viewport will stream frames from that
+renderer. Leave it unset for the normal headless backend.
 
 ## Flutter Setup
 

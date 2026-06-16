@@ -29,6 +29,7 @@ class _SimulationViewportState extends ConsumerState<SimulationViewport> {
   String? playbackLabel; // set while evaluation playback owns the viewport
   bool connected = false;
   bool trainingActive = false;
+  bool resolutionLimited = false;
   bool paused = false;
   Offset? lastPosition;
   int dragButtons = 0;
@@ -85,9 +86,16 @@ class _SimulationViewportState extends ConsumerState<SimulationViewport> {
           final data = jsonDecode(event) as Map<String, dynamic>;
           setState(() {
             trainingActive = data['training'] == true;
+            final viewport = data['viewport'];
+            resolutionLimited = viewport is Map && viewport['limit'] != null;
+            final viewportLabel = _viewportLabel(viewport);
             status = trainingActive
-                ? 'Training…'
-                : '${data['renderer'] ?? 'stream'} · ${data['fps'] ?? 0} fps';
+                ? 'Training...'
+                : [
+                    '${data['renderer'] ?? 'stream'}',
+                    '${data['fps'] ?? 0} fps',
+                    ?viewportLabel,
+                  ].join(' | ');
             playbackLabel = data['mode']?.toString();
             connected = true;
           });
@@ -188,6 +196,26 @@ class _SimulationViewportState extends ConsumerState<SimulationViewport> {
     }
   }
 
+  String? _viewportLabel(Object? value) {
+    if (value is! Map) return null;
+    final renderWidth = value['render_width'];
+    final renderHeight = value['render_height'];
+    final requestedWidth = value['requested_width'];
+    final requestedHeight = value['requested_height'];
+    if (renderWidth is! num ||
+        renderHeight is! num ||
+        requestedWidth is! num ||
+        requestedHeight is! num ||
+        renderWidth <= 0 ||
+        renderHeight <= 0) {
+      return null;
+    }
+    final label =
+        '${renderWidth.round()}x${renderHeight.round()} / '
+        '${requestedWidth.round()}x${requestedHeight.round()}';
+    return value['limit'] == null ? label : '$label CPU cap';
+  }
+
   @override
   void dispose() {
     disposed = true;
@@ -222,6 +250,7 @@ class _SimulationViewportState extends ConsumerState<SimulationViewport> {
               'cmd': 'resize',
               'width': pixelSize.width.round(),
               'height': pixelSize.height.round(),
+              'scale': streamScale,
             });
           });
         }
@@ -259,13 +288,22 @@ class _SimulationViewportState extends ConsumerState<SimulationViewport> {
                   child: trainingActive
                       ? const _TrainingOverlay()
                       : rawFrame != null
-                      ? RawImage(image: rawFrame, fit: BoxFit.contain)
+                      ? RawImage(
+                          image: rawFrame,
+                          fit: BoxFit.contain,
+                          filterQuality: resolutionLimited
+                              ? FilterQuality.none
+                              : FilterQuality.medium,
+                        )
                       : frame == null
                       ? _WaitingOverlay(status: status, onRetry: connect)
                       : Image.memory(
                           frame!,
                           gaplessPlayback: true,
                           fit: BoxFit.contain,
+                          filterQuality: resolutionLimited
+                              ? FilterQuality.none
+                              : FilterQuality.medium,
                           errorBuilder: (context, error, stackTrace) {
                             return EmptyState(
                               icon: Icons.broken_image_outlined,
@@ -279,40 +317,56 @@ class _SimulationViewportState extends ConsumerState<SimulationViewport> {
                 Positioned(
                   left: 12,
                   top: 12,
-                  child: _GlassPill(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (playbackLabel != null) ...[
-                          const Icon(
-                            Icons.smart_display_outlined,
-                            size: 13,
-                            color: Color(0xffffc857),
-                          ),
-                          const SizedBox(width: 7),
-                          Text(
-                            playbackLabel!,
-                            style: const TextStyle(
-                              fontSize: 12,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: (constraints.maxWidth - 160)
+                          .clamp(180.0, 720.0)
+                          .toDouble(),
+                    ),
+                    child: _GlassPill(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (playbackLabel != null) ...[
+                            const Icon(
+                              Icons.smart_display_outlined,
+                              size: 13,
                               color: Color(0xffffc857),
-                              fontWeight: FontWeight.w600,
                             ),
-                          ),
-                        ] else ...[
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: connected
-                                  ? const Color(0xff5fe089)
-                                  : const Color(0xffff6f64),
+                            const SizedBox(width: 7),
+                            Flexible(
+                              child: Text(
+                                playbackLabel!,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xffffc857),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 7),
-                          Text(status, style: const TextStyle(fontSize: 12)),
+                          ] else ...[
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: connected
+                                    ? const Color(0xff5fe089)
+                                    : const Color(0xffff6f64),
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            Flexible(
+                              child: Text(
+                                status,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),

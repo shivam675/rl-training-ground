@@ -24,6 +24,8 @@ from backend.simulation.urdf_preprocessor import prepare_urdf_for_pybullet
 SIM_HZ = 240
 SIM_SUBSTEPS = 4
 PLANE_URDF = os.path.join(pybullet_data.getDataPath(), "plane.urdf")
+DEFAULT_TINY_RENDERER_MAX_WIDTH = 640
+DEFAULT_TINY_RENDERER_MIN_WIDTH = 512
 
 # PyBullet's Python bindings keep PROCESS-GLOBAL state and are NOT thread-safe,
 # even across distinct DIRECT client ids. Two threads calling into pybullet at
@@ -60,8 +62,12 @@ class PyBulletManager:
         self.cid: int | None = None
         self.camera = OrbitCamera()
         self.hardware_renderer = False
+        self.gui_renderer = False
         self.numpy_fast = bool(p.isNumpyEnabled())
         self.render_scale = 1.0
+        self._last_requested_size = (0, 0)
+        self._last_render_size = (0, 0)
+        self._last_render_limit: str | None = None
         self._grab_ema: float | None = None
         self._fps_frames = 0
         self._fps_t0 = time.monotonic()
@@ -84,16 +90,26 @@ class PyBulletManager:
 
     @property
     def renderer_name(self) -> str:
+        if self.gui_renderer:
+            return "OpenGL GUI (GPU)"
         return "EGL (GPU)" if self.hardware_renderer else "TinyRenderer (CPU)"
 
     def connect(self) -> None:
         with self.lock:
             if self.cid is not None:
                 return
-            self.cid = p.connect(p.DIRECT)
+            use_gui = os.environ.get("EASYRTG_PYBULLET_GUI", "").lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+            self.cid = p.connect(p.GUI if use_gui else p.DIRECT)
+            if self.cid < 0 and use_gui:
+                self.cid = p.connect(p.DIRECT)
             p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.cid)
             p.setTimeStep(1.0 / SIM_HZ, physicsClientId=self.cid)
-            self.hardware_renderer = self._load_egl_plugin()
+            self.gui_renderer = use_gui and self.cid >= 0
+            self.hardware_renderer = self.gui_renderer or self._load_egl_plugin()
             self.reset_scene(load_default=False)
 
     def disconnect(self) -> None:
@@ -101,10 +117,15 @@ class PyBulletManager:
             if self.cid is not None:
                 p.disconnect(physicsClientId=self.cid)
             self.cid = None
+            self.gui_renderer = False
+            self.hardware_renderer = False
 
     def _load_egl_plugin(self) -> bool:
         assert self.cid is not None
         if os.environ.get("EASYRTG_DISABLE_EGL", "").lower() in {"1", "true", "yes"}:
+            return False
+        try_egl_windows = os.environ.get("EASYRTG_TRY_EGL_ON_WINDOWS", "").lower()
+        if os.name == "nt" and try_egl_windows not in {"1", "true", "yes"}:
             return False
         spec = importlib.util.find_spec("eglRenderer")
         try:
@@ -248,13 +269,19 @@ class PyBulletManager:
                 p.stepSimulation(physicsClientId=self.cid)
             self.sim_time += substeps / SIM_HZ
 
-    def render_frame(self, width: int, height: int, quality: int = 80) -> bytes:
+    def render_frame(
+        self,
+        width: int,
+        height: int,
+        quality: int = 80,
+        user_scale: float = 1.0,
+    ) -> bytes:
         with self.lock:
             if self.cid is None:
                 raise RuntimeError("PyBullet is not connected.")
             if self.running:
                 self.step(SIM_SUBSTEPS)
-            rw, rh = self._render_size(width, height)
+            rw, rh = self._render_size(width, height, user_scale)
             renderer = p.ER_BULLET_HARDWARE_OPENGL if self.hardware_renderer else p.ER_TINY_RENDERER
             t0 = time.monotonic()
             _, _, rgb, _, _ = p.getCameraImage(
@@ -275,11 +302,17 @@ class PyBulletManager:
             # non-"RTGF" payload via Image.memory, so no protocol change needed.
             return self._encode_frame(frame[:, :, :3], quality)
 
-    def render_jpeg(self, width: int, height: int, quality: int = 80) -> bytes:
+    def render_jpeg(
+        self,
+        width: int,
+        height: int,
+        quality: int = 80,
+        user_scale: float = 1.0,
+    ) -> bytes:
         with self.lock:
             if self.cid is None:
                 raise RuntimeError("PyBullet is not connected.")
-            rw, rh = self._render_size(width, height)
+            rw, rh = self._render_size(width, height, user_scale)
             renderer = p.ER_BULLET_HARDWARE_OPENGL if self.hardware_renderer else p.ER_TINY_RENDERER
             _, _, rgb, _, _ = p.getCameraImage(
                 rw,
@@ -323,18 +356,51 @@ class PyBulletManager:
                 + chunk("IEND".encode(), b"")
             )
 
-    def _render_size(self, width: int, height: int) -> tuple[int, int]:
+    def _render_size(
+        self,
+        width: int,
+        height: int,
+        user_scale: float = 1.0,
+    ) -> tuple[int, int]:
         width = max(64, min(1920, int(width or 960)))
         height = max(64, min(1080, int(height or 540)))
+        self._last_requested_size = (width, height)
+        self._last_render_limit = None
         if self.numpy_fast:
             scale = self.render_scale
         else:
-            scale = min(1.0, 512 / width) * self.render_scale
+            try:
+                cap_scale = max(0.5, min(1.5, float(user_scale)))
+            except (TypeError, ValueError):
+                cap_scale = 1.0
+            scaled_width = max(128, int(self._tiny_renderer_max_width() * cap_scale))
+            scale = min(1.0, scaled_width / width) * self.render_scale
+            if width > scaled_width:
+                self._last_render_limit = (
+                    "opengl_gui_no_numpy"
+                    if self.gui_renderer
+                    else "cpu_tinyrenderer_no_numpy"
+                )
         rw = max(64, int(width * scale)) & ~3
         rh = max(64, int(height * scale)) & ~3
+        self._last_render_size = (rw, rh)
         return rw, rh
 
     def _adapt_resolution(self, grab_dt: float) -> None:
+        if not self.numpy_fast:
+            # Windows source builds often lack PyBullet's NumPy fast path. Keep
+            # the adaptive scaler, but never let it collapse below the small
+            # no-NumPy cap floor; that made "1x" settings produce ~340px frames.
+            ema = self._grab_ema
+            self._grab_ema = grab_dt if ema is None else ema * 0.8 + grab_dt * 0.2
+            min_scale = self._tiny_renderer_min_scale()
+            if self.render_scale < min_scale:
+                self.render_scale = min_scale
+            elif self._grab_ema > 0.080 and self.render_scale > min_scale:
+                self.render_scale = max(min_scale, self.render_scale * 0.95)
+            elif self._grab_ema < 0.050 and self.render_scale < 1.0:
+                self.render_scale = min(1.0, self.render_scale * 1.1)
+            return
         ema = self._grab_ema
         self._grab_ema = grab_dt if ema is None else ema * 0.8 + grab_dt * 0.2
         # numpy-enabled getCameraImage returns the buffer cheaply, so even the
@@ -352,6 +418,34 @@ class PyBulletManager:
             self.render_scale = max(min_scale, self.render_scale * 0.95)
         elif self._grab_ema < low_budget and self.render_scale < 1.0:
             self.render_scale = min(1.0, self.render_scale * 1.1)
+
+    @staticmethod
+    def _tiny_renderer_max_width() -> int:
+        try:
+            max_width = int(
+                os.environ.get(
+                    "EASYRTG_TINY_RENDERER_MAX_WIDTH",
+                    str(DEFAULT_TINY_RENDERER_MAX_WIDTH),
+                )
+            )
+        except ValueError:
+            max_width = DEFAULT_TINY_RENDERER_MAX_WIDTH
+        return max(256, min(1920, max_width))
+
+    @classmethod
+    def _tiny_renderer_min_scale(cls) -> float:
+        try:
+            min_width = int(
+                os.environ.get(
+                    "EASYRTG_TINY_RENDERER_MIN_WIDTH",
+                    str(DEFAULT_TINY_RENDERER_MIN_WIDTH),
+                )
+            )
+        except ValueError:
+            min_width = DEFAULT_TINY_RENDERER_MIN_WIDTH
+        max_width = cls._tiny_renderer_max_width()
+        min_width = max(128, min(max_width, min_width))
+        return min(1.0, min_width / max_width)
 
     def _count_fps(self) -> None:
         self._fps_frames += 1
@@ -582,11 +676,22 @@ class PyBulletManager:
             return {"ok": True, "applied": len(joint_indices)}
 
     def status(self) -> dict[str, Any]:
+        requested_width, requested_height = self._last_requested_size
+        render_width, render_height = self._last_render_size
         return {
             "running": self.running,
             "sim_time": round(self.sim_time, 4),
             "fps": round(self.fps, 1),
             "renderer": self.renderer_name,
+            "viewport": {
+                "requested_width": requested_width,
+                "requested_height": requested_height,
+                "render_width": render_width,
+                "render_height": render_height,
+                "render_scale": round(self.render_scale, 3),
+                "numpy_fast": self.numpy_fast,
+                "limit": self._last_render_limit,
+            },
             "camera": self.camera.as_dict(),
             "robot_loaded": self.robot_body is not None,
             "urdf_path": self.current_request.path if self.current_request else None,
