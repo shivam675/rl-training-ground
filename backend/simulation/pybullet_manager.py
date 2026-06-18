@@ -56,7 +56,13 @@ OBSERVATION_CATALOG = [
 
 
 class PyBulletManager:
-    def __init__(self) -> None:
+    def __init__(self, interactive: bool = False) -> None:
+        # interactive=True is the single live-viewport manager. On Windows it
+        # connects in GUI mode because that is the ONLY way to get a real OpenGL
+        # context (PyBullet ships no EGL plugin on Windows). Background managers
+        # (training/eval envs) stay interactive=False -> headless DIRECT: only
+        # one GUI per process is allowed and the GL context is thread-affine.
+        self.interactive = interactive
         # Shared process-wide so no two managers/threads touch pybullet at once.
         self.lock = _PYBULLET_LOCK
         self.cid: int | None = None
@@ -98,19 +104,90 @@ class PyBulletManager:
         with self.lock:
             if self.cid is not None:
                 return
-            use_gui = os.environ.get("EASYRTG_PYBULLET_GUI", "").lower() in {
-                "1",
-                "true",
-                "yes",
-            }
+            use_gui = self._should_use_gui()
             self.cid = p.connect(p.GUI if use_gui else p.DIRECT)
             if self.cid < 0 and use_gui:
+                # GUI connect failed (no display, GUI already open, etc.): fall
+                # back to headless. Clear use_gui so gui_renderer isn't set True
+                # off the DIRECT client id below.
                 self.cid = p.connect(p.DIRECT)
+                use_gui = False
             p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.cid)
             p.setTimeStep(1.0 / SIM_HZ, physicsClientId=self.cid)
             self.gui_renderer = use_gui and self.cid >= 0
+            if self.gui_renderer:
+                self._tidy_gui_window()
             self.hardware_renderer = self.gui_renderer or self._load_egl_plugin()
             self.reset_scene(load_default=False)
+
+    def _should_use_gui(self) -> bool:
+        # Only the interactive manager may open the (single, thread-affine) GUI.
+        if not self.interactive:
+            return False
+        env = os.environ.get("EASYRTG_PYBULLET_GUI", "").lower()
+        if env in {"1", "true", "yes"}:
+            return True
+        if env in {"0", "false", "no"}:
+            return False
+        # No explicit setting: GUI is the only hardware-OpenGL path on Windows
+        # (no EGL plugin), so default it on there. Other OSes use headless EGL.
+        return os.name == "nt"
+
+    def _tidy_gui_window(self) -> None:
+        try:
+            p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0, physicsClientId=self.cid)
+        except Exception:
+            pass
+        if os.name == "nt":
+            self._minimize_windows_gui_window()
+
+    @staticmethod
+    def _minimize_windows_gui_window() -> None:
+        # PyBullet's GUI is an in-process native OpenGL window; getCameraImage
+        # renders to an offscreen FBO, so minimizing it does NOT stop GPU
+        # rendering. No PyBullet API exposes the window, so match it by our own
+        # PID + title and send SW_MINIMIZE. Best-effort: a visible window is
+        # cosmetic, never fatal.
+        # ponytail: win32 EnumWindows, bounded 1s retry; if it misses, the
+        # window just stays visible.
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            pid = os.getpid()
+            SW_MINIMIZE = 6
+            found = {"done": False}
+
+            EnumWindowsProc = ctypes.WINFUNCTYPE(
+                wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
+            )
+
+            def _cb(hwnd, _lparam):
+                wpid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(wpid))
+                if wpid.value != pid:
+                    return True
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length <= 0:
+                    return True
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                if "Bullet" in buf.value:
+                    user32.ShowWindow(hwnd, SW_MINIMIZE)
+                    found["done"] = True
+                    return False
+                return True
+
+            proc = EnumWindowsProc(_cb)
+            # The window may not exist the instant connect() returns; retry.
+            for _ in range(20):
+                user32.EnumWindows(proc, 0)
+                if found["done"]:
+                    return
+                time.sleep(0.05)
+        except Exception:
+            pass
 
     def disconnect(self) -> None:
         with self.lock:

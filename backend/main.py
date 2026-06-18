@@ -61,7 +61,7 @@ OLLAMA_SETTINGS_PATH = APP_SETTINGS_DIR / "ollama.json"
 AGENT_SETTINGS_PATH = APP_SETTINGS_DIR / "agent_settings.json"
 APP_PREFERENCES_PATH = APP_SETTINGS_DIR / "preferences.json"
 
-sim = PyBulletManager()
+sim = PyBulletManager(interactive=True)  # live viewport: GUI/GPU on Windows
 training_worker = TrainingWorker(RUNS_DIR)
 notifier = AgentNotifier()
 config_service = ConfigService(PROJECT_CONFIG_DIR)
@@ -276,6 +276,7 @@ async def robot_info() -> dict[str, Any]:
             "ok": check["ok"],
             "error_count": check.get("error_count", 0),
             "warning_count": check.get("warning_count", 0),
+            "fixable_count": check.get("fixable_count", 0),
             "summary": check.get("summary"),
         }
     except Exception:
