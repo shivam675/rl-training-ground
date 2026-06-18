@@ -1,0 +1,241 @@
+{
+  "format": "easyrtg-project",
+  "version": 1,
+  "config": {
+    "project_id": "da717ca4ffe649a0a1a4f0c1a4749038",
+    "project_name": "anymal",
+    "urdf_path": "D:\\msc-app\\rl-training-ground\\urdf_files\\oems\\anymal_anybotics\\anymal_b_simple_description\\urdf\\anymal.urdf",
+    "fixed_base": false,
+    "gravity": [
+      0.0,
+      0.0,
+      -9.81
+    ],
+    "timestep": 0.004166666666666667,
+    "frame_skip": 4,
+    "observations": [
+      {
+        "key": "base_position",
+        "enabled": true
+      },
+      {
+        "key": "base_orientation",
+        "enabled": true
+      },
+      {
+        "key": "joint_positions",
+        "enabled": true
+      },
+      {
+        "key": "joint_velocities",
+        "enabled": true
+      },
+      {
+        "key": "base_linear_velocity",
+        "enabled": true
+      },
+      {
+        "key": "base_angular_velocity",
+        "enabled": true
+      }
+    ],
+    "actions": [
+      {
+        "joint_index": 1,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 2,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 3,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 6,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 7,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 8,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 11,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 12,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 13,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 16,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 17,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      },
+      {
+        "joint_index": 18,
+        "enabled": true,
+        "control_mode": "position",
+        "scale_low": -0.6,
+        "scale_high": 0.6
+      }
+    ],
+    "rewards": [
+      {
+        "key": "stay_alive",
+        "enabled": true,
+        "weight": 0.5,
+        "params": {}
+      },
+      {
+        "key": "forward_velocity",
+        "enabled": true,
+        "weight": 1.5,
+        "params": {
+          "target_speed": 2.0,
+          "axis": 0
+        }
+      },
+      {
+        "key": "upright",
+        "enabled": true,
+        "weight": 0.5,
+        "params": {}
+      },
+      {
+        "key": "target_height",
+        "enabled": true,
+        "weight": -0.5,
+        "params": {
+          "height": 0.5791485175372966
+        }
+      },
+      {
+        "key": "target_base_position",
+        "enabled": false,
+        "weight": -1.0,
+        "params": {
+          "target": [
+            1,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "key": "target_link_position",
+        "enabled": false,
+        "weight": -1.0,
+        "params": {
+          "link_index": 0,
+          "target": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "key": "energy",
+        "enabled": true,
+        "weight": -0.005,
+        "params": {}
+      },
+      {
+        "key": "action_magnitude",
+        "enabled": false,
+        "weight": -0.01,
+        "params": {}
+      },
+      {
+        "key": "action_smoothness",
+        "enabled": true,
+        "weight": -0.01,
+        "params": {}
+      },
+      {
+        "key": "joint_velocity",
+        "enabled": true,
+        "weight": -0.0005,
+        "params": {}
+      },
+      {
+        "key": "falling_height",
+        "enabled": false,
+        "weight": -5.0,
+        "params": {
+          "min_height": 0.2
+        }
+      },
+      {
+        "key": "forbidden_contacts",
+        "enabled": false,
+        "weight": -1.0,
+        "params": {
+          "links": []
+        }
+      },
+      {
+        "key": "custom_python",
+        "enabled": false,
+        "weight": 1.0,
+        "params": {
+          "code": ""
+        }
+      }
+    ],
+    "terminations": {
+      "max_steps": 1000,
+      "min_base_height": 0.29443910631596154
+    },
+    "algorithm": {
+      "name": "PPO"
+    }
+  },
+  "problems": []
+}

@@ -73,6 +73,13 @@ def check_dynamics(manager) -> dict[str, Any]:
         issues: list[dict[str, Any]] = []
         link_indices = [-1, *range(p.getNumJoints(body, physicsClientId=cid))]
         movable_masses: list[float] = []
+        # Links that carry visual geometry. A link with neither visual nor
+        # collision is a pure frame/inertial placeholder (common: a fixed
+        # "*_inertia" link) and is not meant to collide, so we don't warn there.
+        try:
+            visual_links = {v[1] for v in p.getVisualShapeData(body, physicsClientId=cid)}
+        except Exception:
+            visual_links = set()
         for li in link_indices:
             info = p.getDynamicsInfo(body, li, physicsClientId=cid)
             mass = float(info[0])
@@ -81,33 +88,37 @@ def check_dynamics(manager) -> dict[str, Any]:
             is_base = li < 0
 
             if not _finite(mass):
-                issues.append(_issue(li, label, "mass", "error", f"mass is not finite ({mass})"))
+                issues.append(_issue(li, label, "mass", "error", f"mass is not finite ({mass})", fixable=True))
             elif mass <= 0:
                 # A zero-mass movable link is ignored by the solver. Base may be
                 # legitimately 0 only for a fixed base; flag as warning there.
+                # Only the movable case is repairable in place.
                 sev = "warning" if is_base else "error"
-                issues.append(_issue(li, label, "mass", sev, "non-positive mass (link has no dynamics)"))
+                issues.append(_issue(li, label, "mass", sev, "non-positive mass (link has no dynamics)", fixable=not is_base))
             else:
                 if not is_base:
                     movable_masses.append(mass)
                 if mass > MAX_MASS:
-                    issues.append(_issue(li, label, "mass", "warning", f"very large mass ({mass:.1f} kg)"))
+                    issues.append(_issue(li, label, "mass", "warning", f"very large mass ({mass:.1f} kg)", fixable=True))
                 elif mass < MIN_MASS and not is_base:
                     issues.append(_issue(li, label, "mass", "warning", f"very small mass ({mass:.4f} kg)"))
 
             if not _finite(*inertia):
-                issues.append(_issue(li, label, "inertia", "error", f"inertia is not finite ({inertia})"))
+                issues.append(_issue(li, label, "inertia", "error", f"inertia is not finite ({inertia})", fixable=True))
             elif any(v <= 0 for v in inertia) and not (is_base and mass <= 0):
-                issues.append(_issue(li, label, "inertia", "error", f"degenerate inertia tensor {inertia}"))
+                issues.append(_issue(li, label, "inertia", "error", f"degenerate inertia tensor {inertia}", fixable=True))
 
-            # Collision geometry presence (base often has none legitimately).
+            # Collision geometry presence. Skip the base (often no collision by
+            # design) and skip visual-less frame/inertial links (nothing to
+            # collide). Warn only when a link is visually present but can't
+            # collide — that's the case that actually surprises users.
             try:
                 shapes = p.getCollisionShapeData(body, li, physicsClientId=cid)
             except Exception:
                 shapes = []
-            if not shapes and not is_base:
+            if not shapes and not is_base and li in visual_links:
                 issues.append(
-                    _issue(li, label, "collision", "warning", "no collision geometry (link won't collide)")
+                    _issue(li, label, "collision", "warning", "has visual geometry but no collision shape (link won't collide)")
                 )
 
         if len(movable_masses) >= 2:
@@ -120,6 +131,7 @@ def check_dynamics(manager) -> dict[str, Any]:
 
         errors = sum(1 for i in issues if i["severity"] == "error")
         warnings = sum(1 for i in issues if i["severity"] == "warning")
+        fixable = sum(1 for i in issues if i.get("fixable"))
         summary = (
             "Robot dynamics look healthy."
             if not issues
@@ -130,6 +142,7 @@ def check_dynamics(manager) -> dict[str, Any]:
             "issues": issues,
             "error_count": errors,
             "warning_count": warnings,
+            "fixable_count": fixable,
             "link_count": len(link_indices),
             "summary": summary,
         }
@@ -197,11 +210,22 @@ def fix_dynamics(manager) -> dict[str, Any]:
     }
 
 
-def _issue(link_index: int, label: str, kind: str, severity: str, detail: str) -> dict[str, Any]:
+def _issue(
+    link_index: int,
+    label: str,
+    kind: str,
+    severity: str,
+    detail: str,
+    fixable: bool = False,
+) -> dict[str, Any]:
+    # fixable=True means fix_dynamics() can repair it in place (mass/inertia via
+    # changeDynamics). Collision/mass-ratio warnings are advisory and need a URDF
+    # edit or reload, so they stay fixable=False -> the Auto-fix button hides.
     return {
         "link_index": link_index,
         "link": label,
         "kind": kind,
         "severity": severity,
         "detail": detail,
+        "fixable": fixable,
     }

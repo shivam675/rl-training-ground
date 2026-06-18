@@ -529,6 +529,12 @@ class AppState extends ChangeNotifier {
         ((d['warning_count'] as num?) ?? 0) > 0;
   }
 
+  /// Issues that Auto-fix can actually repair in place (mass/inertia). When 0,
+  /// the remaining issues are advisory (e.g. missing collision) and the button
+  /// would no-op, so the UI hides it.
+  bool get robotDynamicsFixable =>
+      ((robotDynamics?['fixable_count'] as num?) ?? 0) > 0;
+
   /// Clamp implausible masses and rebuild degenerate inertia tensors in place.
   Future<void> fixRobotDynamics() async {
     await guard(() async {

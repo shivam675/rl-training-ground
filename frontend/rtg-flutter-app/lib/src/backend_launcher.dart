@@ -43,7 +43,11 @@ class BackendLauncher {
   }
 
   String _windowsPython(String root) {
-    for (final rel in [r'.venv\Scripts\python.exe', r'.venv-rtg\Scripts\python.exe']) {
+    for (final rel in [
+      r'.venv312\Scripts\python.exe',
+      r'.venv\Scripts\python.exe',
+      r'.venv-rtg\Scripts\python.exe',
+    ]) {
       final candidate = File('$root\\$rel');
       if (candidate.existsSync()) return candidate.path;
     }
@@ -72,6 +76,23 @@ class BackendLauncher {
         return Process.start('bash', [override], environment: env);
       }
       return Process.start(override, const [], environment: env);
+    }
+
+    // Packaged standalone build (scripts/build_app.ps1): the frozen backend
+    // lives in a `runtime` folder next to the app executable, so the only .exe
+    // the user sees is the app itself. Prefer it — no Python install needed.
+    final sep = Platform.pathSeparator;
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+    final frozen = File(
+      '$exeDir${sep}runtime${sep}backend${Platform.isWindows ? '.exe' : ''}',
+    );
+    if (frozen.existsSync()) {
+      return Process.start(
+        frozen.path,
+        const [],
+        workingDirectory: frozen.parent.path,
+        environment: env,
+      );
     }
 
     final root = _findRepoRoot();

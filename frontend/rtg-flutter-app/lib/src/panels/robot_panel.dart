@@ -191,17 +191,22 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          '${dyn['summary'] ?? 'Robot physics issues detected.'} '
-                          'Auto-fix clamps masses and rebuilds bad inertia.',
+                          state.robotDynamicsFixable
+                              ? '${dyn['summary'] ?? 'Robot physics issues detected.'} '
+                                  'Auto-fix clamps masses and rebuilds bad inertia.'
+                              : '${dyn['summary'] ?? 'Robot physics issues detected.'} '
+                                  'Advisory only — these need a URDF edit, not auto-fixable.',
                           style: const TextStyle(fontSize: 12.5, height: 1.35),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      FilledButton.icon(
-                        onPressed: state.busy ? null : state.fixRobotDynamics,
-                        icon: const Icon(Icons.healing, size: 16),
-                        label: const Text('Auto-fix dynamics'),
-                      ),
+                      if (state.robotDynamicsFixable) ...[
+                        const SizedBox(width: 10),
+                        FilledButton.icon(
+                          onPressed: state.busy ? null : state.fixRobotDynamics,
+                          icon: const Icon(Icons.healing, size: 16),
+                          label: const Text('Auto-fix dynamics'),
+                        ),
+                      ],
                     ],
                   ),
                 );
