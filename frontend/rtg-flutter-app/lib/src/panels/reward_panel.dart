@@ -17,9 +17,7 @@ class RewardPanel extends ConsumerWidget {
         .cast<dynamic>();
     final configured = (state.envConfig?['rewards'] as List? ?? [])
         .cast<dynamic>();
-    final lastResult = state.message.startsWith('Reward')
-        ? state.message
-        : null;
+    final lastResult = state.lastRewardResult;
 
     String labelFor(String key) {
       for (final item in catalog) {
@@ -49,27 +47,7 @@ class RewardPanel extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         if (lastResult != null) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: scheme.primary.withValues(alpha: 0.07),
-              border: Border.all(color: scheme.primary.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.calculate_outlined, size: 18, color: scheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SelectableText(
-                    lastResult,
-                    style: const TextStyle(fontSize: 12.5, height: 1.4),
-                  ),
-                ),
-                CopyIconButton(text: lastResult, tooltip: 'Copy result'),
-              ],
-            ),
-          ),
+          _RewardResultCard(result: lastResult),
           const SizedBox(height: 12),
         ],
         if (configured.isEmpty)
@@ -89,6 +67,103 @@ class RewardPanel extends ConsumerWidget {
             ),
       ],
     );
+  }
+}
+
+class _RewardResultCard extends StatelessWidget {
+  const _RewardResultCard({required this.result});
+
+  final Map<String, dynamic> result;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final warnings = (result['warnings'] as List? ?? [])
+        .map((item) => item.toString())
+        .toList();
+    final terms = (result['terms'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+    final reward = (result['reward'] as num?)?.toDouble() ?? 0.0;
+    final formula = result['formula']?.toString() ?? '0.0';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: scheme.primary.withValues(alpha: 0.07),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.calculate_outlined, size: 18, color: scheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Reward ${reward.toStringAsFixed(4)}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              CopyIconButton(text: result.toString(), tooltip: 'Copy result'),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SelectableText(
+            formula,
+            style: monoStyle(context, fontSize: 11.5),
+          ),
+          if (warnings.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (final warning in warnings)
+              Text(
+                'Review: $warning',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: context.colors.warning,
+                ),
+              ),
+          ],
+          if (terms.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                headingRowHeight: 28,
+                dataRowMinHeight: 28,
+                dataRowMaxHeight: 32,
+                columns: const [
+                  DataColumn(label: Text('Term')),
+                  DataColumn(label: Text('Raw'), numeric: true),
+                  DataColumn(label: Text('Weight'), numeric: true),
+                  DataColumn(label: Text('Value'), numeric: true),
+                ],
+                rows: [
+                  for (final term in terms)
+                    DataRow(
+                      cells: [
+                        DataCell(Text('${term['key']}')),
+                        DataCell(Text(_fmt(term['raw']))),
+                        DataCell(Text(_fmt(term['weight']))),
+                        DataCell(Text(_fmt(term['value']))),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _fmt(dynamic value) {
+    final number = value is num ? value.toDouble() : double.tryParse('$value');
+    return number == null ? '$value' : number.toStringAsFixed(4);
   }
 }
 

@@ -220,6 +220,8 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic>? evaluationStatus;
   Map<String, dynamic>? envConfig;
   List<String> configProblems = [];
+  List<String> configWarnings = [];
+  int configRevision = 0;
   bool envConfigSaved = false;
 
   /// Effective observation/action dimensions for the ENABLED entries — the
@@ -235,6 +237,19 @@ class AppState extends ChangeNotifier {
         (sizes['observation_vector_size'] as num?)?.toInt() ?? obsVectorSize;
     actionVectorSize =
         (sizes['action_vector_size'] as num?)?.toInt() ?? actionVectorSize;
+  }
+
+  void _applyConfigResponse(Map<String, dynamic> res) {
+    envConfig = (res['config'] as Map?)?.cast<String, dynamic>();
+    envConfigSaved = res['saved'] == true;
+    configProblems = [
+      for (final p in (res['problems'] as List? ?? [])) p.toString(),
+    ];
+    configWarnings = [
+      for (final w in (res['warnings'] as List? ?? [])) w.toString(),
+    ];
+    configRevision = (res['revision'] as num?)?.toInt() ?? configRevision;
+    _applyVectorSizes(res['vector_sizes']);
   }
 
   Map<String, dynamic>? advisor;
@@ -278,29 +293,43 @@ class AppState extends ChangeNotifier {
   Future<void> loadEnvConfig({bool notify = true}) async {
     try {
       final res = await api.getJson('/env/config');
-      envConfig = res['config'] as Map<String, dynamic>?;
-      envConfigSaved = res['saved'] == true;
-      configProblems = [
-        for (final p in (res['problems'] as List? ?? [])) p.toString(),
-      ];
-      _applyVectorSizes(res['vector_sizes']);
+      _applyConfigResponse(res);
       if (notify) notifyListeners();
     } catch (_) {}
   }
 
   Future<void> patchConfig(Map<String, dynamic> patch) async {
     await guard(() async {
-      final res = await api.postJson('/env/config/patch', patch);
-      envConfig = res['config'] as Map<String, dynamic>?;
-      envConfigSaved = true;
-      configProblems = [
-        for (final p in (res['problems'] as List? ?? [])) p.toString(),
-      ];
-      _applyVectorSizes(res['vector_sizes']);
+      final res = await api.postJson('/env/config/patch', {
+        'patch': patch,
+        'source': 'ui',
+      });
+      _applyConfigResponse(res);
       message = configProblems.isEmpty
           ? 'Environment config updated.'
           : 'Config updated with problems: ${configProblems.join('; ')}';
     });
+  }
+
+  Future<Map<String, dynamic>> undoConfigChange() async {
+    busy = true;
+    notifyListeners();
+    try {
+      final res = await api.postJson('/env/config/undo', {});
+      _applyConfigResponse(res);
+      final changeSet = (res['change_set'] as Map?)?.cast<String, dynamic>();
+      final summary = (changeSet?['summary'] as List? ?? [])
+          .map((item) => item.toString())
+          .join(' ');
+      message = summary.isEmpty ? 'Configuration change undone.' : summary;
+      return res;
+    } catch (e) {
+      message = e.toString();
+      return {'error': e.toString()};
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
   }
 
   Future<Map<String, dynamic>> validateCustomReward(String code) {
@@ -412,6 +441,8 @@ class AppState extends ChangeNotifier {
   // training card so the chosen algorithm / timesteps / tuned params survive
   // navigation (previously they snapped back to PPO when leaving the page).
   String trainingAlgorithm = 'PPO';
+  String trainingBackend = 'pybullet';
+  int trainingNumEnvs = 1024;
   int trainingTimesteps = 10000;
   Map<String, dynamic> trainingParams = const {
     'learning_rate': 0.0003,
@@ -423,6 +454,18 @@ class AppState extends ChangeNotifier {
   void setTrainingAlgorithm(String value) {
     if (trainingAlgorithm == value) return;
     trainingAlgorithm = value;
+    notifyListeners();
+  }
+
+  void setTrainingBackend(String value) {
+    final next = value == 'mjx' ? 'mjx' : 'pybullet';
+    if (trainingBackend == next) return;
+    trainingBackend = next;
+    notifyListeners();
+  }
+
+  void setTrainingNumEnvs(int value) {
+    trainingNumEnvs = value.clamp(1, 16384).toInt();
     notifyListeners();
   }
 
@@ -449,8 +492,13 @@ class AppState extends ChangeNotifier {
       'name': name,
       'args': args,
     });
+    final result = (res['result'] as Map?)?.cast<String, dynamic>() ?? {};
+    if (result['config'] is Map) {
+      _applyConfigResponse(result);
+      notifyListeners();
+    }
     unawaited(refreshAll());
-    return (res['result'] as Map?)?.cast<String, dynamic>() ?? {};
+    return result;
   }
 
   Future<Map<String, dynamic>> checkModelCapabilities() {
@@ -561,25 +609,21 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> zeroAction() async {
-    final count = (actions?['action_vector_size'] as num?)?.toInt() ?? 0;
+    final count = actionVectorSize;
     await guard(() async {
-      await api.postJson('/robot/action_test', {
+      await api.postJson('/env/action_test', {
         'values': List.filled(count, 0.0),
-        'mode': 'position',
       });
-      message = 'Applied zero action.';
+      message = 'Applied zero normalized action.';
     });
   }
 
   Future<void> randomAction() async {
-    final count = (actions?['action_vector_size'] as num?)?.toInt() ?? 0;
+    final count = actionVectorSize;
     final values = List.generate(count, (i) => i.isEven ? 0.15 : -0.15);
     await guard(() async {
-      await api.postJson('/robot/action_test', {
-        'values': values,
-        'mode': 'position',
-      });
-      message = 'Applied safe random action.';
+      await api.postJson('/env/action_test', {'values': values});
+      message = 'Applied safe normalized random action.';
     });
   }
 
@@ -599,7 +643,7 @@ class AppState extends ChangeNotifier {
       // The backend config service derives the config from the loaded robot.
       await api.postJson('/env/save_config', {});
       await loadEnvConfig(notify: false);
-      message = 'Saved current environment config.';
+      message = 'Configuration valid.';
     });
   }
 
@@ -625,6 +669,9 @@ class AppState extends ChangeNotifier {
       };
       // No config payload: the backend builds and validates it server-side.
       await api.postJson('/training/start', {
+        'sim_backend': trainingBackend,
+        'num_envs': trainingBackend == 'mjx' ? trainingNumEnvs : 1,
+        if (trainingBackend == 'mjx') 'mjx_task': 'point_reach',
         'algorithm': algorithm,
         'total_timesteps': totalTimesteps,
         'learning_rate': params['learning_rate'],
@@ -637,6 +684,7 @@ class AppState extends ChangeNotifier {
         if (params['buffer_size'] != null) 'buffer_size': params['buffer_size'],
         if (params['train_freq'] != null) 'train_freq': params['train_freq'],
         if (params['net_arch'] != null) 'net_arch': params['net_arch'],
+        if (params['seed'] != null) 'seed': params['seed'],
         'policy_type': 'MlpPolicy',
         'checkpoint_every': totalTimesteps >= 5000 ? totalTimesteps ~/ 5 : 0,
       });
@@ -672,8 +720,8 @@ class AppState extends ChangeNotifier {
 
   List<String> trainingBlockers() {
     final blockers = <String>[];
+    if (trainingBackend == 'mjx') return blockers;
     if (!hasRobot) blockers.add('load a robot');
-    if (!envConfigSaved) blockers.add('save the environment setup');
     if (!hasEnabledObservations) blockers.add('enable observations');
     if (!hasEnabledActions) blockers.add('enable actions');
     if (!hasEnabledRewards) blockers.add('set a reward');

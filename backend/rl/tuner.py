@@ -11,7 +11,7 @@ import time
 from typing import Any
 
 from backend.models import TrainingStartRequest
-from backend.rl.gym_env import RtgGymEnv
+from backend.rl.env_factory import make_vecnormalize_env
 from backend.rl.training_worker import build_algo_kwargs
 
 
@@ -34,16 +34,18 @@ def _sample_params(trial, algorithm: str) -> dict[str, Any]:
 
 def _rollout_score(model, env, episodes: int = 2, max_len: int = 1000) -> float:
     total = 0.0
+    env.training = False
+    env.norm_reward = False
     for _ in range(episodes):
-        obs, _ = env.reset()
+        obs = env.reset()
         done = False
         length = 0
         while not done and length < max_len:
             action, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, _ = env.step(action)
-            total += float(reward)
+            obs, reward, dones, _infos = env.step(action)
+            total += float(reward[0])
             length += 1
-            done = bool(terminated or truncated)
+            done = bool(dones[0])
     return total / episodes
 
 
@@ -61,6 +63,7 @@ class TunerWorker:
         algorithm: str = "PPO",
         n_trials: int = 8,
         timesteps_per_trial: int = 2000,
+        seed: int | None = None,
     ) -> dict[str, Any]:
         if self._thread and self._thread.is_alive():
             raise RuntimeError("Tuning is already running.")
@@ -83,7 +86,8 @@ class TunerWorker:
             "message": "starting",
         }
         self._thread = threading.Thread(
-            target=self._run, args=(config, algorithm, n_trials, timesteps_per_trial),
+            target=self._run,
+            args=(config, algorithm, n_trials, timesteps_per_trial, seed),
             daemon=True,
         )
         self._thread.start()
@@ -93,7 +97,14 @@ class TunerWorker:
         self._stop.set()
         return {"ok": True, "message": "Stop requested."}
 
-    def _run(self, config, algorithm: str, n_trials: int, timesteps: int) -> None:
+    def _run(
+        self,
+        config,
+        algorithm: str,
+        n_trials: int,
+        timesteps: int,
+        seed: int | None,
+    ) -> None:
         try:
             import optuna
             from stable_baselines3 import A2C, PPO, SAC, TD3
@@ -106,11 +117,20 @@ class TunerWorker:
                     raise optuna.TrialPruned()
                 params = _sample_params(trial, algorithm)
                 req = TrainingStartRequest(
-                    config=config, algorithm=algorithm, total_timesteps=timesteps, **params
+                    config=config,
+                    algorithm=algorithm,
+                    total_timesteps=timesteps,
+                    seed=seed,
+                    **params,
                 )
                 kwargs = build_algo_kwargs(req)
                 kwargs["verbose"] = 0
-                env = RtgGymEnv(config)
+                env = make_vecnormalize_env(
+                    config,
+                    gamma=req.gamma,
+                    seed=req.seed,
+                    training=True,
+                )
                 try:
                     model = algorithms[algorithm](req.policy_type, env, **kwargs)
                     model.learn(total_timesteps=timesteps)

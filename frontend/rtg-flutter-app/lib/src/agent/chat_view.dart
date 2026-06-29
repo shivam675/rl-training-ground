@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,9 +25,20 @@ class AssistantChat extends ConsumerStatefulWidget {
 }
 
 class _AssistantChatState extends ConsumerState<AssistantChat> {
+  static const _connectedPlaceholders = [
+    'Ask why the reward is climbing but the robot is not.',
+    'Describe the goal; I will inspect before I guess.',
+    'Need a saner reward? Let us bribe the robot properly.',
+    'Is it learning, or merely falling with confidence?',
+    'Ask me to tune the policy without summoning parameter soup.',
+    'Tell me the behavior; I will wire observations, actions, and rewards.',
+  ];
+
   final inputController = TextEditingController();
   final scrollController = ScrollController();
   final focusNode = FocusNode();
+  Timer? _placeholderTimer;
+  int _placeholderIndex = 0;
 
   // Follow the bottom only while the user hasn't scrolled away, and schedule at
   // most one (instant) scroll per frame instead of stacking animations.
@@ -37,6 +50,13 @@ class _AssistantChatState extends ConsumerState<AssistantChat> {
   void initState() {
     super.initState();
     scrollController.addListener(_onScroll);
+    _placeholderTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      if (!mounted) return;
+      setState(() {
+        _placeholderIndex =
+            (_placeholderIndex + 1) % _connectedPlaceholders.length;
+      });
+    });
   }
 
   @override
@@ -44,6 +64,7 @@ class _AssistantChatState extends ConsumerState<AssistantChat> {
     inputController.dispose();
     scrollController.dispose();
     focusNode.dispose();
+    _placeholderTimer?.cancel();
     super.dispose();
   }
 
@@ -190,9 +211,10 @@ class _AssistantChatState extends ConsumerState<AssistantChat> {
               }
               final message = controller.messages[index];
               return switch (message.kind) {
-                ChatKind.tool => _ToolActivityRow(
+                ChatKind.tool => _ConfigToolActivityRow(
                   message: message,
                   onConfirm: () => controller.confirmTool(message),
+                  onUndo: () => controller.undoConfigChange(message),
                 ),
                 ChatKind.notice => _NoticeRow(text: message.text),
                 _ => _MessageBubble(message: message),
@@ -215,7 +237,7 @@ class _AssistantChatState extends ConsumerState<AssistantChat> {
                   textInputAction: TextInputAction.send,
                   decoration: InputDecoration(
                     hintText: connected
-                        ? 'Ask the agent — it can operate the app for you…'
+                        ? _connectedPlaceholders[_placeholderIndex]
                         : 'Backend offline — messages will fail',
                     prefixIcon: const Icon(Icons.chat_bubble_outline, size: 18),
                   ),
@@ -242,8 +264,12 @@ class _AssistantChatState extends ConsumerState<AssistantChat> {
   }
 }
 
-class _ToolActivityRow extends StatelessWidget {
-  const _ToolActivityRow({required this.message, required this.onConfirm});
+class ToolActivityRow extends StatelessWidget {
+  const ToolActivityRow({
+    super.key,
+    required this.message,
+    required this.onConfirm,
+  });
 
   final ChatMessage message;
   final VoidCallback onConfirm;
@@ -312,16 +338,17 @@ class _ToolActivityRow extends StatelessWidget {
                   if (awaiting) ...[
                     const SizedBox(width: 8),
                     SizedBox(
-                      height: 24,
-                      child: FilledButton.tonal(
+                      height: 28,
+                      child: FilledButton.icon(
                         style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
                           visualDensity: VisualDensity.compact,
                         ),
                         onPressed: onConfirm,
-                        child: const Text(
-                          'Run',
-                          style: TextStyle(fontSize: 11),
+                        icon: const Icon(Icons.check, size: 14),
+                        label: const Text(
+                          'Approve & Apply',
+                          style: TextStyle(fontSize: 11.5),
                         ),
                       ),
                     ),
@@ -331,6 +358,202 @@ class _ToolActivityRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ConfigToolActivityRow extends StatelessWidget {
+  const _ConfigToolActivityRow({
+    required this.message,
+    required this.onConfirm,
+    required this.onUndo,
+  });
+
+  final ChatMessage message;
+  final VoidCallback onConfirm;
+  final VoidCallback onUndo;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final colors = context.colors;
+    final awaiting = message.needsConfirmation;
+    final running = message.toolOk == null && !awaiting;
+    final failed = message.toolOk == false;
+    final color = awaiting
+        ? colors.warning
+        : failed
+        ? colors.danger
+        : running
+        ? scheme.primary
+        : colors.success;
+    final label = [
+      message.toolName ?? 'tool',
+      if ((message.toolArgs ?? '').isNotEmpty) '(${message.toolArgs})',
+    ].join(' ');
+    final result = message.toolResult;
+    final changeSet = (result?['change_set'] as Map?)?.cast<String, dynamic>();
+    final summaries = (changeSet?['summary'] as List? ?? [])
+        .map((item) => item.toString())
+        .toList();
+    final problems = (result?['problems'] as List? ?? [])
+        .map((item) => item.toString())
+        .toList();
+    final warnings = (result?['warnings'] as List? ?? [])
+        .map((item) => item.toString())
+        .toList();
+    final hasFinalChanges =
+        changeSet != null && !running && !failed && !awaiting;
+    final undoable =
+        hasFinalChanges &&
+        changeSet['undoable'] == true &&
+        result?['undo_used'] != true;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 34),
+      child: Row(
+        children: [
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: color.withValues(alpha: 0.08),
+                border: Border.all(color: color.withValues(alpha: 0.35)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (running)
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.6,
+                            color: color,
+                          ),
+                        )
+                      else
+                        Icon(
+                          awaiting
+                              ? Icons.pan_tool_outlined
+                              : failed
+                              ? Icons.error_outline
+                              : Icons.check_circle_outline,
+                          size: 14,
+                          color: color,
+                        ),
+                      const SizedBox(width: 7),
+                      Flexible(
+                        child: Text(
+                          hasFinalChanges
+                              ? 'Final changes'
+                              : (failed || awaiting
+                                    ? '$label - ${message.text}'
+                                    : label),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: monoStyle(
+                            context,
+                            fontSize: 11.5,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                      if (awaiting) ...[
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          height: 28,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed: onConfirm,
+                            icon: const Icon(Icons.check, size: 14),
+                            label: const Text(
+                              'Approve & Apply',
+                              style: TextStyle(fontSize: 11.5),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (hasFinalChanges) ...[
+                    const SizedBox(height: 6),
+                    for (final summary in summaries.take(5))
+                      _ToolDetailLine(text: summary),
+                    if (problems.isNotEmpty || warnings.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      for (final problem in problems.take(3))
+                        _ToolDetailLine(
+                          text: 'Invalid: $problem',
+                          color: colors.warning,
+                        ),
+                      for (final warning in warnings.take(3))
+                        _ToolDetailLine(
+                          text: 'Review: $warning',
+                          color: colors.info,
+                        ),
+                    ] else
+                      _ToolDetailLine(
+                        text: 'Configuration valid',
+                        color: colors.success,
+                      ),
+                    if (undoable) ...[
+                      const SizedBox(height: 6),
+                      SizedBox(
+                        height: 26,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: onUndo,
+                          icon: const Icon(Icons.undo, size: 14),
+                          label: const Text(
+                            'Undo',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ToolDetailLine extends StatelessWidget {
+  const _ToolDetailLine({required this.text, this.color});
+
+  final String text;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 21, bottom: 2),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11.5,
+          color: color ?? scheme.onSurface.withValues(alpha: 0.78),
+        ),
       ),
     );
   }
@@ -530,6 +753,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     ? CrossAxisAlignment.end
                     : CrossAxisAlignment.start,
                 children: [
+                  if (!isUser && message.providerLabel.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4, left: 1),
+                      child: _ProviderTag(label: message.providerLabel),
+                    ),
                   if (hasThinking)
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 540),
@@ -647,6 +875,35 @@ class _MessageBubbleState extends State<_MessageBubble> {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProviderTag extends StatelessWidget {
+  const _ProviderTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.22)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+            color: scheme.primary,
+          ),
         ),
       ),
     );

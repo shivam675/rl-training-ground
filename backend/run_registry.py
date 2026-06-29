@@ -14,6 +14,9 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from backend.models import EnvConfig
+from backend.rl.contracts import build_contracts
+
 MAX_CURVE_POINTS = 200
 
 
@@ -124,6 +127,12 @@ class RunRegistry:
                 path = run_dir / artifact
                 if path.exists():
                     archive.write(path, arcname=artifact)
+            contracts = self._contracts(run_dir)
+            if contracts is not None:
+                archive.writestr(
+                    "contracts.json",
+                    json.dumps(contracts, indent=2, default=str),
+                )
         return bundle
 
     def delete_run(self, name: str) -> bool:
@@ -157,6 +166,18 @@ class RunRegistry:
             return json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
+
+    def _contracts(self, run_dir: Path) -> dict[str, Any] | None:
+        config_doc = self._read_json(run_dir / "config.json") or {}
+        raw = config_doc.get("config")
+        if not isinstance(raw, dict):
+            return None
+        try:
+            config = EnvConfig.model_validate(raw)
+        except Exception:
+            return None
+        normalization = self._read_json(run_dir / "normalization.json")
+        return build_contracts(config, normalization)
 
     def _telemetry_points(self, run_dir: Path) -> list[dict[str, Any]]:
         path = run_dir / "telemetry.jsonl"

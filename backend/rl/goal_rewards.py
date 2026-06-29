@@ -36,23 +36,34 @@ def apply_behavior_goal(goal: str, sim, config_service) -> dict[str, Any]:
         raise ValueError("Loaded robot has no controllable actions.")
 
     patch, summary = _patch_for_goal(kind, sim, actions)
-    updated = config_service.apply_patch(config, patch)
-    config_service.save(updated)
-    problems = config_service.validate(updated, sim)
+    result = config_service.patch_current(
+        sim,
+        patch,
+        source="agent",
+        reason=f"apply_behavior_goal: {kind}",
+    )
+    updated = result["config"]
     return {
         "ok": True,
         "goal": kind,
         "summary": summary,
-        "config": updated.model_dump(),
-        "problems": problems,
-        "enabled_actions": sum(1 for action in updated.actions if action.enabled),
+        "config": updated,
+        "problems": result["problems"],
+        "warnings": result["warnings"],
+        "revision": result["revision"],
+        "change_set": result["change_set"],
+        "enabled_actions": sum(1 for action in updated["actions"] if action["enabled"]),
     }
 
 
 def _patch_for_goal(kind: str, sim, actions: list[dict[str, Any]]) -> tuple[dict[str, Any], str]:
     base_height = _base_height(sim)
     min_height = max(0.2, base_height * 0.62)
-    action_patches = _locomotion_action_patches(actions) if kind != "reach_target" else []
+    action_patches = (
+        _locomotion_action_patches(actions)
+        if kind != "reach_target"
+        else _all_action_patches(actions)
+    )
 
     # All templates use lean, inspectable manual components with the standard
     # sign convention (penalties = negative weight). Falling ends the episode via
@@ -188,6 +199,19 @@ def _locomotion_action_patches(actions: list[dict[str, Any]]) -> list[dict[str, 
             }
         )
     return patches
+
+
+def _all_action_patches(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "joint_index": int(action["joint_index"]),
+            "enabled": True,
+            "control_mode": "position",
+            "scale_low": -0.6,
+            "scale_high": 0.6,
+        }
+        for action in actions
+    ]
 
 
 def _base_height(sim) -> float:

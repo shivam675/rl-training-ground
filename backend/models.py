@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 Vec3 = tuple[float, float, float]
@@ -41,6 +41,13 @@ class ActionTestRequest(BaseModel):
     joint_indices: list[int] | None = None
 
 
+class EnvActionTestRequest(BaseModel):
+    # Values are policy-space commands. The backend clips each to [-1, 1],
+    # maps through the configured physical command range for that joint, and
+    # applies the action's own control mode.
+    values: list[float] = Field(default_factory=list)
+
+
 class ObservationSelection(BaseModel):
     key: str
     enabled: bool = True
@@ -48,10 +55,18 @@ class ObservationSelection(BaseModel):
 
 class ActionSelection(BaseModel):
     joint_index: int
+    joint_name: str | None = None
     enabled: bool = True
     control_mode: Literal["position", "velocity", "torque"] = "position"
+    # Physical command range. The policy always emits normalized [-1, 1]
+    # actions; these bounds map that normalized value to target position,
+    # velocity, or torque.
     scale_low: float = -1.0
     scale_high: float = 1.0
+    lower_limit: float | None = None
+    upper_limit: float | None = None
+    max_force: float | None = None
+    max_velocity: float | None = None
 
 
 class RewardComponent(BaseModel):
@@ -59,6 +74,17 @@ class RewardComponent(BaseModel):
     enabled: bool = True
     weight: float = 1.0
     params: dict[str, Any] = Field(default_factory=dict)
+
+
+class DomainRandomizationConfig(BaseModel):
+    enabled: bool = False
+    mass_scale: tuple[float, float] = (1.0, 1.0)
+    friction_scale: tuple[float, float] = (1.0, 1.0)
+    initial_position_noise: Vec3 = (0.0, 0.0, 0.0)
+    initial_orientation_noise: Vec3 = (0.0, 0.0, 0.0)
+    sensor_noise_std: float = 0.0
+    action_noise_std: float = 0.0
+    action_latency_steps: int = 0
 
 
 class EnvConfig(BaseModel):
@@ -76,6 +102,9 @@ class EnvConfig(BaseModel):
     actions: list[ActionSelection] = Field(default_factory=list)
     rewards: list[RewardComponent] = Field(default_factory=list)
     terminations: dict[str, Any] = Field(default_factory=dict)
+    domain_randomization: DomainRandomizationConfig = Field(
+        default_factory=DomainRandomizationConfig
+    )
     algorithm: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -86,6 +115,9 @@ class RewardTestRequest(BaseModel):
 class TrainingStartRequest(BaseModel):
     # When omitted, the backend builds the config from the saved/current robot.
     config: EnvConfig | None = None
+    sim_backend: Literal["pybullet", "mujoco", "mjx"] = "pybullet"
+    num_envs: int = Field(default=1, ge=1)
+    mjx_task: str = "point_reach"
     algorithm: Literal["PPO", "SAC", "TD3", "DQN", "A2C"] = "PPO"
     total_timesteps: int = 10_000
     learning_rate: float = 3e-4
@@ -105,6 +137,16 @@ class TrainingStartRequest(BaseModel):
     resume_from: str | None = None  # path to a model.zip to continue from
     stop_on_nan: bool = True
     no_improvement_steps: int = 0  # early-stop window, 0 = off
+    seed: int | None = None
+
+    @field_validator("net_arch")
+    @classmethod
+    def validate_net_arch(cls, value: list[int] | None) -> list[int] | None:
+        if value is None:
+            return None
+        if not 1 <= len(value) <= 4 or any(size < 16 or size > 1024 for size in value):
+            raise ValueError("net_arch must contain 1-4 layer sizes between 16 and 1024")
+        return value
 
 
 class TrainingStatus(BaseModel):
@@ -116,6 +158,9 @@ class TrainingStatus(BaseModel):
     episode_length: int | None = None
     fps: float | None = None
     message: str = "idle"
+    backend: str = "pybullet"
+    num_envs: int = 1
+    device: str | None = None
 
 
 class EvaluationRequest(BaseModel):

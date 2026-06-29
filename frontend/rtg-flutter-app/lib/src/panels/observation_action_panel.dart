@@ -68,6 +68,32 @@ class ObservationActionPanel extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
         ],
+        if (state.configWarnings.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              color: context.colors.info.withValues(alpha: 0.08),
+              border: Border.all(
+                color: context.colors.info.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final warning in state.configWarnings)
+                  Text(
+                    'Review: $warning',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.colors.info,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         SectionHeader(
           'Observations',
           trailing: StatChip(
@@ -121,6 +147,14 @@ class ObservationActionPanel extends ConsumerWidget {
             icon: Icons.gamepad_outlined,
           ),
         ),
+        Text(
+          'The policy outputs normalized actions in [-1, 1]. Low/high below are physical command bounds per joint and control mode.',
+          style: TextStyle(
+            fontSize: 12,
+            color: scheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+        const SizedBox(height: 6),
         Wrap(
           spacing: 8,
           runSpacing: 8,

@@ -17,7 +17,9 @@ class ChatMessage {
     this.toolName,
     this.toolArgs,
     this.toolArgsRaw,
+    this.toolResult,
     this.toolOk,
+    this.providerLabel = '',
     DateTime? time,
   }) : time = time ?? DateTime.now();
 
@@ -30,8 +32,10 @@ class ChatMessage {
   final String? toolName;
   final String? toolArgs;
   final Map<String, dynamic>? toolArgsRaw;
+  Map<String, dynamic>? toolResult;
   bool? toolOk; // null while running
   bool needsConfirmation = false;
+  String providerLabel;
 
   /// While true the bubble renders cheap plain text; markdown parsing and
   /// text selection only switch on once the message stops growing.
@@ -42,7 +46,10 @@ class ChatMessage {
   String asTranscript() {
     return switch (kind) {
       ChatKind.user => 'You: $text',
-      ChatKind.agent => 'Agent: $text',
+      ChatKind.agent =>
+        providerLabel.isEmpty
+            ? 'Agent: $text'
+            : 'Agent [$providerLabel]: $text',
       ChatKind.tool => '[tool] $toolName($toolArgs) → $text',
       ChatKind.notice => '[notice] $text',
     };
@@ -52,6 +59,7 @@ class ChatMessage {
     'kind': kind.name,
     'text': text,
     if (thinking.isNotEmpty) 'thinking': thinking,
+    if (providerLabel.isNotEmpty) 'providerLabel': providerLabel,
     'time': time.toIso8601String(),
   };
 
@@ -72,6 +80,7 @@ class ChatMessage {
       kind: kind,
       text: text,
       thinking: thinking,
+      providerLabel: data['providerLabel']?.toString() ?? '',
       time: DateTime.tryParse(data['time']?.toString() ?? ''),
     );
   }
@@ -114,6 +123,7 @@ class ChatController extends ChangeNotifier {
   // the window once replies get long.
   final _chunkBuffer = StringBuffer();
   final _thinkBuffer = StringBuffer();
+  String _pendingProviderLabel = '';
   Timer? _flushTimer;
   static const _flushInterval = Duration(milliseconds: 66);
 
@@ -227,12 +237,31 @@ class ChatController extends ChangeNotifier {
         messages.last.streaming) {
       bubble = messages.last;
     } else {
-      bubble = ChatMessage(kind: ChatKind.agent, text: '')..streaming = true;
+      bubble = ChatMessage(
+        kind: ChatKind.agent,
+        text: '',
+        providerLabel: _pendingProviderLabel,
+      )..streaming = true;
       messages.add(bubble);
+    }
+    if (_pendingProviderLabel.isNotEmpty) {
+      bubble.providerLabel = _pendingProviderLabel;
     }
     bubble.text += text;
     bubble.thinking += think;
     notifyListeners();
+  }
+
+  void _applyRouteEvent(Map<String, dynamic> event) {
+    final label = event['label']?.toString() ?? '';
+    if (label.isEmpty) return;
+    _pendingProviderLabel = label;
+    if (messages.isNotEmpty &&
+        messages.last.kind == ChatKind.agent &&
+        messages.last.streaming) {
+      messages.last.providerLabel = label;
+      notifyListeners();
+    }
   }
 
   /// Stop the live bubble growing and switch it to selectable markdown.
@@ -257,6 +286,42 @@ class ChatController extends ChangeNotifier {
   }
 
   String transcript() => messages.map((m) => m.asTranscript()).join('\n\n');
+
+  ChatMessage? _pendingConfirmationTool() {
+    for (final message in messages.reversed) {
+      if (message.kind == ChatKind.tool && message.needsConfirmation) {
+        return message;
+      }
+    }
+    return null;
+  }
+
+  static bool _isApprovalReply(String text) {
+    final normalized = text.trim().toLowerCase();
+    return {
+      'y',
+      'yes',
+      'yeah',
+      'yep',
+      'ok',
+      'okay',
+      'approve',
+      'approved',
+      'go ahead',
+      'do it',
+      'apply',
+      'apply it',
+      'proceed',
+    }.contains(normalized);
+  }
+
+  static String _toolDoneText(Map<String, dynamic>? result, String? error) {
+    if (error != null) return error;
+    if (result?['change_set'] is Map || result?['config'] is Map) {
+      return 'applied';
+    }
+    return 'done';
+  }
 
   List<Map<String, String>> _historyForRequest() {
     final turns = <Map<String, String>>[];
@@ -323,7 +388,7 @@ class ChatController extends ChangeNotifier {
       ChatMessage(
         kind: ChatKind.agent,
         text:
-            'Loaded `$path`. What should this robot learn: walk, run, stand, sit Japanese-style, balance, or reach a target? Reply with one goal and I will draft the reward in Rewards.',
+            'Loaded `$path`. Describe in natural language what this robot should learn. I will inspect the robot, propose observations, actions, rewards and terminations, then ask before applying changes.',
       ),
     );
     notifyListeners();
@@ -341,20 +406,53 @@ class ChatController extends ChangeNotifier {
         tool.toolName ?? '',
         tool.toolArgsRaw ?? {},
       );
+      tool.toolResult = result;
       final error = result['error']?.toString();
       tool.toolOk = error == null;
-      tool.text = error ?? 'done';
+      tool.text = _toolDoneText(result, error);
     } catch (e) {
       tool.toolOk = false;
       tool.text = '$e';
     }
     notifyListeners();
+    _persistChat();
+    _requestForceScroll();
+  }
+
+  Future<void> undoConfigChange(ChatMessage source) async {
+    messages.add(
+      ChatMessage(
+        kind: ChatKind.tool,
+        text: 'running...',
+        toolName: 'undo_config_change',
+      ),
+    );
+    notifyListeners();
+    final tool = messages.last;
+    final result = await _state.undoConfigChange();
+    tool.toolResult = result;
+    final error = result['error']?.toString();
+    tool.toolOk = error == null;
+    tool.text = _toolDoneText(result, error);
+    source.toolResult = {...?source.toolResult, 'undo_used': error == null};
+    notifyListeners();
+    _persistChat();
   }
 
   Future<void> sendChat(String rawText) async {
     final text = rawText.trim();
     if (text.isEmpty || sending) return;
+    final pendingTool = _pendingConfirmationTool();
+    if (pendingTool != null && _isApprovalReply(text)) {
+      messages.add(ChatMessage(kind: ChatKind.user, text: text));
+      notifyListeners();
+      _persistChat();
+      _requestForceScroll();
+      await confirmTool(pendingTool);
+      return;
+    }
     messages.add(ChatMessage(kind: ChatKind.user, text: text));
+    _pendingProviderLabel = '';
     sending = true;
     notifyListeners();
     _persistChat();
@@ -367,6 +465,8 @@ class ChatController extends ChangeNotifier {
         history: history,
       )) {
         switch (event['type']) {
+          case 'route':
+            _applyRouteEvent(event);
           case 'chunk':
             _queueChunk(event['text']?.toString() ?? '');
           case 'thinking':
@@ -401,7 +501,12 @@ class ChatController extends ChangeNotifier {
               tool.text = 'awaiting your confirmation';
             } else {
               tool.toolOk = error == null;
-              tool.text = error ?? 'done';
+            }
+            if (result is Map) {
+              tool.toolResult = result.cast<String, dynamic>();
+            }
+            if (!needsConfirm) {
+              tool.text = _toolDoneText(tool.toolResult, error);
             }
             notifyListeners();
           case 'notice':
@@ -417,8 +522,15 @@ class ChatController extends ChangeNotifier {
       }
       _finishStreamingBubble();
       if (messages.isEmpty || messages.last.kind == ChatKind.user) {
-        messages.add(ChatMessage(kind: ChatKind.agent, text: 'No response.'));
+        messages.add(
+          ChatMessage(
+            kind: ChatKind.agent,
+            text: 'No response.',
+            providerLabel: _pendingProviderLabel,
+          ),
+        );
       }
+      _pendingProviderLabel = '';
       sending = false;
       notifyListeners();
       _persistChat();
@@ -430,6 +542,7 @@ class ChatController extends ChangeNotifier {
           text: '⚠ ${e.toString().replaceFirst('Exception: ', '')}',
         ),
       );
+      _pendingProviderLabel = '';
       sending = false;
       notifyListeners();
       _persistChat();

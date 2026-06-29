@@ -30,8 +30,6 @@ DESTRUCTIVE_TOOLS = {
     "apply_test_action",
     "start_training",
     "stop_training",
-    "patch_env_config",
-    "apply_behavior_goal",
     "evaluate_run",
     "start_tuning",
     "fix_robot_dynamics",
@@ -79,6 +77,7 @@ class AgentToolbox:
         evaluation_worker=None,
         tuner_worker=None,
         autonomy_provider=None,
+        confirm_tools: set[str] | None = None,
     ):
         self.sim = sim
         self.training_worker = training_worker
@@ -90,6 +89,7 @@ class AgentToolbox:
         self.tuner_worker = tuner_worker
         # Callable returning "act" or "ask"; defaults to acting freely.
         self.autonomy_provider = autonomy_provider or (lambda: "act")
+        self.confirm_tools = confirm_tools or set()
 
     # ------------------------------------------------------------------ schema
 
@@ -179,7 +179,9 @@ class AgentToolbox:
             tool(
                 "patch_env_config",
                 "Update the environment config — the main tool for configuring a "
-                "goal. A fresh project starts with EVERYTHING disabled, so you "
+                "goal. Changes are auto-applied, revisioned, and undoable; summarize "
+                "the returned Final changes instead of dumping raw JSON. A fresh "
+                "project starts with EVERYTHING disabled, so you "
                 "enable the observations and joint actions the goal needs and add "
                 "reward components. Merge semantics: observations by key, actions "
                 "by joint_index, rewards by key (params merge). "
@@ -207,7 +209,7 @@ class AgentToolbox:
                 {
                     "patch": {
                         "type": "object",
-                        "description": "Partial config: observations/actions/rewards/terminations",
+                        "description": "Partial config: observations/actions/rewards/terminations/domain_randomization",
                     }
                 },
                 ["patch"],
@@ -245,6 +247,19 @@ class AgentToolbox:
                     "batch_size": {"type": "integer", "description": "Default 64"},
                     "gamma": {"type": "number", "description": "Default 0.99"},
                     "n_steps": {"type": "integer", "description": "PPO/A2C rollout length, default 2048"},
+                    "ent_coef": {"type": "number", "description": "PPO/A2C entropy bonus"},
+                    "clip_range": {"type": "number", "description": "PPO clipping range"},
+                    "tau": {"type": "number", "description": "SAC/TD3 target smoothing"},
+                    "buffer_size": {"type": "integer", "description": "SAC/TD3 replay buffer size"},
+                    "train_freq": {"type": "integer", "description": "SAC/TD3 environment steps per update"},
+                    "net_arch": {
+                        "type": "array",
+                        "items": {"type": "integer", "minimum": 16, "maximum": 1024},
+                        "minItems": 1,
+                        "maxItems": 4,
+                        "description": "MLP hidden-layer sizes, e.g. [256, 256]",
+                    },
+                    "seed": {"type": "integer", "description": "Optional reproducibility seed"},
                 },
             ),
             tool("stop_training", "Request the active training run to stop."),
@@ -306,6 +321,7 @@ class AgentToolbox:
                     "algorithm": {"type": "string", "enum": ["PPO", "SAC", "TD3", "A2C"]},
                     "n_trials": {"type": "integer", "description": "Default 8, max 50"},
                     "timesteps_per_trial": {"type": "integer", "description": "Default 2000"},
+                    "seed": {"type": "integer", "description": "Optional reproducibility seed"},
                 },
             ),
             tool("get_tuning_status", "Progress and best parameters of the tuning run."),
@@ -322,19 +338,17 @@ class AgentToolbox:
     ) -> dict[str, Any]:
         if allowed is not None and name not in allowed:
             return {"error": f"Tool {name} is not available to this agent."}
-        if (
-            not confirmed
-            and name in DESTRUCTIVE_TOOLS
-            and self._autonomy() == "ask"
-        ):
+        needs_confirmation = name in self.confirm_tools or (
+            name in DESTRUCTIVE_TOOLS and self._autonomy() == "ask"
+        )
+        if not confirmed and needs_confirmation:
             return {
                 "requires_confirmation": True,
                 "tool": name,
                 "args": args or {},
                 "message": (
-                    "Agent autonomy is set to 'ask first' — the user must "
-                    "confirm this action in the UI before it runs. Tell them "
-                    "what the action will do and that a Run button is shown."
+                    "This action needs user confirmation before it runs. Tell "
+                    "the user what it will do and that a Run button is shown."
                 ),
             }
         return await self._dispatch(name, args)
@@ -476,26 +490,25 @@ class AgentToolbox:
         if self.config_service is None:
             return {"error": "Config service unavailable."}
         config = self.config_service.current_or_default(self.sim)
-        return {
-            "config": config.model_dump(),
-            "problems": self.config_service.validate(config, self.sim),
-        }
+        return self.config_service.response(config, self.sim)
 
     def _patch_env_config(self, patch: dict[str, Any]) -> dict[str, Any]:
         if self.config_service is None:
             return {"error": "Config service unavailable."}
-        config = self.config_service.current_or_default(self.sim)
-        updated = self.config_service.apply_patch(config, patch or {})
-        self.config_service.save(updated)
-        problems = self.config_service.validate(updated, self.sim)
+        result = self.config_service.patch_current(
+            self.sim,
+            patch or {},
+            source="agent",
+            reason="patch_env_config",
+        )
         if self.notifier is not None:
             self.notifier.notify_threadsafe(
                 title="Agent updated the environment config",
-                body="Rewards/observations/actions were modified via chat.",
-                severity="info",
+                body="Final changes are ready to review.",
+                severity="warning" if result.get("problems") else "info",
                 category="agent_action",
             )
-        return {"ok": True, "problems": problems, "rewards": updated.model_dump()["rewards"]}
+        return {"ok": True, **result}
 
     def _apply_behavior_goal(self, goal: str) -> dict[str, Any]:
         if self.config_service is None:
@@ -518,23 +531,22 @@ class AgentToolbox:
         batch_size: int = 64,
         gamma: float = 0.99,
         n_steps: int = 2048,
+        ent_coef: float | None = None,
+        clip_range: float | None = None,
+        tau: float | None = None,
+        buffer_size: int | None = None,
+        train_freq: int | None = None,
+        net_arch: list[int] | None = None,
+        seed: int | None = None,
     ) -> dict[str, Any]:
         if self.config_service is None:
             return {"error": "Config service unavailable."}
-        if not self.config_service.saved_matches(self.sim):
-            return {
-                "error": (
-                    "Training is locked until the current robot's environment config "
-                    "is saved. Configure observations/actions/rewards, then Save env."
-                )
-            }
-        config = self.config_service.load()
-        if config is None:
-            return {"error": "Saved environment config could not be loaded."}
+        config = self.config_service.current_or_default(self.sim)
         config.algorithm = {"name": algorithm}
         problems = self.config_service.validate(config, self.sim)
         if problems:
             return {"error": "Invalid environment config: " + "; ".join(problems)}
+        seed_value = int(seed) if seed is not None else None
         req = TrainingStartRequest(
             config=config,
             algorithm=algorithm,
@@ -543,6 +555,13 @@ class AgentToolbox:
             batch_size=int(batch_size),
             gamma=float(gamma),
             n_steps=int(n_steps),
+            ent_coef=float(ent_coef) if ent_coef is not None else None,
+            clip_range=float(clip_range) if clip_range is not None else None,
+            tau=float(tau) if tau is not None else None,
+            buffer_size=int(buffer_size) if buffer_size is not None else None,
+            train_freq=int(train_freq) if train_freq is not None else None,
+            net_arch=[int(size) for size in net_arch] if net_arch else None,
+            seed=seed_value,
         )
         result = self.training_worker.start(req)
         if self.notifier is not None:
@@ -628,22 +647,22 @@ class AgentToolbox:
         algorithm: str = "PPO",
         n_trials: int = 8,
         timesteps_per_trial: int = 2000,
+        seed: int | None = None,
     ) -> dict[str, Any]:
         if self.tuner_worker is None:
             return {"error": "Tuner unavailable."}
         if self.training_worker.status.active:
             return {"error": "Training is running — stop it before tuning."}
-        if self.config_service is not None and not self.config_service.saved_matches(self.sim):
-            return {
-                "error": (
-                    "Tuning is locked until the current robot's environment config "
-                    "is saved. Configure observations/actions/rewards, then Save env."
-                )
-            }
+        if self.config_service is not None:
+            config = self.config_service.current_or_default(self.sim)
+            problems = self.config_service.validate(config, self.sim)
+            if problems:
+                return {"error": "Invalid environment config: " + "; ".join(problems)}
         return self.tuner_worker.start(
             algorithm=algorithm,
             n_trials=max(1, min(50, int(n_trials))),
             timesteps_per_trial=max(500, min(50_000, int(timesteps_per_trial))),
+            seed=int(seed) if seed is not None else None,
         )
 
     def _get_tuning_status(self) -> dict[str, Any]:

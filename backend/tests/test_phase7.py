@@ -82,10 +82,10 @@ class _EndlessEnv:
         self.manager = None
 
     def reset(self, *args, **kwargs):
-        return [0.0], {}
+        return [[0.0]]
 
     def step(self, _action):
-        return [0.0], 0.0, False, False, {}
+        return [[0.0]], [0.0], [False], [{}]
 
     def close(self):
         pass
@@ -93,7 +93,7 @@ class _EndlessEnv:
 
 def test_evaluation_stops_mid_episode(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(evaluation, "_load_model", lambda _p: _FakeModelPredict())
-    monkeypatch.setattr(evaluation, "RtgGymEnv", _EndlessEnv)
+    monkeypatch.setattr(evaluation, "make_vecnormalize_env", lambda *_a, **_k: _EndlessEnv())
     model_path = tmp_path / "model.zip"
     model_path.write_bytes(b"x")
     summary = evaluation.evaluate_model(

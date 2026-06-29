@@ -14,6 +14,19 @@ from collections import deque
 from typing import Any
 
 
+def reward_regressed(
+    best: float, current: float, best_at: int, timestep: int, total: int
+) -> bool:
+    return (
+        timestep - best_at > max(1500, total // 10)
+        and best - current > max(5.0, abs(best) * 0.2)
+    )
+
+
+def episode_length_collapsed(best: int, current: int, timestep: int) -> bool:
+    return timestep > 500 and best >= 50 and current < best * 0.5
+
+
 class AgentNotifier:
     def __init__(self, history_size: int = 100):
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
@@ -84,6 +97,8 @@ async def watch_training(notifier: AgentNotifier, training_worker) -> None:
     warned: set[str] = set()
     best_reward: float | None = None
     best_reward_at = 0
+    best_episode_length: int | None = None
+    last_health_timestep = -1
     while True:
         status = training_worker.status
         if status.active and not was_active:
@@ -91,6 +106,8 @@ async def watch_training(notifier: AgentNotifier, training_worker) -> None:
             warned.clear()
             best_reward = None
             best_reward_at = 0
+            best_episode_length = None
+            last_health_timestep = -1
             notifier.notify(
                 title="Training started",
                 body=f"Run directory: {status.run_dir or 'pending'}.",
@@ -121,8 +138,11 @@ async def watch_training(notifier: AgentNotifier, training_worker) -> None:
                             category="training",
                         )
             # ---- rule-based health checks ----
+            fresh_sample = status.timestep != last_health_timestep
+            if fresh_sample:
+                last_health_timestep = status.timestep
             reward = status.episode_reward
-            if reward is not None:
+            if fresh_sample and reward is not None:
                 if reward != reward and "nan" not in warned:  # NaN check
                     warned.add("nan")
                     notifier.notify(
@@ -139,6 +159,30 @@ async def watch_training(notifier: AgentNotifier, training_worker) -> None:
                     if best_reward is None or reward > best_reward:
                         best_reward = reward
                         best_reward_at = status.timestep
+                    elif (
+                        reward_regressed(
+                            best_reward,
+                            reward,
+                            best_reward_at,
+                            status.timestep,
+                            total,
+                        )
+                        and "reward_regression" not in warned
+                    ):
+                        warned.add("reward_regression")
+                        notifier.notify(
+                            title="Reward is regressing",
+                            body=(
+                                f"Mean episode reward fell from a best of {best_reward:.2f} "
+                                f"to {reward:.2f}. Training is still running."
+                            ),
+                            severity="warning",
+                            category="training",
+                            next_steps=[
+                                "Ask the agent to inspect reward terms and recent telemetry.",
+                                "Review the diagnosis before deciding whether to stop.",
+                            ],
+                        )
                     elif (
                         total > 0
                         and status.timestep - best_reward_at > max(2000, total // 3)
@@ -159,6 +203,31 @@ async def watch_training(notifier: AgentNotifier, training_worker) -> None:
                                 "Ask the agent to review the reward components.",
                             ],
                         )
+            episode_length = status.episode_length
+            if fresh_sample and episode_length is not None:
+                if best_episode_length is None or episode_length > best_episode_length:
+                    best_episode_length = episode_length
+                elif (
+                    episode_length_collapsed(
+                        best_episode_length, episode_length, status.timestep
+                    )
+                    and "episode_collapse" not in warned
+                ):
+                    warned.add("episode_collapse")
+                    notifier.notify(
+                        title="Episodes are ending much earlier",
+                        body=(
+                            f"Mean episode length dropped from {best_episode_length} to "
+                            f"{episode_length} steps. This may indicate repeated falls or "
+                            "premature termination; training is still running."
+                        ),
+                        severity="warning",
+                        category="training",
+                        next_steps=[
+                            "Ask the agent to inspect termination conditions and rewards.",
+                            "Confirm before stopping or changing the run.",
+                        ],
+                    )
             if (
                 status.fps is not None
                 and status.fps < 5
