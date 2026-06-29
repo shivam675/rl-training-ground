@@ -18,22 +18,57 @@ class TrainingPanel extends ConsumerStatefulWidget {
 
 class _TrainingPanelState extends ConsumerState<TrainingPanel> {
   final timestepsController = TextEditingController();
+  final numEnvsController = TextEditingController();
+  final netArchController = TextEditingController();
+  final netArchFocusNode = FocusNode();
+  String? netArchError;
 
   @override
   void initState() {
     super.initState();
     // Seed from the shared, persisted controls so algorithm/timesteps survive
     // navigation. Algorithm/params are read live from state in build().
-    timestepsController.text = ref
-        .read(appStateProvider)
-        .trainingTimesteps
-        .toString();
+    final state = ref.read(appStateProvider);
+    timestepsController.text = state.trainingTimesteps.toString();
+    numEnvsController.text = state.trainingNumEnvs.toString();
+    netArchController.text = _formatNetArch(state.trainingParams['net_arch']);
   }
 
   @override
   void dispose() {
     timestepsController.dispose();
+    numEnvsController.dispose();
+    netArchController.dispose();
+    netArchFocusNode.dispose();
     super.dispose();
+  }
+
+  static String _formatNetArch(dynamic value) =>
+      value is List ? value.join(', ') : '';
+
+  void _updateNetArch(AppState state, String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) {
+      final params = {...state.trainingParams}..remove('net_arch');
+      setState(() => netArchError = null);
+      state.setTrainingParams(params);
+      return;
+    }
+    final parts = value.split(RegExp(r'[\s,]+'));
+    final sizes = parts.map(int.tryParse).toList();
+    final valid =
+        sizes.isNotEmpty &&
+        sizes.length <= 4 &&
+        sizes.every((size) => size != null && size >= 16 && size <= 1024);
+    if (!valid) {
+      setState(() => netArchError = 'Use 1-4 sizes between 16 and 1024.');
+      return;
+    }
+    setState(() => netArchError = null);
+    state.setTrainingParams({
+      ...state.trainingParams,
+      'net_arch': sizes.cast<int>(),
+    });
   }
 
   @override
@@ -41,7 +76,12 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
     final state = ref.watch(appStateProvider);
     final scheme = Theme.of(context).colorScheme;
     final algorithm = state.trainingAlgorithm;
+    final backend = state.trainingBackend;
     final trainingParams = state.trainingParams;
+    final savedNetArch = _formatNetArch(trainingParams['net_arch']);
+    if (!netArchFocusNode.hasFocus && netArchController.text != savedNetArch) {
+      netArchController.text = savedNetArch;
+    }
     final training = state.trainingStatus ?? {};
     final running = training['active'] == true;
     final statusMessage = '${training['message'] ?? 'idle'}';
@@ -53,7 +93,8 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
         !running &&
         blockers.isEmpty &&
         !state.tuningActive &&
-        !state.evaluationActive;
+        !state.evaluationActive &&
+        netArchError == null;
 
     return ListView(
       padding: const EdgeInsets.all(14),
@@ -102,6 +143,17 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             DropdownMenu<String>(
+              initialSelection: backend,
+              label: const Text('Backend'),
+              width: 150,
+              inputDecorationTheme: Theme.of(context).inputDecorationTheme,
+              dropdownMenuEntries: const [
+                DropdownMenuEntry(value: 'pybullet', label: 'PyBullet'),
+                DropdownMenuEntry(value: 'mjx', label: 'MJX'),
+              ],
+              onSelected: (value) => state.setTrainingBackend(value ?? backend),
+            ),
+            DropdownMenu<String>(
               initialSelection: algorithm,
               label: const Text('Algorithm'),
               width: 130,
@@ -127,6 +179,34 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
                 ),
               ),
             ),
+            SizedBox(
+              width: 120,
+              child: TextField(
+                controller: numEnvsController,
+                enabled: backend == 'mjx',
+                keyboardType: TextInputType.number,
+                style: monoStyle(context, fontSize: 13),
+                decoration: const InputDecoration(labelText: 'MJX envs'),
+                onChanged: (value) => state.setTrainingNumEnvs(
+                  int.tryParse(value.trim()) ?? state.trainingNumEnvs,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 220,
+              child: TextField(
+                controller: netArchController,
+                focusNode: netArchFocusNode,
+                keyboardType: TextInputType.text,
+                style: monoStyle(context, fontSize: 13),
+                decoration: InputDecoration(
+                  labelText: 'MLP hidden layers',
+                  hintText: '256, 256 (blank = default)',
+                  errorText: netArchError,
+                ),
+                onChanged: (value) => _updateNetArch(state, value),
+              ),
+            ),
             FilledButton.icon(
               onPressed: canStart
                   ? () => state.startTraining(
@@ -139,7 +219,7 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
                     )
                   : null,
               icon: const Icon(Icons.school),
-              label: Text('Start $algorithm'),
+              label: Text(backend == 'mjx' ? 'Start MJX' : 'Start $algorithm'),
             ),
             OutlinedButton.icon(
               onPressed: state.stopTraining,
@@ -188,6 +268,17 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
                 label: 'FPS',
                 value: '${training['fps']}',
                 icon: Icons.speed,
+              ),
+            StatChip(
+              label: 'Backend',
+              value: '${training['backend'] ?? backend}',
+              icon: Icons.memory_outlined,
+            ),
+            if (backend == 'mjx' || training['backend'] == 'mjx')
+              StatChip(
+                label: 'Envs',
+                value: '${training['num_envs'] ?? state.trainingNumEnvs}',
+                icon: Icons.grid_view_outlined,
               ),
             StatChip(
               label: 'Observation size',
@@ -586,7 +677,7 @@ class TuningCardState extends State<TuningCard> {
           if (!setupReady) ...[
             const SizedBox(height: 8),
             Text(
-              'Tuning unlocks after the current environment setup is saved and valid.',
+              'Tuning unlocks after the current environment setup is valid.',
               style: TextStyle(
                 fontSize: 11.5,
                 color: scheme.onSurface.withValues(alpha: 0.55),

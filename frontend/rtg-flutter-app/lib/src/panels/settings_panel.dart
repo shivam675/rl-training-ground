@@ -243,7 +243,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
                 ButtonSegment(
                   value: 'act',
                   icon: Icon(Icons.bolt, size: 16),
-                  label: Text('Act freely'),
+                  label: Text('Apply changes'),
                 ),
                 ButtonSegment(
                   value: 'ask',
@@ -260,9 +260,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         const SizedBox(height: 6),
         Text(
           state.agentAutonomy == 'ask'
-              ? 'State-changing tools (load robot, start training, …) pause '
-                    'for your confirmation — a Run button appears in chat.'
-              : 'The agent executes state-changing tools immediately.',
+              ? 'Robot loads, run control, and evaluations pause for confirmation. Reversible config edits still show Final changes and Undo.'
+              : 'Reversible config edits apply immediately and show Final changes. Run-control tools still require an explicit user request.',
           style: TextStyle(
             fontSize: 12,
             color: scheme.onSurface.withValues(alpha: 0.55),

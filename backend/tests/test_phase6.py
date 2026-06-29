@@ -7,7 +7,12 @@ import asyncio
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.agents.notifier import AgentNotifier
+from backend.agents.notifier import (
+    AgentNotifier,
+    episode_length_collapsed,
+    reward_regressed,
+)
+from backend.agents.router import route_message
 from backend.agents.tools import AGENT_TOOL_SCOPES, DESTRUCTIVE_TOOLS, AgentToolbox
 from backend.main import app, toolbox
 
@@ -21,8 +26,15 @@ def client():
 
 
 def test_tool_scopes_filter_definitions():
+    assert AGENT_TOOL_SCOPES["helper"] is None
     all_names = {t["function"]["name"] for t in toolbox.definitions()}
     assert DESTRUCTIVE_TOOLS <= all_names
+    start_training = next(
+        t for t in toolbox.definitions() if t["function"]["name"] == "start_training"
+    )
+    net_arch = start_training["function"]["parameters"]["properties"]["net_arch"]
+    assert net_arch["minItems"] == 1
+    assert net_arch["maxItems"] == 4
 
     reward_scope = AGENT_TOOL_SCOPES["reward"]
     reward_tools = {
@@ -71,6 +83,38 @@ def test_ask_autonomy_requires_confirmation(client):
     assert confirmed.get("ok") is True
 
 
+def test_router_sends_complex_rl_work_to_nvidia():
+    route = route_message("Make this robot walk forward and create the reward.")
+    assert route.provider == "openai"
+    assert route.label == "NVIDIA"
+    assert route.force_confirmation is True
+
+
+def test_router_sends_simple_operations_to_ollama():
+    route = route_message("Show me the latest training status.")
+    assert route.provider == "ollama"
+    assert route.label == "Ollama"
+    assert route.force_confirmation is False
+
+
+def test_routed_complex_tools_require_confirmation(client):
+    routed = AgentToolbox(
+        toolbox.sim,
+        toolbox.training_worker,
+        toolbox.runs_dir,
+        config_service=toolbox.config_service,
+        confirm_tools={"patch_env_config", "apply_behavior_goal"},
+    )
+    result = asyncio.run(
+        routed.execute(
+            "patch_env_config",
+            {"patch": {"rewards": [{"key": "stay_alive", "enabled": True}]}},
+        )
+    )
+    assert result.get("requires_confirmation") is True
+    assert result["tool"] == "patch_env_config"
+
+
 def test_execute_tool_endpoint(client):
     res = client.post(
         "/agents/execute_tool",
@@ -101,3 +145,10 @@ def test_notifier_dedupes_repeats():
     assert first["id"] == second["id"], "exact repeat should be deduped"
     assert third["id"] != first["id"]
     assert len(notifier.history) == 2
+
+
+def test_training_health_thresholds_wait_for_meaningful_regression():
+    assert not reward_regressed(100.0, 70.0, 100, 900, 10_000)
+    assert reward_regressed(100.0, 70.0, 100, 2200, 10_000)
+    assert not episode_length_collapsed(200, 120, 2000)
+    assert episode_length_collapsed(200, 80, 2000)

@@ -13,13 +13,14 @@ Layout (one launch exe; backend + Python runtime hidden in runtime\):
   urdf_files\                  sample robots (only with -IncludeSamples)
 
 Standalone = the end user needs NO Python install. The backend is frozen with
-PyInstaller from the dev venv (.venv312), which already has pybullet + CPU torch
-+ all deps. CPU torch only (no CUDA): smaller and runs on any machine; PyBullet
-still renders 3D on the GPU via its OpenGL GUI window.
+PyInstaller from the dev venv (.venv312). The build installs CUDA Torch when
+needed and refuses to package a CPU-only backend. Stable-Baselines3 then uses
+its automatic CUDA device selection for training, tuning, and evaluation.
 
 Usage:
   scripts\build_app.ps1                       full build (uses .venv312)
   scripts\build_app.ps1 -Python C:\env\python.exe   use a different env
+  scripts\build_app.ps1 -TorchIndexUrl https://download.pytorch.org/whl/cu128
   scripts\build_app.ps1 -SkipBackend          rebuild frontend + repackage only
   scripts\build_app.ps1 -SkipFlutter          rebuild backend + repackage only
   scripts\build_app.ps1 -Clean                wipe build\ and dist\ first
@@ -30,6 +31,7 @@ frozen backend writes config/runs beside itself.
 param(
     [string]$Python = "",
     [string]$AppName = "EasyRTG",
+    [string]$TorchIndexUrl = "https://download.pytorch.org/whl/cu128",
     [switch]$IncludeSamples,   # bundle the whole urdf_files\ tree (~1.8 GB); off by default
     [switch]$SkipFlutter,
     [switch]$SkipBackend,
@@ -82,10 +84,18 @@ try {
         $buildPy = Resolve-BuildPython
         Write-Host "Build Python: $buildPy"
 
-        Section "Verify deps (pybullet + torch) and PyInstaller"
-        & $buildPy -c "import pybullet, torch; print('pybullet OK; torch', torch.__version__, '(' + ('cuda' if torch.version.cuda else 'cpu') + ')')"
+        Section "Ensure CUDA Torch"
+        & $buildPy -c "import torch,sys; sys.exit(0 if torch.version.cuda and torch.cuda.is_available() else 1)"
         if ($LASTEXITCODE -ne 0) {
-            throw "Build env missing pybullet/torch. Use -Python with an env that has them (e.g. .venv312)."
+            Write-Host "Installing CUDA Torch from $TorchIndexUrl ..."
+            & $buildPy -m pip install --upgrade --force-reinstall --no-deps torch --index-url $TorchIndexUrl
+            if ($LASTEXITCODE -ne 0) { throw "CUDA Torch installation failed." }
+        }
+
+        Section "Verify GPU deps (pybullet + CUDA torch) and PyInstaller"
+        & $buildPy -c "import pybullet,torch,sys; ok=bool(torch.version.cuda and torch.cuda.is_available()); print('pybullet OK; torch', torch.__version__, 'CUDA', torch.version.cuda, '-', torch.cuda.get_device_name(0) if ok else 'UNAVAILABLE'); sys.exit(0 if ok else 1)"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Build requires CUDA Torch and a working NVIDIA GPU/driver. Use -TorchIndexUrl to select another official CUDA wheel channel."
         }
         & $buildPy -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('PyInstaller') else 1)"
         if ($LASTEXITCODE -ne 0) {
@@ -94,7 +104,7 @@ try {
             if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed." }
         }
 
-        Section "Freeze backend (PyInstaller, onedir, CPU)"
+        Section "Freeze backend (PyInstaller, onedir, CUDA)"
         # Excludes: big libs not used at runtime. Do NOT exclude matplotlib or
         # pandas: stable_baselines3.common.logger imports both at module top, so
         # excluding them breaks ALL training/tuning (SB3 is imported lazily, so
@@ -113,6 +123,7 @@ try {
             '--collect-all', 'stable_baselines3',
             '--collect-all', 'gymnasium',
             '--collect-all', 'uvicorn',
+            '--collect-binaries', 'torch',
             # matplotlib is imported lazily by the Optuna/SB3 tuning path; without
             # it "Hyperparameter tuning failed: No module named 'matplotlib'".
             # collect-all grabs its mpl-data + dynamically-loaded backends.
@@ -144,10 +155,17 @@ try {
         #    + pandas, optuna, pybullet). Catches over-aggressive excludes that a
         #    /health check would miss (SB3 is imported lazily at train/tune time).
         $beExe = Join-Path $frozenBackend 'backend.exe'
-        $scOut = & $beExe --selfcheck 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) {
+        $env:EASYRTG_REQUIRE_CUDA = '1'
+        try {
+            $scOut = & $beExe --selfcheck 2>&1 | Out-String
+            $scCode = $LASTEXITCODE
+        }
+        finally {
+            Remove-Item Env:\EASYRTG_REQUIRE_CUDA -ErrorAction SilentlyContinue
+        }
+        if ($scCode -ne 0) {
             Write-Host $scOut
-            throw "Frozen backend --selfcheck failed (a needed module was excluded)."
+            throw "Frozen backend --selfcheck failed (CUDA or another needed module is unavailable)."
         }
         Write-Host "  selfcheck: $($scOut.Trim())" -ForegroundColor Green
 

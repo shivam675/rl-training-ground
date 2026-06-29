@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.models import TrainingStartRequest, TrainingStatus
-from backend.rl.gym_env import RtgGymEnv
+from backend.rl.env_factory import make_vecnormalize_env
 
 TELEMETRY_EVERY_CALLS = 50
 MAX_HISTORY_POINTS = 2000
@@ -90,6 +90,8 @@ def build_algo_kwargs(req: TrainingStartRequest) -> dict[str, Any]:
         "gamma": req.gamma,
         "verbose": 1,
     }
+    if req.seed is not None:
+        kwargs["seed"] = req.seed
     if req.algorithm in ("PPO", "A2C"):
         kwargs["n_steps"] = req.n_steps
         if req.ent_coef is not None:
@@ -175,8 +177,6 @@ class TrainingWorker:
         try:
             from stable_baselines3 import A2C, PPO, SAC, TD3
             from stable_baselines3.common.callbacks import BaseCallback
-            from stable_baselines3.common.monitor import Monitor
-            from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
             algorithms = {"PPO": PPO, "SAC": SAC, "TD3": TD3, "A2C": A2C}
             # Monitor (inside) logs RAW episode rewards for telemetry/eval, while
@@ -184,25 +184,14 @@ class TrainingWorker:
             # observations and scaled rewards — without this, raw-scale obs make
             # PPO struggle to learn. The Monitor-before-VecNormalize order keeps
             # the reward chart in real units.
-            monitored = Monitor(RtgGymEnv(req.config), filename=str(run_dir / "monitor.csv"))
-            venv = DummyVecEnv([lambda: monitored])
-            resume_stats = (
-                Path(req.resume_from).parent / "vecnormalize.pkl"
-                if req.resume_from
-                else None
+            env = make_vecnormalize_env(
+                req.config,
+                gamma=req.gamma,
+                monitor_path=run_dir / "monitor.csv",
+                seed=req.seed,
+                resume_from=req.resume_from,
+                training=True,
             )
-            if resume_stats is not None and resume_stats.exists():
-                env = VecNormalize.load(str(resume_stats), venv)
-                env.training = True
-                env.norm_reward = True
-            else:
-                env = VecNormalize(
-                    venv,
-                    norm_obs=True,
-                    norm_reward=True,
-                    clip_obs=10.0,
-                    gamma=req.gamma,
-                )
 
             worker = self
 

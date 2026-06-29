@@ -49,8 +49,18 @@ def _selfcheck() -> int:
     for name in mods:
         importlib.import_module(name)
     from stable_baselines3 import A2C, PPO, SAC, TD3  # noqa: F401
+    import torch
 
-    print("selfcheck OK:", ", ".join(mods))
+    cuda_available = bool(torch.version.cuda and torch.cuda.is_available())
+    if os.environ.get("EASYRTG_REQUIRE_CUDA") == "1" and not cuda_available:
+        raise RuntimeError("CUDA Torch is required but unavailable in the frozen backend.")
+
+    device = torch.cuda.get_device_name(0) if cuda_available else "CPU"
+    print(
+        "selfcheck OK:",
+        ", ".join(mods),
+        f"| torch {torch.__version__} | CUDA {torch.version.cuda} | {device}",
+    )
     return 0
 
 

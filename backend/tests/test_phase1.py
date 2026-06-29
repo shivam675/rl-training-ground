@@ -185,7 +185,16 @@ def test_toolbox_rejects_unknown_tool():
 
 def test_toolbox_start_training_end_to_end(client):
     client.post("/simulation/load_urdf", json={"path": "r2d2.urdf"})
-    client.post("/env/save_config", json=None)
+    actions = client.get("/robot/actions").json().get("actions", [])
+    assert actions, "r2d2 has actuated joints"
+    client.post(
+        "/env/config/patch",
+        json={
+            "observations": [{"key": "base_position", "enabled": True}],
+            "actions": [{"joint_index": actions[0]["joint_index"], "enabled": True}],
+            "rewards": [{"key": "stay_alive", "enabled": True}],
+        },
+    )
     result = asyncio.run(
         toolbox.execute("start_training", {"total_timesteps": 64, "n_steps": 32})
     )

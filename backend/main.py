@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import logging
 import logging.handlers
@@ -23,7 +24,8 @@ from backend.agents.ollama_client import OllamaClient
 from backend.agents.openai_client import OpenAIClient
 from backend.agents.reward_agent import RewardAgent
 from backend.agents.robot_inspector_agent import RobotInspectorAgent
-from backend.agents.tools import AgentToolbox
+from backend.agents.router import route_message
+from backend.agents.tools import DESTRUCTIVE_TOOLS, AgentToolbox
 from backend.agents.training_monitor_agent import TrainingMonitorAgent
 from backend.config_service import ConfigService
 from backend.models import (
@@ -32,6 +34,7 @@ from backend.models import (
     AppPreferences,
     AgentChatRequest,
     EnvConfig,
+    EnvActionTestRequest,
     EvaluationRequest,
     GravityRequest,
     HealthResponse,
@@ -46,6 +49,7 @@ from backend.rl.advisor import advise
 from backend.rl.evaluation import EvaluationWorker, run_evaluation
 from backend.rl.goal_rewards import apply_behavior_goal
 from backend.rl.reward_builder import default_reward_components, evaluate_reward
+from backend.rl.mjx_training_worker import MJXTrainingWorker
 from backend.rl.training_worker import TrainingWorker
 from backend.rl.tuner import TunerWorker
 from backend.run_registry import RunRegistry
@@ -63,6 +67,7 @@ APP_PREFERENCES_PATH = APP_SETTINGS_DIR / "preferences.json"
 
 sim = PyBulletManager(interactive=True)  # live viewport: GUI/GPU on Windows
 training_worker = TrainingWorker(RUNS_DIR)
+mjx_training_worker = MJXTrainingWorker(RUNS_DIR)
 notifier = AgentNotifier()
 config_service = ConfigService(PROJECT_CONFIG_DIR)
 registry = RunRegistry(RUNS_DIR)
@@ -171,9 +176,45 @@ async def health() -> HealthResponse:
         renderer=sim.renderer_name,
         pybullet_connected=sim.connected,
         uptime_seconds=round(time.time() - STARTED_AT, 1),
-        training_active=training_worker.status.active,
-        training_alive=training_worker.is_alive(),
+        training_active=training_worker.status.active or mjx_training_worker.status.active,
+        training_alive=training_worker.is_alive() and mjx_training_worker.is_alive(),
     )
+
+
+def _optional_module(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
+
+
+def _jax_devices() -> list[str]:
+    if not _optional_module("jax"):
+        return []
+    try:
+        import jax
+
+        return [str(device) for device in jax.devices()]
+    except Exception:
+        return []
+
+
+@app.get("/simulation/backends")
+async def simulation_backends() -> dict[str, Any]:
+    missing = [
+        name
+        for name in ("mujoco", "jax", "brax", "flax", "optax", "chex", "orbax")
+        if not _optional_module(name)
+    ]
+    mujoco_ok = _optional_module("mujoco")
+    jax_ok = _optional_module("jax")
+    return {
+        "default": "pybullet",
+        "jax_devices": _jax_devices(),
+        "missing": missing,
+        "backends": [
+            {"name": "pybullet", "available": True, "role": "legacy preview/training"},
+            {"name": "mujoco", "available": mujoco_ok, "role": "single-env preview"},
+            {"name": "mjx", "available": mujoco_ok and jax_ok, "role": "batched training"},
+        ],
+    }
 
 
 @app.post("/simulation/load_urdf")
@@ -326,17 +367,12 @@ async def action_test(req: ActionTestRequest) -> dict[str, Any]:
 @app.get("/env/config")
 async def get_env_config() -> dict[str, Any]:
     config = config_service.current_or_default(sim)
-    return {
-        "config": config.model_dump(),
-        "problems": config_service.validate(config, sim),
-        "saved": config_service.saved_matches(sim),
-        "vector_sizes": config_service.vector_sizes(config, sim),
-    }
+    return config_service.response(config, sim)
 
 
 @app.post("/env/save_config")
 async def save_config(config: EnvConfig | None = None) -> dict[str, Any]:
-    resolved = config or config_service.current_or_default(sim)
+    resolved = config_service.ensure_identity(config or config_service.current_or_default(sim))
     problems = config_service.validate(resolved, sim)
     if problems:
         raise fail(
@@ -346,24 +382,53 @@ async def save_config(config: EnvConfig | None = None) -> dict[str, Any]:
             "can be derived.",
         )
     path = config_service.save(resolved)
-    return {"ok": True, "path": str(path)}
+    return {"ok": True, "path": str(path), **config_service.response(resolved, sim)}
 
 
 @app.post("/env/config/patch")
-async def patch_env_config(patch: dict[str, Any]) -> dict[str, Any]:
+async def patch_env_config(payload: dict[str, Any]) -> dict[str, Any]:
     """Partial config update from the builders UI or the agent."""
-    config = config_service.current_or_default(sim)
     try:
-        updated = config_service.apply_patch(config, patch)
+        patch = payload.get("patch") if isinstance(payload.get("patch"), dict) else payload
+        source = str(payload.get("source", "ui"))
+        reason = payload.get("reason")
+        result = config_service.patch_current(
+            sim,
+            patch,
+            source=source,
+            reason=str(reason) if reason is not None else None,
+        )
     except Exception as exc:
         raise fail(exc, code="invalid_config_patch")
-    config_service.save(updated)
-    return {
-        "ok": True,
-        "config": updated.model_dump(),
-        "problems": config_service.validate(updated, sim),
-        "vector_sizes": config_service.vector_sizes(updated, sim),
-    }
+    return {"ok": True, **result}
+
+
+@app.post("/env/config/undo")
+async def undo_env_config() -> dict[str, Any]:
+    return {"ok": True, **config_service.undo(sim)}
+
+
+@app.post("/env/action_test")
+async def env_action_test(req: EnvActionTestRequest) -> dict[str, Any]:
+    config = config_service.current_or_default(sim)
+    problems = []
+    if not config.urdf_path:
+        problems.append("No URDF path set â€” load a robot first.")
+    if not any(action.enabled for action in config.actions):
+        problems.append("No actions enabled â€” the policy cannot control anything.")
+    if problems:
+        raise fail(
+            "; ".join(problems),
+            code="invalid_env_config",
+            hint="Enable at least one action before applying config-aware actions.",
+        )
+    try:
+        return sim.apply_configured_actions(
+            [action for action in config.actions if action.enabled],
+            req.values,
+        )
+    except Exception as exc:
+        raise fail(exc, code="action_test_failed")
 
 
 PROJECT_FORMAT = "easyrtg-project"
@@ -380,6 +445,8 @@ async def project_new() -> dict[str, Any]:
     try:
         if config_service.path.exists():
             config_service.path.unlink()
+        if config_service.history_path.exists():
+            config_service.history_path.unlink()
     except OSError:
         pass
     notifier.notify(
@@ -515,13 +582,25 @@ def _other_job_active(*, exclude: str) -> str | None:
     PyBullet world and are CPU-bound, so only one may run at a time — the start
     endpoints use this to refuse a second concurrent job.
     """
-    if exclude != "training" and training_worker.status.active:
+    if exclude != "training" and (
+        training_worker.status.active or mjx_training_worker.status.active
+    ):
         return "a training run"
     if exclude != "tuning" and bool(tuner_worker.status.get("active")):
         return "hyperparameter tuning"
     if exclude != "evaluation" and bool(evaluation_worker.status.get("active")):
         return "an evaluation"
     return None
+
+
+def _current_training_worker():
+    if mjx_training_worker.status.active:
+        return mjx_training_worker
+    if training_worker.status.active:
+        return training_worker
+    if mjx_training_worker.status.run_dir and training_worker.status.run_dir is None:
+        return mjx_training_worker
+    return training_worker
 
 
 @app.post("/training/start")
@@ -533,14 +612,28 @@ async def training_start(req: TrainingStartRequest) -> dict[str, Any]:
             code="backend_busy",
             hint="Only one job runs at a time — wait for it to finish or stop it.",
         )
-    if req.config is None:
-        if not config_service.saved_matches(sim):
+    if training_worker.status.active or mjx_training_worker.status.active:
+        raise fail(
+            "Training is already running.",
+            code="backend_busy",
+            hint="Stop the active run before starting another.",
+        )
+    if req.sim_backend == "mjx":
+        try:
+            return mjx_training_worker.start(req)
+        except Exception as exc:
             raise fail(
-                "Environment setup has not been saved for the loaded robot.",
-                code="env_not_ready",
-                hint="Load a robot, configure observations/actions/rewards, then Save env.",
+                exc,
+                code="training_start_failed",
+                hint="Install MuJoCo/JAX/Brax dependencies or check the Logs tab.",
             )
-        req.config = config_service.load()
+    if req.sim_backend == "mujoco":
+        raise fail(
+            "MuJoCo preview training is not implemented; use pybullet or mjx.",
+            code="training_start_failed",
+        )
+    if req.config is None:
+        req.config = config_service.current_or_default(sim)
     problems = config_service.validate(req.config, sim)
     if problems:
         raise fail(
@@ -562,13 +655,16 @@ async def training_start(req: TrainingStartRequest) -> dict[str, Any]:
 
 @app.post("/training/stop")
 async def training_stop() -> dict[str, Any]:
+    if mjx_training_worker.status.active:
+        return mjx_training_worker.stop()
     return training_worker.stop()
 
 
 @app.get("/training/status")
 async def training_status() -> dict[str, Any]:
-    status = training_worker.status.model_dump()
-    status["events"] = training_worker.drain_events()
+    worker = _current_training_worker()
+    status = worker.status.model_dump()
+    status["events"] = worker.drain_events()
     return status
 
 
@@ -587,19 +683,25 @@ async def tuning_start(payload: dict[str, Any]) -> dict[str, Any]:
             code="backend_busy",
             hint="Only one job runs at a time — wait for it to finish or stop it.",
         )
-    if not config_service.saved_matches(sim):
+    config = config_service.current_or_default(sim)
+    problems = config_service.validate(config, sim)
+    if problems:
         raise fail(
-            "Environment setup has not been saved for the loaded robot.",
-            code="env_not_ready",
-            hint="Load a robot, configure observations/actions/rewards, then Save env.",
+            "; ".join(problems),
+            code="invalid_env_config",
+            hint="Load a robot and ensure observations, actions and rewards "
+            "are enabled before tuning.",
         )
     try:
+        seed_value = payload.get("seed")
+        seed = int(seed_value) if seed_value not in (None, "") else None
         return tuner_worker.start(
             algorithm=str(payload.get("algorithm", "PPO")),
             n_trials=max(1, min(50, int(payload.get("n_trials", 8)))),
             timesteps_per_trial=max(
                 500, min(50_000, int(payload.get("timesteps_per_trial", 2000)))
             ),
+            seed=seed,
         )
     except Exception as exc:
         raise fail(exc, code="tuning_start_failed")
@@ -618,13 +720,14 @@ async def tuning_stop() -> dict[str, Any]:
 @app.get("/training/telemetry")
 async def training_telemetry(since: int = 0) -> dict[str, Any]:
     """Telemetry history for the current/most recent run, for live charts."""
-    points = training_worker.telemetry
+    worker = _current_training_worker()
+    points = worker.telemetry
     since = max(0, since)
     return {
         "total": len(points),
         "since": since,
         "points": points[since:],
-        "active": training_worker.status.active,
+        "active": worker.status.active,
     }
 
 
@@ -795,6 +898,30 @@ def build_active_client():
     return OllamaClient(settings.ollama)
 
 
+def build_client_for_provider(provider: str):
+    settings = load_agent_settings()
+    if provider == "openai":
+        return OpenAIClient(settings.openai)
+    return OllamaClient(settings.ollama)
+
+
+def toolbox_for_route(force_confirmation: bool) -> AgentToolbox:
+    if not force_confirmation:
+        return toolbox
+    return AgentToolbox(
+        sim,
+        training_worker,
+        RUNS_DIR,
+        notifier,
+        config_service,
+        registry,
+        evaluation_worker,
+        tuner_worker,
+        autonomy_provider=lambda: load_app_preferences().agent_autonomy,
+        confirm_tools=DESTRUCTIVE_TOOLS | {"patch_env_config", "apply_behavior_goal"},
+    )
+
+
 def agent_class(name: str):
     agents = {
         "helper": HelperAgent,
@@ -950,15 +1077,18 @@ def build_agent_context(client_context: dict[str, Any]) -> dict[str, Any]:
     context["training"] = {"active": status.active, "message": status.message}
     try:
         env_config = config_service.current_or_default(sim)
+        problems = config_service.validate(env_config, sim)
         context["setup"] = {
-            "saved": config_service.saved_matches(sim),
+            "valid": not problems,
+            "revision": config_service.revision(),
             "observations_enabled": [
                 o.key for o in env_config.observations if o.enabled
             ],
             "actions_total": len(env_config.actions),
             "actions_enabled": [a.joint_index for a in env_config.actions if a.enabled],
             "rewards_enabled": [r.key for r in env_config.rewards if r.enabled],
-            "problems": config_service.validate(env_config, sim),
+            "problems": problems,
+            "warnings": config_service.warnings(env_config, sim),
         }
     except Exception:
         context["setup"] = None
@@ -968,8 +1098,14 @@ def build_agent_context(client_context: dict[str, Any]) -> dict[str, Any]:
 @app.post("/agents/chat")
 async def agents_chat(req: AgentChatRequest) -> dict[str, Any]:
     try:
-        agent = agent_class(req.agent)(build_active_client(), toolbox)
-        return await agent.run(req.message, build_agent_context(req.context))
+        route = route_message(req.message)
+        agent = agent_class(req.agent)(
+            build_client_for_provider(route.provider),
+            toolbox_for_route(route.force_confirmation),
+        )
+        result = await agent.run(req.message, build_agent_context(req.context))
+        result["route"] = route.__dict__
+        return result
     except Exception as exc:
         raise fail(exc)
 
@@ -978,7 +1114,12 @@ async def agents_chat(req: AgentChatRequest) -> dict[str, Any]:
 async def agents_chat_stream(req: AgentChatRequest) -> StreamingResponse:
     async def events():
         try:
-            agent = agent_class(req.agent)(build_active_client(), toolbox)
+            route = route_message(req.message)
+            yield json.dumps({"type": "route", **route.__dict__}, default=str) + "\n"
+            agent = agent_class(req.agent)(
+                build_client_for_provider(route.provider),
+                toolbox_for_route(route.force_confirmation),
+            )
             context = build_agent_context(req.context)
             async for event in agent.stream_events(
                 req.message, context, history=req.history[-16:]
@@ -1174,7 +1315,11 @@ async def ws_simulation(ws: WebSocket):
                 await asyncio.sleep(1 / 60)
                 continue
             last_broadcast_seq = -1
-            if training_worker.status.active or bool(tuner_worker.status.get("active")):
+            if (
+                training_worker.status.active
+                or mjx_training_worker.status.active
+                or bool(tuner_worker.status.get("active"))
+            ):
                 # Pause live rendering while training/tuning runs. render_frame holds
                 # the process-global PyBullet lock for the whole EGL getCameraImage;
                 # the training thread shares that lock, so continuous rendering of a
@@ -1206,8 +1351,9 @@ async def ws_training_logs(ws: WebSocket):
     await ws.accept()
     try:
         while True:
-            await ws.send_json({"type": "status", **training_worker.status.model_dump()})
-            for event in training_worker.drain_events():
+            worker = _current_training_worker()
+            await ws.send_json({"type": "status", **worker.status.model_dump()})
+            for event in worker.drain_events():
                 await ws.send_json(event)
             await asyncio.sleep(1.0)
     except WebSocketDisconnect:

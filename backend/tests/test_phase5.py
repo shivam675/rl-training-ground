@@ -16,6 +16,18 @@ from backend.rl.training_worker import build_algo_kwargs
 def client():
     with TestClient(app) as test_client:
         test_client.post("/simulation/load_urdf", json={"path": "r2d2.urdf"})
+        actions = test_client.get("/robot/actions").json().get("actions", [])
+        if actions:
+            test_client.post(
+                "/env/config/patch",
+                json={
+                    "observations": [{"key": "base_position", "enabled": True}],
+                    "actions": [
+                        {"joint_index": actions[0]["joint_index"], "enabled": True}
+                    ],
+                    "rewards": [{"key": "stay_alive", "enabled": True}],
+                },
+            )
         yield test_client
 
 
@@ -45,6 +57,16 @@ def test_build_algo_kwargs_per_algorithm():
 
     arch = build_algo_kwargs(TrainingStartRequest(algorithm="PPO", net_arch=[64, 64]))
     assert arch["policy_kwargs"] == {"net_arch": [64, 64]}
+
+
+def test_net_arch_is_bounded_at_the_api_boundary():
+    assert TrainingStartRequest(net_arch=[256, 256]).net_arch == [256, 256]
+    with pytest.raises(ValueError):
+        TrainingStartRequest(net_arch=[])
+    with pytest.raises(ValueError):
+        TrainingStartRequest(net_arch=[8, 64])
+    with pytest.raises(ValueError):
+        TrainingStartRequest(net_arch=[64, 64, 64, 64, 64])
 
 
 def test_tuner_end_to_end(client):

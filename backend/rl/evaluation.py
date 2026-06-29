@@ -10,7 +10,7 @@ from typing import Any, Callable
 import numpy as np
 
 from backend.models import EnvConfig, EvaluationRequest
-from backend.rl.gym_env import RtgGymEnv
+from backend.rl.env_factory import make_vecnormalize_env
 
 
 def _load_normalization(run_dir: Path):
@@ -75,8 +75,13 @@ def evaluate_model(
     real-time pace so the user can watch the learned policy move.
     """
     model = _load_model(model_path)
-    norm = _load_normalization(model_path.parent)
-    env = RtgGymEnv(config)
+    env = make_vecnormalize_env(
+        config,
+        gamma=0.99,
+        resume_from=str(model_path),
+        training=False,
+    )
+    raw_env = _unwrap_env(env)
     step_dt = config.timestep * config.frame_skip  # wall-time per env step
     render_dt = 1.0 / 30.0
     results = []
@@ -84,12 +89,12 @@ def evaluate_model(
         if broadcast is not None:
             # render_frame() advances physics when running=True; the env
             # drives stepping itself, so renders must be render-only.
-            env.manager.running = False
-            broadcast.begin(env.manager, label)
+            raw_env.manager.running = False
+            broadcast.begin(raw_env.manager, label)
         for episode in range(episodes):
             if should_stop is not None and should_stop():
                 break
-            obs, _ = env.reset()
+            obs = env.reset()
             total_reward = 0.0
             length = 0
             done = False
@@ -103,19 +108,18 @@ def evaluate_model(
                 if broadcast is not None:
                     while broadcast.paused and not (should_stop and should_stop()):
                         time.sleep(0.05)
-                policy_obs = _normalize_obs(obs, norm) if norm is not None else obs
-                action, _ = model.predict(policy_obs, deterministic=deterministic)
-                obs, reward, terminated, truncated, _ = env.step(action)
-                total_reward += float(reward)
+                action, _ = model.predict(obs, deterministic=deterministic)
+                obs, reward, dones, _ = env.step(action)
+                total_reward += float(reward[0])
                 length += 1
-                done = bool(terminated or truncated)
+                done = bool(dones[0])
                 if broadcast is not None:
                     now = time.monotonic()
                     if now - last_render >= render_dt:
                         last_render = now
                         broadcast.label = f"{label} · ep {episode + 1}/{episodes}"
                         broadcast.publish(
-                            env.manager.render_frame(broadcast.width, broadcast.height)
+                            raw_env.manager.render_frame(broadcast.width, broadcast.height)
                         )
                     time.sleep(step_dt)  # real-time pacing so motion is visible
             result = {"episode": episode + 1, "reward": total_reward, "length": length}
@@ -135,6 +139,17 @@ def evaluate_model(
         "mean_reward": sum(r["reward"] for r in results) / max(1, len(results)),
         "mean_length": sum(r["length"] for r in results) / max(1, len(results)),
     }
+
+
+def _unwrap_env(env):
+    current = env
+    if hasattr(current, "venv"):
+        current = current.venv
+    if hasattr(current, "envs"):
+        current = current.envs[0]
+    while hasattr(current, "env"):
+        current = current.env
+    return current
 
 
 def run_evaluation(req: EvaluationRequest, runs_dir: Path) -> dict[str, Any]:

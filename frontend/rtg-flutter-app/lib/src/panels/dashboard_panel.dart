@@ -55,9 +55,11 @@ class DashboardPanel extends ConsumerWidget {
         tab: AppPage.rewards,
       ),
       _SetupStep(
-        label: 'Configuration saved',
-        done: state.envConfigSaved,
-        detail: 'Saved automatically as you edit',
+        label: 'Configuration valid',
+        done: state.configProblems.isEmpty,
+        detail: state.configWarnings.isEmpty
+            ? 'Ready for training'
+            : '${state.configWarnings.length} warning(s)',
         tab: AppPage.rewards,
       ),
     ];
@@ -186,6 +188,32 @@ class DashboardPanel extends ConsumerWidget {
                     style: TextStyle(
                       fontSize: 12,
                       color: context.colors.warning,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        if (state.configWarnings.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              color: context.colors.info.withValues(alpha: 0.08),
+              border: Border.all(
+                color: context.colors.info.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final warning in state.configWarnings)
+                  Text(
+                    'Review: $warning',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.colors.info,
                     ),
                   ),
               ],
@@ -345,8 +373,8 @@ class _UnlockBanner extends StatelessWidget {
           Expanded(
             child: Text(
               unlocked
-                  ? 'Setup complete — Training and Evaluation are unlocked.'
-                  : 'Complete the checklist to unlock Training and Evaluation.',
+                  ? 'Setup complete - Training is ready. Evaluation stays available for saved runs.'
+                  : 'Resolve setup issues to unlock Training. Evaluation stays available for saved runs.',
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,

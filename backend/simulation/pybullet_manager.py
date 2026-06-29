@@ -16,7 +16,8 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 
-from backend.models import ActionTestRequest, LoadUrdfRequest
+from backend.models import ActionSelection, ActionTestRequest, LoadUrdfRequest
+from backend.rl.action_mapping import map_normalized_actions
 from backend.simulation.camera_controller import OrbitCamera
 from backend.simulation.robot_inspector import inspect_robot
 from backend.simulation.urdf_preprocessor import prepare_urdf_for_pybullet
@@ -714,43 +715,65 @@ class PyBulletManager:
             if len(req.values) != len(joint_indices):
                 raise ValueError(f"Expected {len(joint_indices)} action values, got {len(req.values)}.")
             for joint_index, value in zip(joint_indices, req.values):
-                limits = self._motor_limits.get(joint_index)
-                if limits is None:
-                    info = p.getJointInfo(self.robot_body, joint_index, physicsClientId=self.cid)
-                    force = float(info[10]) if float(info[10]) > 0 else 50.0
-                    velocity = float(info[11]) if float(info[11]) > 0 else 10.0
-                    limits = (force, velocity)
-                    self._motor_limits[joint_index] = limits
-                force, velocity = limits
-                if req.mode == "position":
-                    p.setJointMotorControl2(
-                        self.robot_body,
-                        joint_index,
-                        p.POSITION_CONTROL,
-                        targetPosition=float(value),
-                        force=force,
-                        maxVelocity=velocity,
-                        physicsClientId=self.cid,
-                    )
-                elif req.mode == "velocity":
-                    p.setJointMotorControl2(
-                        self.robot_body,
-                        joint_index,
-                        p.VELOCITY_CONTROL,
-                        targetVelocity=float(value),
-                        force=force,
-                        physicsClientId=self.cid,
-                    )
-                else:
-                    p.setJointMotorControl2(
-                        self.robot_body,
-                        joint_index,
-                        p.TORQUE_CONTROL,
-                        force=float(value),
-                        physicsClientId=self.cid,
-                    )
+                self._apply_motor_control_locked(joint_index, req.mode, float(value))
             self.step(SIM_SUBSTEPS)
             return {"ok": True, "applied": len(joint_indices)}
+
+    def apply_configured_actions(
+        self,
+        actions: list[ActionSelection],
+        normalized_values: list[float],
+    ) -> dict[str, Any]:
+        commands = map_normalized_actions(actions, normalized_values)
+        with self.lock:
+            if self.robot_body is None:
+                raise RuntimeError("No robot loaded.")
+            for command in commands:
+                self._apply_motor_control_locked(
+                    int(command["joint_index"]),
+                    str(command["mode"]),
+                    float(command["value"]),
+                )
+            self.step(SIM_SUBSTEPS)
+            return {"ok": True, "applied": len(commands), "commands": commands}
+
+    def _apply_motor_control_locked(self, joint_index: int, mode: str, value: float) -> None:
+        assert self.robot_body is not None
+        limits = self._motor_limits.get(joint_index)
+        if limits is None:
+            info = p.getJointInfo(self.robot_body, joint_index, physicsClientId=self.cid)
+            force = float(info[10]) if float(info[10]) > 0 else 50.0
+            velocity = float(info[11]) if float(info[11]) > 0 else 10.0
+            limits = (force, velocity)
+            self._motor_limits[joint_index] = limits
+        force, velocity = limits
+        if mode == "position":
+            p.setJointMotorControl2(
+                self.robot_body,
+                joint_index,
+                p.POSITION_CONTROL,
+                targetPosition=float(value),
+                force=force,
+                maxVelocity=velocity,
+                physicsClientId=self.cid,
+            )
+        elif mode == "velocity":
+            p.setJointMotorControl2(
+                self.robot_body,
+                joint_index,
+                p.VELOCITY_CONTROL,
+                targetVelocity=float(value),
+                force=force,
+                physicsClientId=self.cid,
+            )
+        else:
+            p.setJointMotorControl2(
+                self.robot_body,
+                joint_index,
+                p.TORQUE_CONTROL,
+                force=float(value),
+                physicsClientId=self.cid,
+            )
 
     def status(self) -> dict[str, Any]:
         requested_width, requested_height = self._last_requested_size
