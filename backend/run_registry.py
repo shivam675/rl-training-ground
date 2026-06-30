@@ -60,10 +60,12 @@ class RunRegistry:
     def _summary(self, run_dir: Path) -> dict[str, Any]:
         entry: dict[str, Any] = {
             "name": run_dir.name,
-            "model_saved": (run_dir / "model.zip").exists(),
+            "model_saved": (run_dir / "model.zip").exists()
+            or (run_dir / "policy_params.pkl").exists(),
         }
         config = self._read_json(run_dir / "config.json")
         if config:
+            entry["backend"] = config.get("sim_backend", "pybullet")
             entry["algorithm"] = config.get("algorithm")
             entry["total_timesteps"] = config.get("total_timesteps")
             entry["learning_rate"] = config.get("learning_rate")
@@ -116,6 +118,8 @@ class RunRegistry:
         with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
             for artifact in (
                 "model.zip",
+                "policy_params.pkl",
+                "metrics.json",
                 "config.json",
                 "telemetry.jsonl",
                 "monitor.csv",

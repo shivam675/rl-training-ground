@@ -422,6 +422,7 @@ class AppState extends ChangeNotifier {
   }
 
   Map<String, dynamic>? health;
+  Map<String, dynamic>? simulationBackends;
   Map<String, dynamic>? robotInfo;
   Map<String, dynamic>? observations;
   Map<String, dynamic>? actions;
@@ -461,6 +462,8 @@ class AppState extends ChangeNotifier {
     final next = value == 'mjx' ? 'mjx' : 'pybullet';
     if (trainingBackend == next) return;
     trainingBackend = next;
+    final blocker = mjxTrainingBlocker;
+    if (next == 'mjx' && blocker != null) message = blocker;
     notifyListeners();
   }
 
@@ -505,6 +508,28 @@ class AppState extends ChangeNotifier {
     return api.getJson('/agent/capabilities');
   }
 
+  List<String> get missingSimulationDeps => [
+    for (final dep in (simulationBackends?['missing'] as List? ?? []))
+      dep.toString(),
+  ];
+
+  bool get mjxAvailable =>
+      ((simulationBackends?['backends'] as List?) ?? []).any(
+        (item) =>
+            item is Map && item['name'] == 'mjx' && item['available'] == true,
+      );
+
+  String? get mjxTrainingBlocker {
+    final missing = missingSimulationDeps;
+    if (missing.isNotEmpty) {
+      return 'Install MJX dependencies: ${missing.join(', ')}';
+    }
+    if (simulationBackends != null && !mjxAvailable) {
+      return 'MJX backend unavailable.';
+    }
+    return null;
+  }
+
   void setStreamResolutionScale(double value) {
     streamResolutionScale = value.clamp(0.5, 1.5).toDouble();
     message =
@@ -515,6 +540,7 @@ class AppState extends ChangeNotifier {
   Future<void> refreshAll() async {
     await guard(() async {
       health = await api.getJson('/health');
+      simulationBackends = await api.getJson('/simulation/backends');
       robotInfo = await api.getJson('/robot/info');
       observations = await api.getJson('/robot/observations');
       actions = await api.getJson('/robot/actions');
@@ -671,7 +697,7 @@ class AppState extends ChangeNotifier {
       await api.postJson('/training/start', {
         'sim_backend': trainingBackend,
         'num_envs': trainingBackend == 'mjx' ? trainingNumEnvs : 1,
-        if (trainingBackend == 'mjx') 'mjx_task': 'point_reach',
+        if (trainingBackend == 'mjx') 'mjx_task': 'robot',
         'algorithm': algorithm,
         'total_timesteps': totalTimesteps,
         'learning_rate': params['learning_rate'],
@@ -720,7 +746,11 @@ class AppState extends ChangeNotifier {
 
   List<String> trainingBlockers() {
     final blockers = <String>[];
-    if (trainingBackend == 'mjx') return blockers;
+    if (trainingBackend == 'mjx') {
+      final blocker = mjxTrainingBlocker;
+      if (blocker != null) blockers.add(blocker);
+      return blockers;
+    }
     if (!hasRobot) blockers.add('load a robot');
     if (!hasEnabledObservations) blockers.add('enable observations');
     if (!hasEnabledActions) blockers.add('enable actions');

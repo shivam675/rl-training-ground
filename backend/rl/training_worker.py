@@ -89,6 +89,7 @@ def build_algo_kwargs(req: TrainingStartRequest) -> dict[str, Any]:
         "learning_rate": req.learning_rate,
         "gamma": req.gamma,
         "verbose": 1,
+        "device": _torch_training_device(),
     }
     if req.seed is not None:
         kwargs["seed"] = req.seed
@@ -110,6 +111,14 @@ def build_algo_kwargs(req: TrainingStartRequest) -> dict[str, Any]:
     if req.net_arch:
         kwargs["policy_kwargs"] = {"net_arch": [int(n) for n in req.net_arch]}
     return kwargs
+
+
+def _torch_training_device() -> str:
+    try:
+        import torch
+    except Exception:
+        return "cpu"
+    return "cuda" if torch.version.cuda and torch.cuda.is_available() else "cpu"
 
 
 class TrainingWorker:
@@ -235,6 +244,7 @@ class TrainingWorker:
                                 "episode_length_mean": length_mean,
                                 "fps": round(fps, 1),
                                 "time": round(now, 2),
+                                "device": worker.status.device,
                             }
                         )
                         if reward_mean is not None:
@@ -282,12 +292,15 @@ class TrainingWorker:
                     return not worker._stop.is_set()
 
             kwargs = build_algo_kwargs(req)
+            self.status.device = kwargs["device"]
 
             if req.resume_from:
                 resume_path = Path(req.resume_from)
                 if not resume_path.exists():
                     raise FileNotFoundError(f"Resume model not found: {resume_path}")
-                model = algorithms[req.algorithm].load(str(resume_path), env=env)
+                model = algorithms[req.algorithm].load(
+                    str(resume_path), env=env, device=kwargs["device"]
+                )
                 reset_num_timesteps = False
             else:
                 model = algorithms[req.algorithm](req.policy_type, env, **kwargs)
@@ -322,6 +335,7 @@ class TrainingWorker:
                 episode_reward=self.status.episode_reward,
                 episode_length=self.status.episode_length,
                 message=message,
+                device=self.status.device,
             )
             self.events.put({"type": "training_complete", "run_dir": str(run_dir)})
         except Exception as exc:
@@ -343,6 +357,7 @@ class TrainingWorker:
                 timestep=self.status.timestep,
                 total_timesteps=req.total_timesteps,
                 message=f"failed: {exc}{note}",
+                device=self.status.device,
             )
             self.events.put(
                 {"type": "training_error", "error": str(exc), "salvaged": salvaged}

@@ -128,7 +128,15 @@ class ConfigService:
             )
             if entry is None:
                 continue
-            for field in ("enabled", "control_mode", "scale_low", "scale_high"):
+            for field in (
+                "enabled",
+                "control_mode",
+                "scale_low",
+                "scale_high",
+                "kp",
+                "kd",
+                "torque_limit",
+            ):
                 if field in action_patch:
                     entry[field] = action_patch[field]
 
@@ -210,6 +218,12 @@ class ConfigService:
                 problems.append(
                     f"Action joint {action.joint_index}: action range is too large for stable control."
                 )
+            for field in ("kp", "kd", "torque_limit"):
+                value = getattr(action, field)
+                if value is not None and (not math.isfinite(value) or value < 0):
+                    problems.append(
+                        f"Action joint {action.joint_index}: {field} must be a finite non-negative number."
+                    )
         dr = config.domain_randomization
         if dr.enabled:
             for label, bounds in (

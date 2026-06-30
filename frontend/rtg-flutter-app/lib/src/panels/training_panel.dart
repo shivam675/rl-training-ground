@@ -84,6 +84,16 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
     }
     final training = state.trainingStatus ?? {};
     final running = training['active'] == true;
+    final statusBackend = running
+        ? '${training['backend'] ?? backend}'
+        : backend;
+    final statusNumEnvs = running
+        ? '${training['num_envs'] ?? state.trainingNumEnvs}'
+        : '${state.trainingNumEnvs}';
+    final statusObsSize =
+        (training['observation_size'] as num?)?.toInt() ?? state.obsVectorSize;
+    final statusActionSize =
+        (training['action_size'] as num?)?.toInt() ?? state.actionVectorSize;
     final statusMessage = '${training['message'] ?? 'idle'}';
     final timestep = (training['timestep'] as num?)?.toInt() ?? 0;
     final totalTimesteps = (training['total_timesteps'] as num?)?.toInt() ?? 0;
@@ -217,9 +227,9 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
                           10000,
                       hyperparams: trainingParams,
                     )
-                  : null,
+              : null,
               icon: const Icon(Icons.school),
-              label: Text(backend == 'mjx' ? 'Start MJX' : 'Start $algorithm'),
+              label: Text(backend == 'mjx' ? 'Start MJX robot' : 'Start $algorithm'),
             ),
             OutlinedButton.icon(
               onPressed: state.stopTraining,
@@ -271,23 +281,23 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
               ),
             StatChip(
               label: 'Backend',
-              value: '${training['backend'] ?? backend}',
+              value: statusBackend,
               icon: Icons.memory_outlined,
             ),
-            if (backend == 'mjx' || training['backend'] == 'mjx')
+            if (statusBackend == 'mjx')
               StatChip(
                 label: 'Envs',
-                value: '${training['num_envs'] ?? state.trainingNumEnvs}',
+                value: statusNumEnvs,
                 icon: Icons.grid_view_outlined,
               ),
             StatChip(
               label: 'Observation size',
-              value: '${state.obsVectorSize}',
+              value: '$statusObsSize',
               icon: Icons.visibility_outlined,
             ),
             StatChip(
               label: 'Action size',
-              value: '${state.actionVectorSize}',
+              value: '$statusActionSize',
               icon: Icons.gamepad_outlined,
             ),
           ],

@@ -67,6 +67,9 @@ class ActionSelection(BaseModel):
     upper_limit: float | None = None
     max_force: float | None = None
     max_velocity: float | None = None
+    kp: float | None = None
+    kd: float | None = None
+    torque_limit: float | None = None
 
 
 class RewardComponent(BaseModel):
@@ -152,6 +155,7 @@ class TrainingStartRequest(BaseModel):
 class TrainingStatus(BaseModel):
     active: bool
     run_dir: str | None = None
+    model_path: str | None = None
     timestep: int = 0
     total_timesteps: int = 0
     episode_reward: float | None = None
@@ -161,6 +165,8 @@ class TrainingStatus(BaseModel):
     backend: str = "pybullet"
     num_envs: int = 1
     device: str | None = None
+    observation_size: int | None = None
+    action_size: int | None = None
 
 
 class EvaluationRequest(BaseModel):
