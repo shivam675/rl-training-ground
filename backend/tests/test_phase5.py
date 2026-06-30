@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import sys
 import time
+import types
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app, tuner_worker
 from backend.models import TrainingStartRequest
-from backend.rl.training_worker import build_algo_kwargs
+from backend.rl.training_worker import build_algo_kwargs, _torch_training_device
 
 
 @pytest.fixture(scope="module")
@@ -57,6 +59,17 @@ def test_build_algo_kwargs_per_algorithm():
 
     arch = build_algo_kwargs(TrainingStartRequest(algorithm="PPO", net_arch=[64, 64]))
     assert arch["policy_kwargs"] == {"net_arch": [64, 64]}
+
+
+def test_sb3_prefers_cuda_when_torch_can_use_it(monkeypatch):
+    fake_torch = types.SimpleNamespace(
+        version=types.SimpleNamespace(cuda="12.8"),
+        cuda=types.SimpleNamespace(is_available=lambda: True),
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
+    assert _torch_training_device() == "cuda"
+    assert build_algo_kwargs(TrainingStartRequest())["device"] == "cuda"
 
 
 def test_net_arch_is_bounded_at_the_api_boundary():

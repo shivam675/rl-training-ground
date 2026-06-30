@@ -74,6 +74,26 @@ registry = RunRegistry(RUNS_DIR)
 broadcast = FrameBroadcast()
 evaluation_worker = EvaluationWorker(registry, notifier, broadcast)
 tuner_worker = TunerWorker(config_service, sim, notifier)
+
+
+def start_training_request(req: TrainingStartRequest) -> dict[str, Any]:
+    if req.sim_backend == "mjx":
+        if req.config is None:
+            req.config = config_service.current_or_default(sim)
+        problems = config_service.validate(req.config, sim)
+        if problems:
+            raise ValueError("; ".join(problems))
+        return mjx_training_worker.start(req)
+    if req.sim_backend == "mujoco":
+        raise ValueError("MuJoCo preview training is not implemented; use pybullet or mjx.")
+    if req.config is None:
+        req.config = config_service.current_or_default(sim)
+    problems = config_service.validate(req.config, sim)
+    if problems:
+        raise ValueError("; ".join(problems))
+    return training_worker.start(req)
+
+
 toolbox = AgentToolbox(
     sim,
     training_worker,
@@ -84,6 +104,7 @@ toolbox = AgentToolbox(
     evaluation_worker,
     tuner_worker,
     autonomy_provider=lambda: load_app_preferences().agent_autonomy,
+    training_starter=start_training_request,
 )
 STARTED_AT = time.time()
 
@@ -618,38 +639,19 @@ async def training_start(req: TrainingStartRequest) -> dict[str, Any]:
             code="backend_busy",
             hint="Stop the active run before starting another.",
         )
-    if req.sim_backend == "mjx":
-        try:
-            return mjx_training_worker.start(req)
-        except Exception as exc:
-            raise fail(
-                exc,
-                code="training_start_failed",
-                hint="Install MuJoCo/JAX/Brax dependencies or check the Logs tab.",
-            )
-    if req.sim_backend == "mujoco":
-        raise fail(
-            "MuJoCo preview training is not implemented; use pybullet or mjx.",
-            code="training_start_failed",
-        )
-    if req.config is None:
-        req.config = config_service.current_or_default(sim)
-    problems = config_service.validate(req.config, sim)
-    if problems:
-        raise fail(
-            "; ".join(problems),
-            code="invalid_env_config",
-            hint="Load a robot and ensure observations, actions and rewards "
-            "are enabled before training.",
-        )
     try:
-        return training_worker.start(req)
+        return start_training_request(req)
+    except ValueError as exc:
+        raise fail(
+            exc,
+            code="invalid_env_config",
+            hint="Load a robot and configure observations, actions and rewards before training.",
+        )
     except Exception as exc:
         raise fail(
             exc,
             code="training_start_failed",
-            hint="A run may already be active — stop it first, or check the "
-            "Logs tab for the underlying error.",
+            hint="Install MuJoCo/JAX/Brax dependencies for MJX, stop any active run, or check the Logs tab.",
         )
 
 
@@ -919,6 +921,7 @@ def toolbox_for_route(force_confirmation: bool) -> AgentToolbox:
         tuner_worker,
         autonomy_provider=lambda: load_app_preferences().agent_autonomy,
         confirm_tools=DESTRUCTIVE_TOOLS | {"patch_env_config", "apply_behavior_goal"},
+        training_starter=start_training_request,
     )
 
 

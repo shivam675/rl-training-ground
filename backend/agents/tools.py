@@ -8,6 +8,7 @@ exposes, so anything the user can do in the UI the agent can do too.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 from pathlib import Path
 from typing import Any, Callable
 
@@ -38,6 +39,7 @@ DESTRUCTIVE_TOOLS = {
 # Read-only tools, safe for every agent in every mode.
 READ_TOOLS = {
     "get_health",
+    "get_simulation_backends",
     "get_robot_info",
     "get_robot_dynamics",
     "get_observations",
@@ -78,6 +80,7 @@ class AgentToolbox:
         tuner_worker=None,
         autonomy_provider=None,
         confirm_tools: set[str] | None = None,
+        training_starter: Callable[[TrainingStartRequest], dict[str, Any]] | None = None,
     ):
         self.sim = sim
         self.training_worker = training_worker
@@ -90,6 +93,7 @@ class AgentToolbox:
         # Callable returning "act" or "ask"; defaults to acting freely.
         self.autonomy_provider = autonomy_provider or (lambda: "act")
         self.confirm_tools = confirm_tools or set()
+        self.training_starter = training_starter or training_worker.start
 
     # ------------------------------------------------------------------ schema
 
@@ -117,6 +121,10 @@ class AgentToolbox:
 
         return [
             tool("get_health", "Backend health: renderer name and PyBullet connection state."),
+            tool(
+                "get_simulation_backends",
+                "Available simulation/training backends, MJX dependencies and JAX devices.",
+            ),
             tool("get_robot_info", "Currently loaded robot: name, joints, links, limits, warnings."),
             tool(
                 "get_robot_dynamics",
@@ -242,6 +250,21 @@ class AgentToolbox:
                         "enum": ["PPO", "SAC", "TD3", "A2C"],
                         "description": "Algorithm, default PPO",
                     },
+                    "sim_backend": {
+                        "type": "string",
+                        "enum": ["pybullet", "mjx"],
+                        "description": "Training backend. Use mjx for batched MuJoCo/MJX robot training.",
+                    },
+                    "num_envs": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "MJX batched env count, e.g. 256 or 1024.",
+                    },
+                    "mjx_task": {
+                        "type": "string",
+                        "enum": ["robot"],
+                        "description": "MJX robot task using the current EnvConfig.",
+                    },
                     "total_timesteps": {"type": "integer", "description": "Default 10000"},
                     "learning_rate": {"type": "number", "description": "Default 0.0003"},
                     "batch_size": {"type": "integer", "description": "Default 64"},
@@ -362,6 +385,7 @@ class AgentToolbox:
     async def _dispatch(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         handlers: dict[str, Callable[..., Any]] = {
             "get_health": self._get_health,
+            "get_simulation_backends": self._get_simulation_backends,
             "get_robot_info": self._get_robot_info,
             "get_robot_dynamics": self._get_robot_dynamics,
             "fix_robot_dynamics": self._fix_robot_dynamics,
@@ -406,6 +430,25 @@ class AgentToolbox:
         return {
             "renderer": self.sim.renderer_name,
             "pybullet_connected": self.sim.connected,
+        }
+
+    def _get_simulation_backends(self) -> dict[str, Any]:
+        try:
+            import jax
+
+            devices = [str(device) for device in jax.devices()]
+        except Exception:
+            devices = []
+        missing = [
+            name
+            for name in ("mujoco", "jax", "brax")
+            if importlib.util.find_spec(name) is None
+        ]
+        return {
+            "default": "pybullet",
+            "available": ["pybullet", "mjx"] if not missing else ["pybullet"],
+            "jax_devices": devices,
+            "missing": missing,
         }
 
     def _get_robot_info(self) -> dict[str, Any]:
@@ -526,6 +569,9 @@ class AgentToolbox:
     def _start_training(
         self,
         algorithm: str = "PPO",
+        sim_backend: str = "pybullet",
+        num_envs: int = 1,
+        mjx_task: str = "robot",
         total_timesteps: int = 10_000,
         learning_rate: float = 3e-4,
         batch_size: int = 64,
@@ -549,6 +595,9 @@ class AgentToolbox:
         seed_value = int(seed) if seed is not None else None
         req = TrainingStartRequest(
             config=config,
+            sim_backend=sim_backend,
+            num_envs=max(1, int(num_envs)),
+            mjx_task=mjx_task if sim_backend == "mjx" else "point_reach",
             algorithm=algorithm,
             total_timesteps=int(total_timesteps),
             learning_rate=float(learning_rate),
@@ -563,7 +612,7 @@ class AgentToolbox:
             net_arch=[int(size) for size in net_arch] if net_arch else None,
             seed=seed_value,
         )
-        result = self.training_worker.start(req)
+        result = self.training_starter(req)
         if self.notifier is not None:
             self.notifier.notify_threadsafe(
                 title="Agent started training",

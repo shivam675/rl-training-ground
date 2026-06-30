@@ -45,21 +45,47 @@ def _selfcheck() -> int:
     import importlib
 
     # SB3's logger imports matplotlib + pandas at module top; optuna drives tuning.
-    mods = ["matplotlib.figure", "pandas", "optuna", "stable_baselines3", "pybullet"]
+    # MJX training imports most of its heavy stack lazily from the worker.
+    mods = [
+        "matplotlib.figure",
+        "pandas",
+        "optuna",
+        "stable_baselines3",
+        "pybullet",
+        "mujoco",
+        "jax",
+        "brax",
+        "flax",
+        "optax",
+        "chex",
+        "orbax.checkpoint",
+    ]
     for name in mods:
         importlib.import_module(name)
     from stable_baselines3 import A2C, PPO, SAC, TD3  # noqa: F401
+    import jax
     import torch
 
     cuda_available = bool(torch.version.cuda and torch.cuda.is_available())
     if os.environ.get("EASYRTG_REQUIRE_CUDA") == "1" and not cuda_available:
         raise RuntimeError("CUDA Torch is required but unavailable in the frozen backend.")
 
-    device = torch.cuda.get_device_name(0) if cuda_available else "CPU"
+    jax_gpu_devices = []
+    for kind in ("gpu", "cuda"):
+        try:
+            jax_gpu_devices.extend(jax.devices(kind))
+        except Exception:
+            pass
+    if os.environ.get("EASYRTG_REQUIRE_JAX_GPU") == "1" and not jax_gpu_devices:
+        raise RuntimeError("JAX GPU is required but unavailable in the frozen backend.")
+
+    torch_device = torch.cuda.get_device_name(0) if cuda_available else "CPU"
+    jax_devices = [str(device) for device in jax.devices()]
     print(
         "selfcheck OK:",
         ", ".join(mods),
-        f"| torch {torch.__version__} | CUDA {torch.version.cuda} | {device}",
+        f"| torch {torch.__version__} | CUDA {torch.version.cuda} | {torch_device}",
+        f"| jax {jax.__version__} | backend {jax.default_backend()} | devices {jax_devices}",
     )
     return 0
 

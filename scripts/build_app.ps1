@@ -14,13 +14,16 @@ Layout (one launch exe; backend + Python runtime hidden in runtime\):
 
 Standalone = the end user needs NO Python install. The backend is frozen with
 PyInstaller from the dev venv (.venv312). The build installs CUDA Torch when
-needed and refuses to package a CPU-only backend. Stable-Baselines3 then uses
-its automatic CUDA device selection for training, tuning, and evaluation.
+needed and refuses to package a CPU-only backend. Stable-Baselines3 uses the
+backend's CUDA device selection for training, tuning, and evaluation. MJX uses
+GPU only when the build env has CUDA-enabled JAX; pass -RequireJaxGpu to fail
+the build otherwise.
 
 Usage:
   scripts\build_app.ps1                       full build (uses .venv312)
   scripts\build_app.ps1 -Python C:\env\python.exe   use a different env
   scripts\build_app.ps1 -TorchIndexUrl https://download.pytorch.org/whl/cu128
+  scripts\build_app.ps1 -RequireJaxGpu     also require CUDA-enabled JAX for MJX
   scripts\build_app.ps1 -SkipBackend          rebuild frontend + repackage only
   scripts\build_app.ps1 -SkipFlutter          rebuild backend + repackage only
   scripts\build_app.ps1 -Clean                wipe build\ and dist\ first
@@ -32,6 +35,7 @@ param(
     [string]$Python = "",
     [string]$AppName = "EasyRTG",
     [string]$TorchIndexUrl = "https://download.pytorch.org/whl/cu128",
+    [switch]$RequireJaxGpu,
     [switch]$IncludeSamples,   # bundle the whole urdf_files\ tree (~1.8 GB); off by default
     [switch]$SkipFlutter,
     [switch]$SkipBackend,
@@ -92,10 +96,50 @@ try {
             if ($LASTEXITCODE -ne 0) { throw "CUDA Torch installation failed." }
         }
 
-        Section "Verify GPU deps (pybullet + CUDA torch) and PyInstaller"
+        Section "Verify GPU deps (pybullet + CUDA torch + MJX deps) and PyInstaller"
         & $buildPy -c "import pybullet,torch,sys; ok=bool(torch.version.cuda and torch.cuda.is_available()); print('pybullet OK; torch', torch.__version__, 'CUDA', torch.version.cuda, '-', torch.cuda.get_device_name(0) if ok else 'UNAVAILABLE'); sys.exit(0 if ok else 1)"
         if ($LASTEXITCODE -ne 0) {
             throw "Build requires CUDA Torch and a working NVIDIA GPU/driver. Use -TorchIndexUrl to select another official CUDA wheel channel."
+        }
+        $mjxProbe = @'
+import os
+import sys
+
+import brax
+import chex
+import flax
+import jax
+import mujoco
+import optax
+import orbax.checkpoint
+
+gpu = []
+for kind in ("gpu", "cuda"):
+    try:
+        gpu.extend(jax.devices(kind))
+    except Exception:
+        pass
+
+devices = [str(device) for device in jax.devices()]
+print("MJX deps OK; jax", jax.__version__, "backend", jax.default_backend(), "devices", devices)
+sys.exit(0 if (os.environ.get("EASYRTG_REQUIRE_JAX_GPU") != "1" or gpu) else 2)
+'@
+        $mjxProbePath = Join-Path $buildDir 'mjx_probe.py'
+        Set-Content -LiteralPath $mjxProbePath -Value $mjxProbe -Encoding ASCII -ErrorAction Stop
+        if ($RequireJaxGpu) { $env:EASYRTG_REQUIRE_JAX_GPU = '1' }
+        try {
+            & $buildPy $mjxProbePath
+            $mjxCode = $LASTEXITCODE
+        }
+        finally {
+            Remove-Item Env:\EASYRTG_REQUIRE_JAX_GPU -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $mjxProbePath -Force -ErrorAction SilentlyContinue
+        }
+        if ($mjxCode -eq 2) {
+            throw "MJX deps are installed, but JAX GPU is unavailable. Install CUDA-enabled JAX or omit -RequireJaxGpu for a CPU-MJX build."
+        }
+        if ($mjxCode -ne 0) {
+            throw "MJX dependencies are missing or broken. Install mujoco, jax, brax, flax, optax, chex, and orbax-checkpoint."
         }
         & $buildPy -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('PyInstaller') else 1)"
         if ($LASTEXITCODE -ne 0) {
@@ -123,6 +167,14 @@ try {
             '--collect-all', 'stable_baselines3',
             '--collect-all', 'gymnasium',
             '--collect-all', 'uvicorn',
+            '--collect-all', 'mujoco',
+            '--collect-all', 'jax',
+            '--collect-all', 'jaxlib',
+            '--collect-all', 'brax',
+            '--collect-all', 'flax',
+            '--collect-all', 'optax',
+            '--collect-all', 'chex',
+            '--collect-all', 'orbax',
             '--collect-binaries', 'torch',
             # matplotlib is imported lazily by the Optuna/SB3 tuning path; without
             # it "Hyperparameter tuning failed: No module named 'matplotlib'".
@@ -132,6 +184,14 @@ try {
             '--copy-metadata', 'gymnasium',
             '--copy-metadata', 'stable_baselines3',
             '--copy-metadata', 'numpy',
+            '--copy-metadata', 'mujoco',
+            '--copy-metadata', 'jax',
+            '--copy-metadata', 'jaxlib',
+            '--copy-metadata', 'brax',
+            '--copy-metadata', 'flax',
+            '--copy-metadata', 'optax',
+            '--copy-metadata', 'chex',
+            '--copy-metadata', 'orbax-checkpoint',
             '--exclude-module', 'pytest',
             '--exclude-module', 'tkinter',
             '--exclude-module', 'IPython',
@@ -144,6 +204,10 @@ try {
             '--exclude-module', 'torchaudio',
             (Join-Path $root 'backend\run_server.py')
         )
+        foreach ($pkg in @('jax_cuda12_plugin', 'jax_cuda12_pjrt', 'jax_cuda13_plugin', 'jax_cuda13_pjrt')) {
+            & $buildPy -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('$pkg') else 1)"
+            if ($LASTEXITCODE -eq 0) { $pyiArgs += @('--collect-all', $pkg) }
+        }
         & $buildPy @pyiArgs
         if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed." }
         if (-not (Test-Path (Join-Path $frozenBackend 'backend.exe'))) {
@@ -156,12 +220,14 @@ try {
         #    /health check would miss (SB3 is imported lazily at train/tune time).
         $beExe = Join-Path $frozenBackend 'backend.exe'
         $env:EASYRTG_REQUIRE_CUDA = '1'
+        if ($RequireJaxGpu) { $env:EASYRTG_REQUIRE_JAX_GPU = '1' }
         try {
             $scOut = & $beExe --selfcheck 2>&1 | Out-String
             $scCode = $LASTEXITCODE
         }
         finally {
             Remove-Item Env:\EASYRTG_REQUIRE_CUDA -ErrorAction SilentlyContinue
+            Remove-Item Env:\EASYRTG_REQUIRE_JAX_GPU -ErrorAction SilentlyContinue
         }
         if ($scCode -ne 0) {
             Write-Host $scOut

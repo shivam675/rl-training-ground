@@ -162,13 +162,17 @@ class SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(top: 6, bottom: 8),
       child: Row(
         children: [
-          Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 11.5,
-              letterSpacing: 1.1,
-              color: scheme.primary,
+          Flexible(
+            child: Text(
+              title.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 11.5,
+                letterSpacing: 1.1,
+                color: scheme.primary,
+              ),
             ),
           ),
           const SizedBox(width: 10),

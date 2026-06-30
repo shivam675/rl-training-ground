@@ -18,6 +18,19 @@ class EmptyApi extends BackendApi {
   ) async => {'ok': true};
 }
 
+class MissingMjxApi extends EmptyApi {
+  int trainingStarts = 0;
+
+  @override
+  Future<Map<String, dynamic>> postJson(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    if (path == '/training/start') trainingStarts += 1;
+    return {'ok': true};
+  }
+}
+
 void main() {
   testWidgets('EasyRTG shell renders', (WidgetTester tester) async {
     // EasyRTG is a desktop app; the default 800x600 test window is below its
@@ -38,12 +51,8 @@ void main() {
     tester,
   ) async {
     final state = AppState(EmptyApi())
-      ..observations = {
-        'reward_components': const [],
-      }
-      ..envConfig = {
-        'rewards': const [],
-      }
+      ..observations = {'reward_components': const []}
+      ..envConfig = {'rewards': const []}
       ..message = 'Connected to backend.'
       ..lastRewardResult = {
         'reward': 0.5,
@@ -66,5 +75,19 @@ void main() {
     expect(find.text('stay_alive'), findsOneWidget);
     expect(find.textContaining('Check reward scale.'), findsOneWidget);
   });
-}
 
+  test('AppState blocks MJX training when dependencies are missing', () async {
+    final api = MissingMjxApi();
+    final state = AppState(api)
+      ..simulationBackends = {
+        'missing': ['mujoco', 'jax', 'brax'],
+      };
+    addTearDown(state.dispose);
+
+    state.setTrainingBackend('mjx');
+    await state.startTraining(null);
+
+    expect(api.trainingStarts, 0);
+    expect(state.message, contains('Install MJX dependencies'));
+  });
+}
