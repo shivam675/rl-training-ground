@@ -4,6 +4,12 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# ROS 2 / Gazebo, when sourced in the shell, injects its Python 3.14
+# site-packages onto PYTHONPATH. That leaks into the 3.12 .venv, shadows
+# packages with ABI-incompatible 3.14 builds and breaks imports/pytest. Run the
+# backend with a clean PYTHONPATH so only the venv is on sys.path.
+unset PYTHONPATH
+
 if [[ -z "${PYTHON:-}" && -x .venv/bin/python ]]; then
   PYTHON=".venv/bin/python"
 fi

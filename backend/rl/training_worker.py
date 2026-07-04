@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import math
-import queue
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -15,6 +15,23 @@ from backend.rl.env_factory import make_vecnormalize_env
 TELEMETRY_EVERY_CALLS = 50
 MAX_HISTORY_POINTS = 2000
 KEEP_CHECKPOINTS = 3
+# Backlog cap for the UI event feed. Without a cap the queue grows for the
+# whole run whenever no client is polling /training/status or the websocket.
+MAX_EVENT_BACKLOG = 512
+
+
+def _py_scalar(value: Any) -> Any:
+    """Convert numpy scalars (float32, int64, …) to plain Python types so
+    telemetry points stay JSON- and Pydantic-serializable."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return item()
+        except Exception:
+            return value
+    return value
 
 
 def _save_model_atomic(model, run_dir: Path) -> bool:
@@ -89,7 +106,7 @@ def build_algo_kwargs(req: TrainingStartRequest) -> dict[str, Any]:
         "learning_rate": req.learning_rate,
         "gamma": req.gamma,
         "verbose": 1,
-        "device": _torch_training_device(),
+        "device": _torch_training_device(req),
     }
     if req.seed is not None:
         kwargs["seed"] = req.seed
@@ -113,12 +130,38 @@ def build_algo_kwargs(req: TrainingStartRequest) -> dict[str, Any]:
     return kwargs
 
 
-def _torch_training_device() -> str:
+def _torch_training_device(req: TrainingStartRequest | None = None) -> str:
+    """Pick the SB3 training device.
+
+    Counter-intuitively, GPU is NOT the fast path for SB3 here. SB3 itself warns
+    that a small MLP policy trains *slower* on the GPU than the CPU: the network
+    is tiny and the real bottleneck is CPU env stepping, so per-step host<->device
+    copies dominate. GPU only pays off for CNN policies or large MLPs. The
+    massively-parallel GPU lane the user wants is MJX (jax.vmap over thousands of
+    envs); for SB3 the speedup comes from parallel envs (SubprocVecEnv), not CUDA.
+
+    So: use CUDA only when it actually helps (CNN or a wide net), else CPU. Set
+    EASYRTG_SB3_DEVICE=cuda|cpu to force a choice.
+    """
+    import os
+
+    forced = os.environ.get("EASYRTG_SB3_DEVICE", "").strip().lower()
+    if forced in {"cpu", "cuda"}:
+        return forced
     try:
         import torch
     except Exception:
         return "cpu"
-    return "cuda" if torch.version.cuda and torch.cuda.is_available() else "cpu"
+    if not (torch.version.cuda and torch.cuda.is_available()):
+        return "cpu"
+    if req is not None:
+        if "cnn" in (req.policy_type or "").lower():
+            return "cuda"
+        widths = [int(n) for n in (req.net_arch or [])]
+        if widths and max(widths) >= 512:
+            return "cuda"
+        return "cpu"
+    return "cpu"
 
 
 class TrainingWorker:
@@ -126,7 +169,9 @@ class TrainingWorker:
         self.runs_dir = runs_dir
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
-        self.events: queue.Queue[dict[str, Any]] = queue.Queue()
+        # deque appends/poplefts are GIL-atomic; maxlen drops the oldest event
+        # instead of growing unboundedly when nothing drains the feed.
+        self.events: deque[dict[str, Any]] = deque(maxlen=MAX_EVENT_BACKLOG)
         self.status = TrainingStatus(active=False)
         # Telemetry history for the current/most recent run. Appended from the
         # training thread, read from the event loop; list ops are GIL-atomic.
@@ -152,6 +197,7 @@ class TrainingWorker:
             run_dir=str(run_dir),
             total_timesteps=req.total_timesteps,
             message="starting",
+            num_envs=req.num_envs,
         )
         self._thread = threading.Thread(target=self._run, args=(req, run_dir), daemon=True)
         self._thread.start()
@@ -169,20 +215,22 @@ class TrainingWorker:
         return {"ok": True, "message": "Stop requested."}
 
     def record_telemetry(self, point: dict[str, Any]) -> None:
+        point = {key: _py_scalar(value) for key, value in point.items()}
         self.telemetry.append(point)
         if len(self.telemetry) > MAX_HISTORY_POINTS:
             del self.telemetry[: len(self.telemetry) - MAX_HISTORY_POINTS]
         if self._telemetry_path is not None:
             try:
                 with self._telemetry_path.open("a", encoding="utf-8") as handle:
-                    handle.write(json.dumps(point) + "\n")
+                    handle.write(json.dumps(point, default=str) + "\n")
             except OSError:
                 pass
-        self.events.put({"type": "telemetry", **point})
+        self.events.append({"type": "telemetry", **point})
 
     def _run(self, req: TrainingStartRequest, run_dir: Path) -> None:
         log_path = run_dir / "training_log.txt"
         model = None
+        env = None
         try:
             from stable_baselines3 import A2C, PPO, SAC, TD3
             from stable_baselines3.common.callbacks import BaseCallback
@@ -200,6 +248,7 @@ class TrainingWorker:
                 seed=req.seed,
                 resume_from=req.resume_from,
                 training=True,
+                n_envs=req.num_envs,
             )
 
             worker = self
@@ -218,8 +267,10 @@ class TrainingWorker:
                     buffer = list(self.model.ep_info_buffer or [])
                     if not buffer:
                         return None, None
-                    rewards = [info["r"] for info in buffer]
-                    lengths = [info["l"] for info in buffer]
+                    # SB3's Monitor records numpy scalars; coerce to Python
+                    # floats so status/telemetry stay JSON-serializable.
+                    rewards = [float(info["r"]) for info in buffer]
+                    lengths = [float(info["l"]) for info in buffer]
                     return sum(rewards) / len(rewards), sum(lengths) / len(lengths)
 
                 def _on_step(self) -> bool:
@@ -286,7 +337,7 @@ class TrainingWorker:
                         # killed or crashes before the final save.
                         _save_model_atomic(self.model, run_dir)
                         _save_vecnormalize(self.model, run_dir)
-                        worker.events.put(
+                        worker.events.append(
                             {"type": "checkpoint", "timestep": int(self.num_timesteps)}
                         )
                     return not worker._stop.is_set()
@@ -320,7 +371,6 @@ class TrainingWorker:
             if not _save_model_atomic(model, run_dir):
                 _promote_latest_checkpoint(run_dir)
             _save_vecnormalize(model, run_dir)
-            env.close()
             if callback.stop_reason:
                 message = callback.stop_reason
             elif worker._stop.is_set():
@@ -337,7 +387,7 @@ class TrainingWorker:
                 message=message,
                 device=self.status.device,
             )
-            self.events.put({"type": "training_complete", "run_dir": str(run_dir)})
+            self.events.append({"type": "training_complete", "run_dir": str(run_dir)})
         except Exception as exc:
             # Salvage whatever we can: training that ran for thousands of steps
             # (e.g. when a concurrent op disconnected the physics server) must
@@ -359,16 +409,24 @@ class TrainingWorker:
                 message=f"failed: {exc}{note}",
                 device=self.status.device,
             )
-            self.events.put(
+            self.events.append(
                 {"type": "training_error", "error": str(exc), "salvaged": salvaged}
             )
         finally:
+            # Tear the env down on EVERY exit path. Leaving it open after a
+            # crash used to strand the SubprocVecEnv worker processes (one
+            # PyBullet world each) for the backend's whole lifetime.
+            if env is not None:
+                try:
+                    env.close()
+                except Exception:
+                    pass
             time.sleep(0.05)
 
     def drain_events(self) -> list[dict[str, Any]]:
         events = []
         while True:
             try:
-                events.append(self.events.get_nowait())
-            except queue.Empty:
+                events.append(self.events.popleft())
+            except IndexError:
                 return events

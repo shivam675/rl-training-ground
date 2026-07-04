@@ -57,13 +57,23 @@ OBSERVATION_CATALOG = [
 
 
 class PyBulletManager:
-    def __init__(self, interactive: bool = False) -> None:
+    def __init__(self, interactive: bool = False, hardware_render: bool | None = None) -> None:
         # interactive=True is the single live-viewport manager. On Windows it
         # connects in GUI mode because that is the ONLY way to get a real OpenGL
         # context (PyBullet ships no EGL plugin on Windows). Background managers
         # (training/eval envs) stay interactive=False -> headless DIRECT: only
         # one GUI per process is allowed and the GL context is thread-affine.
         self.interactive = interactive
+        # hardware_render decides whether connect() loads the EGL GPU renderer
+        # plugin. Only managers that actually stream frames want it: an EGL
+        # context costs real host+GPU memory per process, and PyBullet's EGL
+        # plugin never frees graphics shapes across loadURDF/resetSimulation
+        # cycles — in training envs (which never render) that leaked the
+        # machine's RAM over thousands of episode resets. Default: the
+        # interactive viewport renders, headless managers don't.
+        self.hardware_render_requested = (
+            interactive if hardware_render is None else bool(hardware_render)
+        )
         # Shared process-wide so no two managers/threads touch pybullet at once.
         self.lock = _PYBULLET_LOCK
         self.cid: int | None = None
@@ -118,7 +128,9 @@ class PyBulletManager:
             self.gui_renderer = use_gui and self.cid >= 0
             if self.gui_renderer:
                 self._tidy_gui_window()
-            self.hardware_renderer = self.gui_renderer or self._load_egl_plugin()
+            self.hardware_renderer = self.gui_renderer or (
+                self.hardware_render_requested and self._load_egl_plugin()
+            )
             self.reset_scene(load_default=False)
 
     def _should_use_gui(self) -> bool:
@@ -272,10 +284,106 @@ class PyBulletManager:
                 flags=flags,
                 physicsClientId=self.cid,
             )
+            if req.auto_spawn_height and not req.fixed_base:
+                self._snap_robot_above_plane(req.spawn_clearance)
             self.current_request = req.model_copy(update={"path": path})
             self.sim_time = 0.0
             self._frame_loaded_robot()
             return self.robot_info()
+
+    def _snap_robot_above_plane(self, clearance: float) -> None:
+        """Shift the base vertically so the robot's lowest collision point
+        starts ``clearance`` above the ground plane.
+
+        loadURDF places the base frame at the requested height, so a robot
+        whose geometry extends below that frame (legs, wheels) spawns
+        interpenetrating the plane and the contact solver ejects it violently
+        on the first steps — garbage rewards and early terminations."""
+        assert self.cid is not None
+        if self.robot_body is None or self.plane_body is None:
+            return
+        # Signed separation from the contact solver's point of view
+        # (negative = penetrating), the exact quantity we need to zero out.
+        points = p.getClosestPoints(
+            self.robot_body, self.plane_body, 10.0, physicsClientId=self.cid
+        )
+        gap = min((float(pt[8]) for pt in points), default=None)
+        if gap is None:
+            # Robot is >10 m from the plane (or has exotic collision shapes):
+            # fall back to AABBs, which are conservative (include margin) but
+            # always available. The plane's top surface sits at z=0.
+            lows = []
+            link_indices = [-1, *range(p.getNumJoints(self.robot_body, physicsClientId=self.cid))]
+            for link_index in link_indices:
+                try:
+                    low, _ = p.getAABB(self.robot_body, link_index, physicsClientId=self.cid)
+                except Exception:
+                    continue
+                if math.isfinite(float(low[2])):
+                    lows.append(float(low[2]))
+            if not lows:
+                return
+            gap = min(lows)
+        delta = clearance - gap
+        if abs(delta) < 1e-6:
+            return
+        pos, orn = p.getBasePositionAndOrientation(self.robot_body, physicsClientId=self.cid)
+        p.resetBasePositionAndOrientation(
+            self.robot_body,
+            (pos[0], pos[1], pos[2] + delta),
+            orn,
+            physicsClientId=self.cid,
+        )
+        p.resetBaseVelocity(
+            self.robot_body, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), physicsClientId=self.cid
+        )
+
+    def reset_robot_state(self, req: LoadUrdfRequest) -> bool:
+        """In-place episode reset: teleport the base and zero all joint state
+        without tearing the world down.
+
+        Training does thousands of episode resets. Rebuilding the scene each
+        time (resetSimulation + URDF re-preprocess + loadURDF) both dominated
+        reset latency and leaked memory: PyBullet never frees renderer graphics
+        shapes across reload cycles, so long runs ate RAM until the OS killed
+        the backend. Joint motor targets from the previous episode are left in
+        place deliberately — nothing steps the simulation between reset and the
+        next action, and the policy re-commands every enabled joint on that
+        first step.
+
+        Returns False when no robot is loaded (caller falls back to a full
+        scene load)."""
+        with self.lock:
+            if self.cid is None or self.robot_body is None:
+                return False
+            p.resetBasePositionAndOrientation(
+                self.robot_body,
+                req.base_position,
+                req.base_orientation,
+                physicsClientId=self.cid,
+            )
+            p.resetBaseVelocity(
+                self.robot_body,
+                (0.0, 0.0, 0.0),
+                (0.0, 0.0, 0.0),
+                physicsClientId=self.cid,
+            )
+            for joint_index in range(p.getNumJoints(self.robot_body, physicsClientId=self.cid)):
+                p.resetJointState(
+                    self.robot_body,
+                    joint_index,
+                    targetValue=0.0,
+                    targetVelocity=0.0,
+                    physicsClientId=self.cid,
+                )
+            if req.auto_spawn_height and not req.fixed_base:
+                self._snap_robot_above_plane(req.spawn_clearance)
+            if self.current_request is not None:
+                self.current_request = req.model_copy(
+                    update={"path": self.current_request.path}
+                )
+            self.sim_time = 0.0
+            return True
 
     @staticmethod
     def _resolve_urdf_path(path: str) -> str:
@@ -611,6 +719,15 @@ class PyBulletManager:
             "vector_size": int(arr.size),
             "warnings": warnings,
         }
+
+    def base_height(self) -> float | None:
+        """True base z from the simulator — for termination checks, which must
+        not depend on observation ordering or domain-randomization noise."""
+        with self.lock:
+            if self.robot_body is None or self.cid is None:
+                return None
+            pos, _ = p.getBasePositionAndOrientation(self.robot_body, physicsClientId=self.cid)
+            return float(pos[2])
 
     def observation_vector(self, keys: list[str]) -> list[float]:
         with self.lock:

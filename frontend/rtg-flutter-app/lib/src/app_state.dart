@@ -462,6 +462,15 @@ class AppState extends ChangeNotifier {
     final next = value == 'mjx' ? 'mjx' : 'pybullet';
     if (trainingBackend == next) return;
     trainingBackend = next;
+    // Pick a sensible parallel-env default per lane: MJX vmaps thousands of envs
+    // on one GPU, while each PyBullet env is its own process (capped at CPU
+    // cores backend-side). Reset to the lane default when crossing the two
+    // regimes so a 1024 left over from MJX doesn't carry into PyBullet.
+    if (next == 'mjx' && trainingNumEnvs < 64) {
+      trainingNumEnvs = 1024;
+    } else if (next == 'pybullet' && trainingNumEnvs > 64) {
+      trainingNumEnvs = 8;
+    }
     final blocker = mjxTrainingBlocker;
     if (next == 'mjx' && blocker != null) message = blocker;
     notifyListeners();
@@ -696,7 +705,7 @@ class AppState extends ChangeNotifier {
       // No config payload: the backend builds and validates it server-side.
       await api.postJson('/training/start', {
         'sim_backend': trainingBackend,
-        'num_envs': trainingBackend == 'mjx' ? trainingNumEnvs : 1,
+        'num_envs': trainingNumEnvs,
         if (trainingBackend == 'mjx') 'mjx_task': 'robot',
         'algorithm': algorithm,
         'total_timesteps': totalTimesteps,
