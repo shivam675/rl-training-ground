@@ -226,3 +226,35 @@ __marimo__/
 backend/runs/
 backend/app_settings/
 backend/project_configs/
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.next/
+
+# Generated outputs
+saves/
+runs/
+logs/
+checkpoints/
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.pkl
+*.avi
+*.mp4
+*.zip
+*.tar
+*.tar.gz
+
+# Local/env
+.env
+*.db
