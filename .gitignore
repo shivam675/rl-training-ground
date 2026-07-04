@@ -258,3 +258,41 @@ checkpoints/
 # Local/env
 .env
 *.db
+
+# Python virtual environments
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Flutter/Dart generated files
+.dart_tool/
+build/
+frontend/rtg-flutter-app/.dart_tool/
+frontend/rtg-flutter-app/build/
+
+# Node/frontend generated files
+node_modules/
+dist/
+
+# Generated training/output data
+saves/
+runs/
+logs/
+checkpoints/
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.pkl
+*.avi
+*.mp4
+*.zip
+*.tar
+*.tar.gz
+
+# Local config
+.env
+*.db
