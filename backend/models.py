@@ -25,6 +25,13 @@ class LoadUrdfRequest(BaseModel):
     base_orientation: Quat = (0.0, 0.0, 0.0, 1.0)
     fixed_base: bool = False
     add_plane: bool = True
+    # base_position places the base *frame*, which says nothing about where
+    # the robot's lowest geometry ends up. When enabled (and the robot is not
+    # fixed-base and a plane exists), the base is shifted after loading so the
+    # lowest collision point starts spawn_clearance above the ground instead
+    # of intersecting it (which makes the contact solver catapult the robot).
+    auto_spawn_height: bool = True
+    spawn_clearance: float = Field(default=0.01, ge=0.0)
 
 
 class SimulationResetRequest(BaseModel):

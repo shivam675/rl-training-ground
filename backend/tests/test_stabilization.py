@@ -170,6 +170,9 @@ def test_action_mapping_and_policy_space_are_normalized():
     assert commands[0]["value"] == pytest.approx(5.0)
 
     class FakeManager:
+        def __init__(self, interactive=False, hardware_render=None):
+            pass
+
         def connect(self):
             pass
 
@@ -193,6 +196,9 @@ def test_action_mapping_and_policy_space_are_normalized():
 
 def test_env_rejects_empty_observations_without_fallback():
     class FakeManager:
+        def __init__(self, interactive=False, hardware_render=None):
+            pass
+
         def connect(self):
             pass
 

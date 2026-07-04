@@ -1,1 +1,4 @@
-claude --resume 32411193-1033-4fc7-a31d-0326ed9c9853
+sentinal@prime:~/code/rl-training-ground$ claude
+
+Resume this session with:
+claude --resume a60542b0-55e1-4e63-8e65-79d2000db85c

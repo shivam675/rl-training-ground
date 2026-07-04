@@ -161,7 +161,12 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
                 DropdownMenuEntry(value: 'pybullet', label: 'PyBullet'),
                 DropdownMenuEntry(value: 'mjx', label: 'MJX'),
               ],
-              onSelected: (value) => state.setTrainingBackend(value ?? backend),
+              onSelected: (value) {
+                state.setTrainingBackend(value ?? backend);
+                // setTrainingBackend may reset the env count to the lane
+                // default; reflect that in the text field.
+                numEnvsController.text = state.trainingNumEnvs.toString();
+              },
             ),
             DropdownMenu<String>(
               initialSelection: algorithm,
@@ -193,10 +198,15 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
               width: 120,
               child: TextField(
                 controller: numEnvsController,
-                enabled: backend == 'mjx',
                 keyboardType: TextInputType.number,
                 style: monoStyle(context, fontSize: 13),
-                decoration: const InputDecoration(labelText: 'MJX envs'),
+                decoration: InputDecoration(
+                  labelText: 'Parallel envs',
+                  helperText: backend == 'mjx'
+                      ? 'GPU, thousands ok'
+                      : 'capped at CPU cores',
+                  helperStyle: const TextStyle(fontSize: 10),
+                ),
                 onChanged: (value) => state.setTrainingNumEnvs(
                   int.tryParse(value.trim()) ?? state.trainingNumEnvs,
                 ),

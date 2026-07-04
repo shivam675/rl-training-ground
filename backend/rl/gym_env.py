@@ -21,12 +21,14 @@ from backend.simulation.pybullet_manager import PyBulletManager
 class RtgGymEnv(gym.Env if gym else object):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 60}
 
-    def __init__(self, config: EnvConfig, seed: int | None = None):
+    def __init__(self, config: EnvConfig, seed: int | None = None, render: bool = False):
         if gym is None or spaces is None:
             raise RuntimeError("Gymnasium is not installed. Install backend/requirements.txt.")
         self.config = config
         self.rng = np.random.default_rng(seed)
-        self.manager = PyBulletManager()
+        # render=True (evaluation playback) loads the GPU EGL renderer; plain
+        # training envs never render a frame, so they skip the EGL context.
+        self.manager = PyBulletManager(hardware_render=render)
         self.manager.connect()
         if not config.urdf_path:
             raise ValueError("Environment config must include a URDF path.")
@@ -56,13 +58,23 @@ class RtgGymEnv(gym.Env if gym else object):
         self.action_delay: deque[list[float]] = deque()
         self.steps = 0
         self.max_steps = int(config.terminations.get("max_steps", 1000))
+        # Pristine per-link (mass, lateral friction) captured once after load.
+        # Domain randomization must scale from these, not the live values:
+        # episode resets are in-place (no URDF reload), so scaling the current
+        # values would compound the random factors across episodes.
+        self._baseline_dynamics: dict[int, tuple[float, float]] | None = None
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
         if seed is not None:
             self.rng = np.random.default_rng(seed)
-        self.manager.current_request = self._reset_request()
-        self.manager.reset_scene(load_default=False)
+        request = self._reset_request()
+        # In-place reset (teleport base + zero joints). A full scene rebuild
+        # per episode leaked memory in PyBullet's renderer/mesh caches and
+        # re-ran the URDF preprocessor thousands of times per training run.
+        if not self.manager.reset_robot_state(request):
+            self.manager.current_request = request
+            self.manager.reset_scene(load_default=False)
         self._randomize_dynamics()
         self.steps = 0
         self.last_action = []
@@ -95,8 +107,13 @@ class RtgGymEnv(gym.Env if gym else object):
         )
         terminated = False
         min_height = self.config.terminations.get("min_base_height")
-        if min_height is not None and len(obs) >= 3 and obs[2] < float(min_height):
-            terminated = True
+        if min_height is not None:
+            # True simulator height, not obs[2]: the observation vector only
+            # starts with base z if base_position is enabled and listed first,
+            # and it carries sensor noise under domain randomization.
+            base_z = self.manager.base_height()
+            if base_z is not None and base_z < float(min_height):
+                terminated = True
         truncated = self.steps >= self.max_steps
         return obs, float(reward_info["reward"]), terminated, truncated, {"reward": reward_info}
 
@@ -138,20 +155,27 @@ class RtgGymEnv(gym.Env if gym else object):
             return self.base_request
         base = np.asarray(self.base_request.base_position, dtype=np.float64)
         noise = np.asarray(dr.initial_position_noise, dtype=np.float64)
+        update: dict = {}
         if np.any(noise):
-            base = base + self.rng.uniform(-noise, noise)
+            delta = self.rng.uniform(-noise, noise)
+            base = base + delta
+            if self.base_request.auto_spawn_height:
+                # Snapping recomputes the absolute base z from the robot's
+                # geometry, which would erase vertical spawn randomization.
+                # Feed the sampled z offset in as extra ground clearance
+                # instead (upward only — below-ground spawns are impossible).
+                update["spawn_clearance"] = self.base_request.spawn_clearance + max(
+                    0.0, float(delta[2])
+                )
         orientation = self.base_request.base_orientation
         orientation_noise = np.asarray(dr.initial_orientation_noise, dtype=np.float64)
         if np.any(orientation_noise):
             base_euler = np.asarray(p.getEulerFromQuaternion(orientation), dtype=np.float64)
             perturbed = base_euler + self.rng.uniform(-orientation_noise, orientation_noise)
             orientation = tuple(float(v) for v in p.getQuaternionFromEuler(perturbed.tolist()))
-        return self.base_request.model_copy(
-            update={
-                "base_position": tuple(float(v) for v in base),
-                "base_orientation": orientation,
-            }
-        )
+        update["base_position"] = tuple(float(v) for v in base)
+        update["base_orientation"] = orientation
+        return self.base_request.model_copy(update=update)
 
     def _randomize_dynamics(self) -> None:
         dr = self.config.domain_randomization
@@ -166,12 +190,20 @@ class RtgGymEnv(gym.Env if gym else object):
             cid = self.manager.cid
             if body is None or cid is None:
                 return
-            link_indices = [-1, *range(p.getNumJoints(body, physicsClientId=cid))]
-            for link_index in link_indices:
+            if self._baseline_dynamics is None:
+                self._baseline_dynamics = {}
+                link_indices = [-1, *range(p.getNumJoints(body, physicsClientId=cid))]
+                for link_index in link_indices:
+                    try:
+                        dynamics = p.getDynamicsInfo(body, link_index, physicsClientId=cid)
+                        self._baseline_dynamics[link_index] = (
+                            float(dynamics[0]),
+                            float(dynamics[1]),
+                        )
+                    except Exception:
+                        continue
+            for link_index, (mass, friction) in self._baseline_dynamics.items():
                 try:
-                    dynamics = p.getDynamicsInfo(body, link_index, physicsClientId=cid)
-                    mass = float(dynamics[0])
-                    friction = float(dynamics[1])
                     updates: dict[str, float] = {}
                     if mass > 0:
                         updates["mass"] = mass * float(self.rng.uniform(*mass_range))

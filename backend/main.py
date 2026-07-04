@@ -78,11 +78,15 @@ tuner_worker = TunerWorker(config_service, sim, notifier)
 
 def start_training_request(req: TrainingStartRequest) -> dict[str, Any]:
     if req.sim_backend == "mjx":
-        if req.config is None:
-            req.config = config_service.current_or_default(sim)
-        problems = config_service.validate(req.config, sim)
-        if problems:
-            raise ValueError("; ".join(problems))
+        # point_reach is a self-contained toy task with no URDF/robot — don't
+        # demand a loaded robot + enabled obs/actions/rewards for it. Only the
+        # "robot" task needs a validated env config.
+        if req.mjx_task != "point_reach":
+            if req.config is None:
+                req.config = config_service.current_or_default(sim)
+            problems = config_service.validate(req.config, sim)
+            if problems:
+                raise ValueError("; ".join(problems))
         return mjx_training_worker.start(req)
     if req.sim_backend == "mujoco":
         raise ValueError("MuJoCo preview training is not implemented; use pybullet or mjx.")
@@ -134,7 +138,15 @@ async def lifespan(_app: FastAPI):
     APP_SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     _setup_file_logging()
-    logging.getLogger("easyrtg").info("backend starting")
+    log = logging.getLogger("easyrtg")
+    log.info("backend starting")
+    # Record the interpreter + GPU state up front. If JAX ever falls back to CPU
+    # again, this line shows immediately whether the wrong Python is running
+    # (e.g. not the repo .venv with the CUDA jax plugin) vs a real CUDA problem.
+    import sys
+
+    log.info("python: %s", sys.executable)
+    log.info("jax devices: %s", _jax_devices() or "jax not importable")
     sim.connect()
     _restore_saved_robot()
     notifier.set_loop(asyncio.get_running_loop())

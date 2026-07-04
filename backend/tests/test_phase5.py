@@ -61,15 +61,44 @@ def test_build_algo_kwargs_per_algorithm():
     assert arch["policy_kwargs"] == {"net_arch": [64, 64]}
 
 
-def test_sb3_prefers_cuda_when_torch_can_use_it(monkeypatch):
+def test_sb3_device_is_policy_aware(monkeypatch):
+    # SB3's own guidance: a small MLP policy trains faster on the CPU than the
+    # GPU (tiny net, CPU-bound env stepping). Only CNN / large-MLP policies
+    # benefit from CUDA. So even when CUDA is available, the default small-MLP
+    # request must pick CPU; CNN and wide nets pick CUDA.
     fake_torch = types.SimpleNamespace(
         version=types.SimpleNamespace(cuda="12.8"),
         cuda=types.SimpleNamespace(is_available=lambda: True),
     )
     monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.delenv("EASYRTG_SB3_DEVICE", raising=False)
 
-    assert _torch_training_device() == "cuda"
-    assert build_algo_kwargs(TrainingStartRequest())["device"] == "cuda"
+    # Default = MlpPolicy, no net_arch -> CPU despite CUDA being available.
+    assert _torch_training_device(TrainingStartRequest()) == "cpu"
+    assert build_algo_kwargs(TrainingStartRequest())["device"] == "cpu"
+
+    # CNN policy -> CUDA.
+    assert _torch_training_device(TrainingStartRequest(policy_type="CnnPolicy")) == "cuda"
+
+    # Wide MLP (>=512) -> CUDA; narrow MLP -> CPU.
+    assert _torch_training_device(TrainingStartRequest(net_arch=[512, 512])) == "cuda"
+    assert _torch_training_device(TrainingStartRequest(net_arch=[64, 64])) == "cpu"
+
+    # Explicit override wins both ways.
+    monkeypatch.setenv("EASYRTG_SB3_DEVICE", "cuda")
+    assert _torch_training_device(TrainingStartRequest()) == "cuda"
+    monkeypatch.setenv("EASYRTG_SB3_DEVICE", "cpu")
+    assert _torch_training_device(TrainingStartRequest(policy_type="CnnPolicy")) == "cpu"
+
+
+def test_sb3_falls_back_to_cpu_without_cuda(monkeypatch):
+    fake_torch = types.SimpleNamespace(
+        version=types.SimpleNamespace(cuda=None),
+        cuda=types.SimpleNamespace(is_available=lambda: False),
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.delenv("EASYRTG_SB3_DEVICE", raising=False)
+    assert _torch_training_device(TrainingStartRequest(policy_type="CnnPolicy")) == "cpu"
 
 
 def test_net_arch_is_bounded_at_the_api_boundary():
