@@ -10,6 +10,25 @@ def make_raw_env(config: EnvConfig, *, seed: int | None = None) -> RtgGymEnv:
     return RtgGymEnv(config, seed=seed)
 
 
+def _resolve_resume_stats(resume_from: str | None) -> Path | None:
+    """Find the VecNormalize stats to resume with.
+
+    vecnormalize.pkl lives at the run root next to model.zip; per-step
+    checkpoints sit one level deeper in checkpoints/. So check next to the model
+    first, then the run root. Missing stats mean a fresh (zero-mean/unit-var)
+    normalizer that feeds the policy out-of-distribution obs, so resuming from a
+    checkpoint must find the run-root copy.
+    ponytail: an older checkpoint gets the run's latest stats, not its own — a
+    tiny drift, far better than resetting normalization entirely."""
+    if not resume_from:
+        return None
+    model_dir = Path(resume_from).parent
+    for cand in (model_dir / "vecnormalize.pkl", model_dir.parent / "vecnormalize.pkl"):
+        if cand.exists():
+            return cand
+    return None
+
+
 def make_vecnormalize_env(
     config: EnvConfig,
     *,
@@ -88,8 +107,8 @@ def make_vecnormalize_env(
 
     if seed is not None:
         venv.seed(seed)
-    resume_stats = Path(resume_from).parent / "vecnormalize.pkl" if resume_from else None
-    if resume_stats is not None and resume_stats.exists():
+    resume_stats = _resolve_resume_stats(resume_from)
+    if resume_stats is not None:
         env = VecNormalize.load(str(resume_stats), venv)
         env.training = training
         env.norm_reward = training

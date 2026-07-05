@@ -33,6 +33,9 @@ class MJXTrainingWorker:
         self.events: deque[dict[str, Any]] = deque(maxlen=MAX_EVENT_BACKLOG)
         self.telemetry: list[dict[str, Any]] = []
         self._telemetry_path: Path | None = None
+        # ponytail: duplicated from TrainingWorker (both workers already mirror
+        # each other) — global-index cursor for trimmed telemetry history.
+        self._telemetry_dropped = 0
         self.status = TrainingStatus(active=False, backend="mjx")
 
     def start(self, req: TrainingStartRequest) -> dict[str, Any]:
@@ -51,6 +54,7 @@ class MJXTrainingWorker:
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "config.json").write_text(req.model_dump_json(indent=2), encoding="utf-8")
         self.telemetry = []
+        self._telemetry_dropped = 0
         self._telemetry_path = run_dir / "telemetry.jsonl"
         self.status = TrainingStatus(
             active=True,
@@ -93,8 +97,10 @@ class MJXTrainingWorker:
     def record_telemetry(self, point: dict[str, Any]) -> None:
         point = {key: _py_scalar(value) for key, value in point.items()}
         self.telemetry.append(point)
-        if len(self.telemetry) > MAX_HISTORY_POINTS:
-            del self.telemetry[: len(self.telemetry) - MAX_HISTORY_POINTS]
+        excess = len(self.telemetry) - MAX_HISTORY_POINTS
+        if excess > 0:
+            del self.telemetry[:excess]
+            self._telemetry_dropped += excess
         if self._telemetry_path is not None:
             try:
                 with self._telemetry_path.open("a", encoding="utf-8") as handle:
@@ -172,7 +178,13 @@ class MJXTrainingWorker:
         point = {
             "timestep": int(step),
             "reward_mean": reward,
-            "episode_length_mean": _metric_float(metrics, "eval/episode_length", default=None),
+            # brax emits "eval/avg_episode_length"; the old "eval/episode_length"
+            # key never existed, so the UI's episode-length series was always
+            # blank -- the exact signal that would have flagged the welded-root
+            # failure (episodes ending at length 1).
+            "episode_length_mean": _metric_float(
+                metrics, "eval/avg_episode_length", "eval/episode_length", default=None
+            ),
             "fps": round(fps, 1) if fps is not None else None,
             "time": round(time.time(), 2),
             "backend": "mjx",
@@ -331,10 +343,27 @@ def _train_brax_ppo(
     _patch_removed_jax_replicated_put(jax)
     device = device or _preferred_jax_device(jax)
 
+    # Latest params brax handed us at an eval boundary. Keeping them means a
+    # user Stop still saves a usable model instead of throwing the whole run
+    # away (brax only returns params on normal completion).
+    captured: dict[str, Any] = {"params": None}
+    last_metrics: dict[str, Any] = {}
+
+    class _StopRequested(Exception):
+        pass
+
     def _progress(step, metrics):
+        last_metrics.clear()
+        last_metrics.update(metrics)
         if should_stop():
-            raise RuntimeError("stopped by user")
+            raise _StopRequested()
         progress_fn(int(step), dict(metrics))
+
+    def _capture_params(*args):
+        # brax calls policy_params_fn(current_step, make_policy, params); the
+        # params pytree is the last positional argument.
+        if args:
+            captured["params"] = args[-1]
 
     # brax PPO only calls progress_fn at evaluation boundaries. Its default
     # num_evals=1 means the callback fires exactly twice (step 0 and the final
@@ -370,6 +399,7 @@ def _train_brax_ppo(
         "num_updates_per_batch": 4,
         "seed": int(seed),
         "progress_fn": _progress,
+        "policy_params_fn": _capture_params,
     }
     network_factory = _ppo_network_factory(net_arch)
     ppo_params = inspect.signature(ppo.train).parameters
@@ -379,11 +409,20 @@ def _train_brax_ppo(
         train_kwargs["make_networks_factory"] = network_factory
 
     context = jax.default_device(device) if device is not None else contextlib.nullcontext()
-    with context:
-        make_inference_fn, params, metrics = ppo.train(
-            **_supported_kwargs(ppo.train, train_kwargs)
-        )
-    del make_inference_fn
+    try:
+        with context:
+            make_inference_fn, params, metrics = ppo.train(
+                **_supported_kwargs(ppo.train, train_kwargs)
+            )
+        del make_inference_fn
+    except _StopRequested:
+        # User stop: hand back the most recent evaluated params so the worker
+        # saves a real model. If we never reached an eval boundary there's
+        # nothing to save -- fall back to the old "stopped by user" abort.
+        if captured["params"] is None:
+            raise RuntimeError("stopped by user")
+        params = captured["params"]
+        metrics = dict(last_metrics)
     return params, {k: float(v) for k, v in dict(metrics).items() if _is_number(v)}
 
 

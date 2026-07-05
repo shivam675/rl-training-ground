@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -23,7 +25,9 @@ from backend.rl.goal_rewards import apply_behavior_goal
 
 
 # Tools that mutate state; in "ask" autonomy mode these require an explicit
-# user confirmation before they run.
+# user confirmation before they run. patch_env_config and apply_behavior_goal
+# are included because they rewrite the training config (and patch_env_config
+# can inject custom_python reward code — see execute()).
 DESTRUCTIVE_TOOLS = {
     "load_urdf",
     "reset_simulation",
@@ -34,6 +38,8 @@ DESTRUCTIVE_TOOLS = {
     "evaluate_run",
     "start_tuning",
     "fix_robot_dynamics",
+    "patch_env_config",
+    "apply_behavior_goal",
 }
 
 # Read-only tools, safe for every agent in every mode.
@@ -56,6 +62,64 @@ READ_TOOLS = {
     "get_algorithm_advice",
     "get_tuning_status",
 }
+
+# Pending confirmations proposed by the agent, awaiting the user's explicit
+# "Run". Module-level (not per-toolbox) because the instance that *proposes* a
+# tool (the force-confirmation route, or a per-request toolbox) is usually a
+# different object from the global toolbox that /agents/execute_tool runs it on.
+# A gated tool can only be executed with confirmed=True if it was actually
+# proposed here first — closing the hole where any caller could POST
+# /agents/execute_tool and run an arbitrary gated tool (e.g. a custom_python
+# reward injection) with no prior proposal. Keyed by (name, args) fingerprint.
+_PENDING_PROPOSALS: dict[str, float] = {}
+_PROPOSAL_TTL_SECONDS = 300.0
+
+
+def _proposal_key(name: str, args: dict[str, Any] | None) -> str:
+    try:
+        blob = json.dumps(args or {}, sort_keys=True, default=str)
+    except Exception:
+        blob = repr(args)
+    return f"{name}\x00{blob}"
+
+
+def _prune_proposals(now: float) -> None:
+    stale = [k for k, ts in _PENDING_PROPOSALS.items() if now - ts > _PROPOSAL_TTL_SECONDS]
+    for k in stale:
+        _PENDING_PROPOSALS.pop(k, None)
+
+
+def record_pending_proposal(name: str, args: dict[str, Any] | None) -> None:
+    """Remember that a gated tool was proposed to the user for confirmation."""
+    now = time.time()
+    _prune_proposals(now)
+    _PENDING_PROPOSALS[_proposal_key(name, args)] = now
+
+
+def consume_pending_proposal(name: str, args: dict[str, Any] | None) -> bool:
+    """True (and forget it) if this exact tool+args was proposed and is fresh."""
+    now = time.time()
+    _prune_proposals(now)
+    return _PENDING_PROPOSALS.pop(_proposal_key(name, args), None) is not None
+
+
+def _patch_injects_code(name: str, args: dict[str, Any] | None) -> bool:
+    """True if a patch_env_config call carries a non-empty custom_python reward."""
+    if name != "patch_env_config" or not isinstance(args, dict):
+        return False
+    patch = args.get("patch")
+    rewards = patch.get("rewards") if isinstance(patch, dict) else None
+    if not isinstance(rewards, list):
+        return False
+    for reward in rewards:
+        if not isinstance(reward, dict) or reward.get("key") != "custom_python":
+            continue
+        params = reward.get("params")
+        code = params.get("code") if isinstance(params, dict) else None
+        if isinstance(code, str) and code.strip():
+            return True
+    return False
+
 
 # Per-agent tool scopes; None means every tool.
 AGENT_TOOL_SCOPES: dict[str, set[str] | None] = {
@@ -81,9 +145,14 @@ class AgentToolbox:
         autonomy_provider=None,
         confirm_tools: set[str] | None = None,
         training_starter: Callable[[TrainingStartRequest], dict[str, Any]] | None = None,
+        worker_resolver: Callable[[], Any] | None = None,
     ):
         self.sim = sim
         self.training_worker = training_worker
+        # Resolves the currently-active training lane (PyBullet vs MJX). Without
+        # it the agent's status/stop/telemetry only ever saw the PyBullet worker,
+        # so agent-started MJX runs were invisible and uncontrollable.
+        self.worker_resolver = worker_resolver or (lambda: self.training_worker)
         self.runs_dir = runs_dir
         self.notifier = notifier
         self.config_service = config_service
@@ -361,10 +430,21 @@ class AgentToolbox:
     ) -> dict[str, Any]:
         if allowed is not None and name not in allowed:
             return {"error": f"Tool {name} is not available to this agent."}
-        needs_confirmation = name in self.confirm_tools or (
-            name in DESTRUCTIVE_TOOLS and self._autonomy() == "ask"
-        )
-        if not confirmed and needs_confirmation:
+        gated = self._needs_gate(name, args)
+        if confirmed:
+            # A gated tool may only run via the confirm path if the user actually
+            # confirmed *this* proposal. Ungated tools (reads, or mutators the
+            # current autonomy mode allows) run directly as before.
+            if gated and not consume_pending_proposal(name, args):
+                return {
+                    "error": (
+                        "No pending confirmation matches this action (it may have "
+                        "expired). Ask the assistant to propose it again."
+                    )
+                }
+            return await self._dispatch(name, args)
+        if gated:
+            record_pending_proposal(name, args)
             return {
                 "requires_confirmation": True,
                 "tool": name,
@@ -375,6 +455,20 @@ class AgentToolbox:
                 ),
             }
         return await self._dispatch(name, args)
+
+    def _needs_gate(self, name: str, args: dict[str, Any]) -> bool:
+        """Whether a tool must be confirmed before it runs.
+
+        Config patches carrying custom_python code are ALWAYS gated, regardless
+        of autonomy mode, because they inject code that later execs in-process
+        during training."""
+        if name in self.confirm_tools:
+            return True
+        if name in DESTRUCTIVE_TOOLS and self._autonomy() == "ask":
+            return True
+        if _patch_injects_code(name, args):
+            return True
+        return False
 
     def _autonomy(self) -> str:
         try:
@@ -481,7 +575,7 @@ class AgentToolbox:
         return self.sim.actions()
 
     def _get_training_status(self) -> dict[str, Any]:
-        return self.training_worker.status.model_dump()
+        return self.worker_resolver().status.model_dump()
 
     def _load_urdf(self, path: str, fixed_base: bool = False, add_plane: bool = True) -> dict[str, Any]:
         robot = self.sim.load_urdf(
@@ -623,16 +717,17 @@ class AgentToolbox:
         return result
 
     def _stop_training(self) -> dict[str, Any]:
-        return self.training_worker.stop()
+        return self.worker_resolver().stop()
 
     def _get_training_telemetry(self) -> dict[str, Any]:
-        points = self.training_worker.telemetry
+        worker = self.worker_resolver()
+        points = worker.telemetry
         rewards = [
             p["reward_mean"] for p in points if p.get("reward_mean") is not None
         ]
         summary: dict[str, Any] = {
-            "active": self.training_worker.status.active,
-            "status": self.training_worker.status.model_dump(),
+            "active": worker.status.active,
+            "status": worker.status.model_dump(),
             "points_recorded": len(points),
             "recent_points": points[-20:],
         }
@@ -700,7 +795,7 @@ class AgentToolbox:
     ) -> dict[str, Any]:
         if self.tuner_worker is None:
             return {"error": "Tuner unavailable."}
-        if self.training_worker.status.active:
+        if self.worker_resolver().status.active:
             return {"error": "Training is running — stop it before tuning."}
         if self.config_service is not None:
             config = self.config_service.current_or_default(self.sim)

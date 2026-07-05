@@ -9,8 +9,49 @@ from pathlib import Path
 from backend.config_service import ConfigService
 from backend.models import EnvConfig
 from backend.rl import evaluation
-from backend.rl.training_worker import _promote_latest_checkpoint, _save_model_atomic
+from backend.rl.training_worker import (
+    MAX_HISTORY_POINTS,
+    TrainingWorker,
+    _promote_latest_checkpoint,
+    _save_model_atomic,
+)
 from backend.run_registry import RunRegistry
+
+
+def test_telemetry_since_cursor_survives_history_trim(tmp_path: Path):
+    """After the front-trim, `since` (a global index) must still return the
+    correct tail — the /training/telemetry endpoint slices points[since-dropped:]."""
+    worker = TrainingWorker(tmp_path)  # not started: _telemetry_path is None, no disk writes
+    n = MAX_HISTORY_POINTS + 100
+    for i in range(n):
+        worker.record_telemetry({"i": i})
+    assert worker._telemetry_dropped == 100
+    assert len(worker.telemetry) == MAX_HISTORY_POINTS
+    assert worker.telemetry[0]["i"] == 100  # oldest kept is the 101st point
+    # A client caught up to global index `since` gets exactly the newer tail.
+    since = n - 10
+    tail = worker.telemetry[max(0, since - worker._telemetry_dropped):]
+    assert [p["i"] for p in tail] == list(range(n - 10, n))
+
+
+def test_resume_stats_fall_back_to_run_root_for_checkpoints(tmp_path: Path):
+    """Resuming from checkpoints/step_X.zip must find run_dir/vecnormalize.pkl,
+    not a nonexistent checkpoints/vecnormalize.pkl (which silently resets stats)."""
+    from backend.rl.env_factory import _resolve_resume_stats
+
+    (tmp_path / "vecnormalize.pkl").write_bytes(b"stats")
+    (tmp_path / "model.zip").write_bytes(b"final")
+    checkpoints = tmp_path / "checkpoints"
+    checkpoints.mkdir()
+    (checkpoints / "step_40000.zip").write_bytes(b"ckpt")
+
+    # Resume from the run-root model: sidecar is right there.
+    assert _resolve_resume_stats(str(tmp_path / "model.zip")) == tmp_path / "vecnormalize.pkl"
+    # Resume from a checkpoint: falls back one level up to the run root.
+    assert _resolve_resume_stats(str(checkpoints / "step_40000.zip")) == tmp_path / "vecnormalize.pkl"
+    # No stats anywhere → None (fresh normalizer, unchanged behaviour).
+    assert _resolve_resume_stats(str(tmp_path / "runs" / "other" / "model.zip")) is None
+    assert _resolve_resume_stats(None) is None
 
 
 # --------------------------------------------------------------- model salvage

@@ -20,6 +20,25 @@ KEEP_CHECKPOINTS = 3
 MAX_EVENT_BACKLOG = 512
 
 
+def _validate_custom_rewards(config: Any) -> None:
+    """Fail the run if an enabled custom_python reward doesn't pass sandbox
+    validation. This is the pre-flight that guarantees code is checked before
+    compiled_reward execs it in-process during training (config_service.validate
+    only checks reward keys, not code)."""
+    rewards = getattr(config, "rewards", None) or []
+    for reward in rewards:
+        if not getattr(reward, "enabled", False) or getattr(reward, "key", "") != "custom_python":
+            continue
+        code = str((getattr(reward, "params", None) or {}).get("code", "")).strip()
+        if not code:
+            continue
+        from backend.rl.custom_reward import validate_custom_reward
+
+        result = validate_custom_reward(code)
+        if not result.get("ok"):
+            raise ValueError(f"Custom reward rejected: {result.get('error', 'invalid code')}")
+
+
 def _py_scalar(value: Any) -> Any:
     """Convert numpy scalars (float32, int64, …) to plain Python types so
     telemetry points stay JSON- and Pydantic-serializable."""
@@ -177,6 +196,9 @@ class TrainingWorker:
         # training thread, read from the event loop; list ops are GIL-atomic.
         self.telemetry: list[dict[str, Any]] = []
         self._telemetry_path: Path | None = None
+        # Count of telemetry points trimmed off the front, so `since` from a
+        # client stays a stable global index despite the MAX_HISTORY cap.
+        self._telemetry_dropped = 0
 
     def start(self, req: TrainingStartRequest) -> dict[str, Any]:
         if self._thread and self._thread.is_alive():
@@ -191,6 +213,7 @@ class TrainingWorker:
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "config.json").write_text(req.model_dump_json(indent=2))
         self.telemetry = []
+        self._telemetry_dropped = 0
         self._telemetry_path = run_dir / "telemetry.jsonl"
         self.status = TrainingStatus(
             active=True,
@@ -217,8 +240,10 @@ class TrainingWorker:
     def record_telemetry(self, point: dict[str, Any]) -> None:
         point = {key: _py_scalar(value) for key, value in point.items()}
         self.telemetry.append(point)
-        if len(self.telemetry) > MAX_HISTORY_POINTS:
-            del self.telemetry[: len(self.telemetry) - MAX_HISTORY_POINTS]
+        excess = len(self.telemetry) - MAX_HISTORY_POINTS
+        if excess > 0:
+            del self.telemetry[:excess]
+            self._telemetry_dropped += excess
         if self._telemetry_path is not None:
             try:
                 with self._telemetry_path.open("a", encoding="utf-8") as handle:
@@ -232,6 +257,12 @@ class TrainingWorker:
         model = None
         env = None
         try:
+            # Reject unsafe/broken custom reward code BEFORE the env builds it,
+            # since compiled_reward execs it in-process every step. The check
+            # runs in this worker thread (not the event loop) and only fires
+            # when a custom_python reward is actually enabled with code.
+            _validate_custom_rewards(req.config)
+
             from stable_baselines3 import A2C, PPO, SAC, TD3
             from stable_baselines3.common.callbacks import BaseCallback
 

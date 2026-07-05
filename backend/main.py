@@ -5,6 +5,7 @@ import importlib.util
 import json
 import logging
 import logging.handlers
+import os
 import time
 import zipfile
 from contextlib import asynccontextmanager
@@ -35,7 +36,6 @@ from backend.models import (
     AgentChatRequest,
     EnvConfig,
     EnvActionTestRequest,
-    EvaluationRequest,
     GravityRequest,
     HealthResponse,
     LoadUrdfRequest,
@@ -46,7 +46,7 @@ from backend.models import (
     TrainingStartRequest,
 )
 from backend.rl.advisor import advise
-from backend.rl.evaluation import EvaluationWorker, run_evaluation
+from backend.rl.evaluation import EvaluationWorker
 from backend.rl.goal_rewards import apply_behavior_goal
 from backend.rl.reward_builder import default_reward_components, evaluate_reward
 from backend.rl.mjx_training_worker import MJXTrainingWorker
@@ -109,6 +109,9 @@ toolbox = AgentToolbox(
     tuner_worker,
     autonomy_provider=lambda: load_app_preferences().agent_autonomy,
     training_starter=start_training_request,
+    # Deferred: _current_training_worker is defined below; the lambda resolves
+    # the active PyBullet-vs-MJX lane at call time so the agent sees MJX runs.
+    worker_resolver=lambda: _current_training_worker(),
 )
 STARTED_AT = time.time()
 
@@ -150,7 +153,7 @@ async def lifespan(_app: FastAPI):
     sim.connect()
     _restore_saved_robot()
     notifier.set_loop(asyncio.get_running_loop())
-    watcher = asyncio.create_task(watch_training(notifier, training_worker))
+    watcher = asyncio.create_task(watch_training(notifier, _current_training_worker))
     try:
         yield
     finally:
@@ -159,9 +162,29 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="EasyRTG Backend", version="0.1.0", lifespan=lifespan)
+
+
+def _cors_origins() -> list[str]:
+    """Allowed browser origins for the local API.
+
+    The Flutter desktop client is a native HTTP/WS client and sends no Origin
+    header, so CORS never gates it. A wildcard (`*`) only ever helped *browsers*
+    — and on an unauthenticated loopback server that is a CSRF / DNS-rebinding
+    lever: any website the user visits could drive every endpoint (start
+    training, load_urdf, execute agent tools) against 127.0.0.1:8000. Restrict to
+    the local dev origins the bundled React frontend and self-hosted UI actually
+    use; override with EASYRTG_CORS_ORIGINS (comma-separated) when needed."""
+    override = os.environ.get("EASYRTG_CORS_ORIGINS", "").strip()
+    if override:
+        return [o.strip() for o in override.split(",") if o.strip()]
+    hosts = ("localhost", "127.0.0.1")
+    ports = ("5173", "4173", "3000", "8000")  # vite dev/preview, common dev, self
+    return [f"http://{h}:{p}" for h in hosts for p in ports]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -676,10 +699,11 @@ async def training_stop() -> dict[str, Any]:
 
 @app.get("/training/status")
 async def training_status() -> dict[str, Any]:
+    # Events are a single-consumer stream owned by /ws/training_logs (each event
+    # is popped once). Draining them here too raced that socket and stole its
+    # events, so status polling now returns status only.
     worker = _current_training_worker()
-    status = worker.status.model_dump()
-    status["events"] = worker.drain_events()
-    return status
+    return worker.status.model_dump()
 
 
 @app.get("/training/advisor")
@@ -733,25 +757,25 @@ async def tuning_stop() -> dict[str, Any]:
 
 @app.get("/training/telemetry")
 async def training_telemetry(since: int = 0) -> dict[str, Any]:
-    """Telemetry history for the current/most recent run, for live charts."""
+    """Telemetry history for the current/most recent run, for live charts.
+
+    `since` is a global point index from the run start. The worker trims its
+    in-memory history to the most recent points, so translate that global
+    cursor into a local slice via the count of points already dropped, and
+    report a global `total` so the client's new-run detection still works."""
     worker = _current_training_worker()
     points = worker.telemetry
+    dropped = getattr(worker, "_telemetry_dropped", 0)
     since = max(0, since)
+    # ponytail: a client that falls >MAX_HISTORY_POINTS behind silently skips
+    # the trimmed gap — fine at a 2000-point window with ~2s polling.
+    local = max(0, since - dropped)
     return {
-        "total": len(points),
+        "total": dropped + len(points),
         "since": since,
-        "points": points[since:],
+        "points": points[local:],
         "active": worker.status.active,
     }
-
-
-@app.post("/evaluation/run")
-async def evaluation_run(req: EvaluationRequest) -> dict[str, Any]:
-    try:
-        # Off the event loop: episodes can take minutes.
-        return await asyncio.to_thread(run_evaluation, req, RUNS_DIR)
-    except Exception as exc:
-        raise fail(exc, code="evaluation_failed")
 
 
 @app.post("/evaluation/start")

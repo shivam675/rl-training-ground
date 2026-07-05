@@ -85,7 +85,7 @@ class AgentNotifier:
         loop.call_soon_threadsafe(lambda: self.notify(**kwargs))
 
 
-async def watch_training(notifier: AgentNotifier, training_worker) -> None:
+async def watch_training(notifier: AgentNotifier, worker_resolver) -> None:
     """Detect training transitions and publish progress, results and advice.
 
     Also runs rule-based health checks on live telemetry (the "monitor agent
@@ -100,7 +100,9 @@ async def watch_training(notifier: AgentNotifier, training_worker) -> None:
     best_episode_length: int | None = None
     last_health_timestep = -1
     while True:
-        status = training_worker.status
+        # Resolve the active lane each tick so an MJX run is watched too, not
+        # only the PyBullet worker.
+        status = worker_resolver().status
         if status.active and not was_active:
             notified_milestones.clear()
             warned.clear()

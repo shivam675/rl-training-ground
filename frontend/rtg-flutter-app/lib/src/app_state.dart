@@ -23,7 +23,14 @@ class AppState extends ChangeNotifier {
     // "backend process up".
     _healthTimer = Timer.periodic(
       const Duration(seconds: 8),
-      (_) => refreshAgentHealth(),
+      (_) {
+        refreshAgentHealth();
+        // Cold start / reconnect: the one-shot refreshAll() at construction
+        // fails while the backend is still booting (~10-30s), leaving a stale
+        // "offline" header over a live 3D stream. Keep retrying the full
+        // refresh until the backend answers; once connected this stops firing.
+        if (health?['ok'] != true) refreshAll();
+      },
     );
     refreshAgentHealth();
   }
@@ -554,6 +561,11 @@ class AppState extends ChangeNotifier {
       observations = await api.getJson('/robot/observations');
       actions = await api.getJson('/robot/actions');
       trainingStatus = await api.getJson('/training/status');
+      // Seed the other job lanes too: _pollTelemetry only polls a lane whose
+      // last-known status is active, so a tuning/eval job still running from a
+      // previous session stays invisible until these are seeded.
+      tuningStatus = await api.getJson('/tuning/status');
+      evaluationStatus = await api.getJson('/evaluation/status');
       agentSettings = await api.getJson('/agent/providers');
       appPreferences = await api.getJson('/app/preferences');
       await loadRuns(notify: false);

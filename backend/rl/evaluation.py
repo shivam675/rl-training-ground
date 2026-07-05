@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from backend.models import EnvConfig, EvaluationRequest
+from backend.models import EnvConfig
 from backend.rl.env_factory import make_vecnormalize_env
 
 
@@ -364,16 +364,6 @@ def _unwrap_env(env):
     while hasattr(current, "env"):
         current = current.env
     return current
-
-
-def run_evaluation(req: EvaluationRequest, runs_dir: Path) -> dict[str, Any]:
-    summary = evaluate_model(
-        Path(req.model_path), req.config, req.episodes, req.deterministic
-    )
-    out = runs_dir / f"evaluation-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
-    out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    summary["export_path"] = str(out)
-    return summary
 
 
 class EvaluationWorker:

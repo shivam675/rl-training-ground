@@ -83,6 +83,36 @@ def test_ask_autonomy_requires_confirmation(client):
     assert confirmed.get("ok") is True
 
 
+def test_agent_status_and_stop_follow_active_lane():
+    """Status/stop must target the active training lane, not always PyBullet —
+    otherwise an agent-started MJX run is invisible and unstoppable."""
+    class _Status:
+        def __init__(self, name, active):
+            self.name, self.active = name, active
+        def model_dump(self):
+            return {"lane": self.name, "active": self.active}
+    class _Worker:
+        def __init__(self, name, active):
+            self.status = _Status(name, active)
+            self.telemetry = []
+            self.stopped = False
+        def stop(self):
+            self.stopped = True
+            return {"ok": True, "lane": self.status.name}
+        def start(self, req):  # toolbox defaults training_starter to worker.start
+            return {"ok": True}
+
+    pybullet = _Worker("pybullet", active=False)
+    mjx = _Worker("mjx", active=True)
+    tb = AgentToolbox(
+        toolbox.sim, pybullet, toolbox.runs_dir,
+        worker_resolver=lambda: mjx if mjx.status.active else pybullet,
+    )
+    assert tb._get_training_status()["lane"] == "mjx"
+    assert tb._stop_training()["lane"] == "mjx"
+    assert mjx.stopped and not pybullet.stopped
+
+
 def test_router_sends_complex_rl_work_to_nvidia():
     route = route_message("Make this robot walk forward and create the reward.")
     assert route.provider == "openai"
@@ -116,12 +146,44 @@ def test_routed_complex_tools_require_confirmation(client):
 
 
 def test_execute_tool_endpoint(client):
+    # In the default "act" autonomy mode set_gravity is not gated, so a direct
+    # confirmed execution runs without a prior proposal.
     res = client.post(
         "/agents/execute_tool",
         json={"name": "set_gravity", "args": {"gravity_z": -9.81}},
     )
     assert res.status_code == 200
     assert res.json()["result"]["ok"] is True
+
+
+def test_execute_tool_requires_prior_proposal_for_code_injection(client):
+    # A custom_python patch is ALWAYS gated (it injects code that later execs
+    # in-process). Confirming one that was never proposed must be rejected.
+    from backend.agents.tools import record_pending_proposal
+
+    inject = {
+        "name": "patch_env_config",
+        "args": {
+            "patch": {
+                "rewards": [
+                    {"key": "custom_python", "enabled": True, "params": {"code": "def reward(o,a,c):\n return 0.0"}}
+                ]
+            }
+        },
+    }
+    cold = client.post("/agents/execute_tool", json=inject)
+    assert cold.status_code == 200
+    assert "error" in cold.json()["result"], "un-proposed code injection must be rejected"
+
+    # After the agent proposes it (records a pending confirmation), the same
+    # tool+args may be confirmed exactly once.
+    record_pending_proposal(inject["name"], inject["args"])
+    ok = client.post("/agents/execute_tool", json=inject)
+    assert ok.status_code == 200
+    assert "error" not in ok.json()["result"], ok.json()
+    # The proposal is consumed — a replay is rejected again.
+    replay = client.post("/agents/execute_tool", json=inject)
+    assert "error" in replay.json()["result"]
 
 
 def test_autonomy_preference_roundtrip(client):

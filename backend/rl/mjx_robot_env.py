@@ -32,27 +32,42 @@ def load_mj_model(path: str, fixed_base: bool = False, spawn_height: float = 0.5
     model_path = Path(path)
     if not model_path.exists():
         raise FileNotFoundError(f"MuJoCo/MJX robot file not found: {path}")
-    if fixed_base:
-        model = mujoco.MjModel.from_xml_path(str(model_path))
-    else:
-        # URDFs carry no floating-base joint -- the format assumes the
-        # simulator adds one (PyBullet's loadURDF(useFixedBase=False) does
-        # this implicitly). Without it, MuJoCo welds the root body to the
-        # world and fuses it away entirely, so the trunk can never translate
-        # or rotate no matter what the policy does. Add the freejoint
-        # ourselves so the MJX lane matches the PyBullet lane.
-        spec = mujoco.MjSpec.from_file(str(model_path))
+
+    # URDFs reference meshes via package:// URIs and frequently ship missing or
+    # degenerate inertials -- the exact issues the PyBullet lane already fixes in
+    # its URDF preprocessor. MuJoCo's raw URDF importer resolves neither, which is
+    # why Spot/UR5/Fetch/etc. failed to compile in the MJX lane. Route .urdf
+    # inputs through the same preprocessor first (absolute mesh paths + inertial
+    # and collision repair); fall back to the raw file if preprocessing fails so
+    # robots that already worked never regress. MJCF/.xml is loaded untouched.
+    load_path = str(model_path)
+    if model_path.suffix.lower() == ".urdf":
+        prepared = _prepare_urdf_for_mjx(model_path)
+        if prepared is not None:
+            load_path = prepared
+
+    spec = mujoco.MjSpec.from_file(load_path)
+    # Some URDFs (e.g. RobotisOP2) declare principal moments that violate the
+    # triangle inequality A + B >= C; let MuJoCo nudge them into a valid tensor
+    # rather than refuse to compile.
+    _set_compiler_flag(spec, "balanceinertia", True)
+    if not fixed_base:
+        # URDFs carry no floating-base joint -- the format assumes the simulator
+        # adds one (PyBullet's loadURDF(useFixedBase=False) does this
+        # implicitly). Without it, MuJoCo welds the root body to the world and
+        # fuses it away entirely, so the trunk can never translate or rotate no
+        # matter what the policy does. Add the freejoint ourselves so the MJX
+        # lane matches the PyBullet lane.
         root_body = spec.worldbody.first_body()
         if root_body is not None and root_body.first_joint() is None:
             root_body.add_freejoint()
-            # A bare freejoint defaults to the body's local origin (z=0),
-            # which plants the robot's feet well below the ground plane and
-            # blows up contact resolution on the very first step. Only touch
-            # the pose when we're the ones adding the joint -- an MJCF that
-            # already defines its own floating base picked its pose on
-            # purpose and must be left alone.
+            # A bare freejoint defaults to the body's local origin (z=0), which
+            # plants the robot's feet well below the ground plane and blows up
+            # contact resolution on the very first step. Only touch the pose when
+            # we're the ones adding the joint -- an MJCF that already defines its
+            # own floating base picked its pose on purpose and must be left alone.
             root_body.pos[2] = spawn_height
-        model = spec.compile()
+    model = spec.compile()
     cylinder = int(mujoco.mjtGeom.mjGEOM_CYLINDER)
     capsule = int(mujoco.mjtGeom.mjGEOM_CAPSULE)
     cylinder_geoms = model.geom_type == cylinder
@@ -64,6 +79,80 @@ def load_mj_model(path: str, fixed_base: bool = False, spawn_height: float = 0.5
     return model
 
 
+def _set_compiler_flag(spec: Any, name: str, value: Any) -> None:
+    """Set a MuJoCo MjSpec compiler flag if this MuJoCo build exposes it."""
+    compiler = getattr(spec, "compiler", None)
+    for target in (compiler, spec):
+        if target is not None and hasattr(target, name):
+            try:
+                setattr(target, name, value)
+                return
+            except (AttributeError, TypeError, ValueError):
+                continue
+
+
+def _urdf_search_paths(urdf_path: Path) -> list[str]:
+    """Directories to resolve package:// mesh URIs against.
+
+    Mirrors PyBulletManager._candidate_search_paths (backend/simulation/
+    pybullet_manager.py) so both lanes resolve the same meshes: the URDF's own
+    dir and its parent, each package root found by walking up from the URDF, and
+    ROS/ament prefixes from the environment."""
+    import os
+    import re
+
+    candidates: list[Path] = [urdf_path.parent, urdf_path.parent.parent]
+    try:
+        text = urdf_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        text = ""
+    for package_name in set(re.findall(r"package://([^/\"']+)/", text)):
+        current = urdf_path.parent.resolve()
+        for parent in (current, *current.parents):
+            if parent.name == package_name:
+                candidates.extend([parent, parent.parent])
+                break
+            child = parent / package_name
+            if child.is_dir():
+                candidates.extend([child, child.parent])
+                break
+    for env_name in ("ROS_PACKAGE_PATH", "AMENT_PREFIX_PATH", "COLCON_PREFIX_PATH"):
+        for entry in os.environ.get(env_name, "").split(os.pathsep):
+            if entry:
+                candidates.append(Path(entry))
+                candidates.append(Path(entry) / "share")
+    seen: set[str] = set()
+    result: list[str] = []
+    for candidate in candidates:
+        try:
+            resolved = str(candidate.resolve())
+        except OSError:
+            continue
+        if resolved not in seen and Path(resolved).is_dir():
+            seen.add(resolved)
+            result.append(resolved)
+    return result
+
+
+def _prepare_urdf_for_mjx(urdf_path: Path) -> str | None:
+    """Preprocess a URDF into a MuJoCo-loadable copy, or None on failure.
+
+    Reuses the PyBullet lane's preprocessor (package:// -> absolute mesh paths,
+    inertial/collision repair) and writes to the same shared cache dir so both
+    lanes agree on assets."""
+    try:
+        from backend.simulation.urdf_preprocessor import prepare_urdf_for_pybullet
+
+        out_dir = Path(__file__).resolve().parents[1] / "app_settings" / "prepared_urdfs"
+        report = prepare_urdf_for_pybullet(
+            str(urdf_path), out_dir, _urdf_search_paths(urdf_path)
+        )
+        return report.get("path")
+    except Exception:
+        # Never let preprocessing regress a robot that already loaded raw.
+        return None
+
+
 def _default_spawn_height(config: EnvConfig) -> float:
     """Reuse the `target_height` reward's configured height when present --
     it is usually derived from the robot's real stance height -- otherwise
@@ -73,6 +162,23 @@ def _default_spawn_height(config: EnvConfig) -> float:
         if reward.enabled and reward.key == "target_height":
             return float(reward.params.get("height", 0.5))
     return 0.5
+
+
+def _default_torque_limit(action: Any) -> float:
+    """The force ceiling applied to a joint's computed torque/PD output.
+
+    An explicit torque_limit wins; otherwise fall back to the URDF's effort
+    limit (`max_force`, e.g. 40-80 Nm for a quadruped). The old fallback of
+    max(|scale_low|,|scale_high|,1) clipped position-control joints to ~1 Nm --
+    far below what's needed to hold a robot's own weight, so nothing could ever
+    stand in the MJX lane. Only when no effort limit is known do we drop back to
+    that scale-derived guess."""
+    if action.torque_limit is not None:
+        return float(action.torque_limit)
+    max_force = getattr(action, "max_force", None)
+    if max_force is not None and float(max_force) > 0:
+        return float(max_force)
+    return max(abs(action.scale_low), abs(action.scale_high), 1.0)
 
 
 def build_action_specs(mj_model: Any, config: EnvConfig) -> list[MJXActionSpec]:
@@ -107,13 +213,9 @@ def build_action_specs(mj_model: Any, config: EnvConfig) -> list[MJXActionSpec]:
                 control_mode=action.control_mode,
                 scale_low=float(action.scale_low),
                 scale_high=float(action.scale_high),
-                kp=float(action.kp if action.kp is not None else 35.0),
+                kp=float(action.kp if action.kp is not None else 60.0),
                 kd=float(action.kd if action.kd is not None else 1.0),
-                torque_limit=float(
-                    action.torque_limit
-                    if action.torque_limit is not None
-                    else max(abs(action.scale_low), abs(action.scale_high), 1.0)
-                ),
+                torque_limit=float(_default_torque_limit(action)),
             )
         )
     if not specs:
@@ -154,6 +256,16 @@ class ConfigurableMJXRobotEnv(Env):
             fixed_base=config.fixed_base,
             spawn_height=_default_spawn_height(config),
         )
+        # Match the PyBullet lane's control cadence: physics runs at
+        # config.timestep and each env step advances config.frame_skip physics
+        # substeps (PyBullet uses 1/240 s x 4 -> 60 Hz control). The MJX lane
+        # previously ignored both and ran the model's default 2 ms timestep once
+        # per step (500 Hz control, 2 s episodes) -- a different control problem
+        # from the one configured. Set timestep before put_model so the device
+        # copy carries it.
+        if config.timestep and config.timestep > 0:
+            self.mj_model.opt.timestep = float(config.timestep)
+        self.frame_skip = max(1, int(config.frame_skip))
         self.mx_model = (
             mjx.put_model(self.mj_model, device=device)
             if device is not None
@@ -260,10 +372,15 @@ class ConfigurableMJXRobotEnv(Env):
         else:
             applied_action = action
 
-        data = state.pipeline_state.replace(
-            qfrc_applied=self._qfrc_applied(state.pipeline_state, applied_action)
-        )
-        data = mjx.step(self.mx_model, data)
+        # Advance frame_skip physics substeps per control step, recomputing the
+        # PD/torque force each substep from the current state (position/velocity
+        # control track a target, so the force must follow qpos/qvel exactly as
+        # PyBullet's per-substep motor does). torque mode reproduces the same
+        # constant force each substep.
+        data = state.pipeline_state
+        for _ in range(self.frame_skip):
+            data = data.replace(qfrc_applied=self._qfrc_applied(data, applied_action))
+            data = mjx.step(self.mx_model, data)
         step_count = info["step_count"] + 1
         obs = self._obs(data)
         if dr.enabled and dr.sensor_noise_std > 0:
@@ -327,9 +444,11 @@ class ConfigurableMJXRobotEnv(Env):
             elif key == "base_orientation":
                 parts.append(self._base_orientation_xyzw(data))
             elif key == "base_linear_velocity":
+                # Free-joint linear velocity is already world-frame in MuJoCo
+                # (matches PyBullet's getBaseVelocity).
                 parts.append(_pad(data.qvel[:3], 3))
             elif key == "base_angular_velocity":
-                parts.append(_pad(data.qvel[3:6], 3))
+                parts.append(_pad(self._base_angular_velocity(data), 3))
             elif key == "joint_positions":
                 parts.append(data.qpos[jnp.asarray(self.qpos_indices)])
             elif key == "joint_velocities":
@@ -350,10 +469,21 @@ class ConfigurableMJXRobotEnv(Env):
             if key == "stay_alive":
                 raw = jnp.array(1.0)
             elif key == "forward_velocity":
+                # Reward speed only up to target_speed (no bonus for
+                # overshooting), matching the PyBullet lane (reward_builder.py).
                 axis = _axis_index(component.params.get("axis", 0))
-                raw = _pad(data.qvel[:3], 3)[axis]
+                v = _pad(data.qvel[:3], 3)[axis]
+                target_speed = float(component.params.get("target_speed", 1.0))
+                raw = jnp.where(
+                    target_speed >= 0,
+                    jnp.minimum(v, target_speed),
+                    jnp.maximum(v, target_speed),
+                )
             elif key == "upright":
-                raw = jnp.where(data.xmat[self.base_body_id, 2, 2] > 0.7, 1.0, 0.0)
+                # Continuous world-Z alignment of the base's local Z axis
+                # (1 = upright), matching PyBullet's rot[8] rather than a hard
+                # 0/1 threshold.
+                raw = data.xmat[self.base_body_id, 2, 2]
             elif key == "target_height":
                 raw = jnp.abs(
                     base_pos[2] - float(component.params.get("height", 0.5))
@@ -361,11 +491,15 @@ class ConfigurableMJXRobotEnv(Env):
             elif key == "energy":
                 raw = jnp.sum(action * action)
             elif key == "action_magnitude":
-                raw = jnp.sum(jnp.abs(action))
+                # L2 norm, matching PyBullet's np.linalg.norm(action).
+                raw = jnp.sqrt(jnp.sum(action * action))
             elif key == "action_smoothness":
-                raw = jnp.sum((action - prev_action) ** 2)
+                # L2 norm of the action delta, matching PyBullet.
+                raw = jnp.sqrt(jnp.sum((action - prev_action) ** 2))
             elif key == "joint_velocity":
-                raw = jnp.sum(selected_qvel * selected_qvel)
+                # Sum of |joint velocity| over actuated dofs, matching the
+                # PyBullet lane's L1 formula.
+                raw = jnp.sum(jnp.abs(selected_qvel))
             elif key == "falling_height":
                 threshold = float(component.params.get("min_height", 0.2))
                 raw = jnp.where(base_pos[2] < threshold, 1.0, 0.0)
@@ -393,6 +527,22 @@ class ConfigurableMJXRobotEnv(Env):
 
     def _base_position(self, data):
         return data.xpos[self.base_body_id]
+
+    def _base_angular_velocity(self, data):
+        """World-frame base angular velocity.
+
+        MuJoCo stores a free joint's angular velocity (qvel[3:6]) in the body
+        LOCAL frame, whereas PyBullet's getBaseVelocity reports it in the WORLD
+        frame. Rotate by the base orientation so the observation matches the
+        PyBullet lane. For fixed-base robots there's no free joint and qvel[3:6]
+        are ordinary joint dofs, so leave them untouched (the base_* obs are
+        degenerate for those robots regardless)."""
+        import jax.numpy as jnp
+
+        w_local = data.qvel[3:6]
+        if self.free_joint_qpos_adr is None:
+            return w_local
+        return data.xmat[self.base_body_id] @ w_local
 
     def _base_orientation_xyzw(self, data):
         import jax.numpy as jnp
