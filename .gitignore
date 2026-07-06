@@ -222,66 +222,23 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Training outputs and local artifacts
+# ── Project-specific (the standard Python template above already covers
+#    venv/, .venv/, __pycache__/, *.pyc, .env, build/, dist/, node_modules/) ──
+
+# Backend local state — the filesystem is the source of truth, not git
 backend/runs/
 backend/app_settings/
 backend/project_configs/
 
-# Python
-venv/
-.venv/
-__pycache__/
-*.pyc
-
-# Node / frontend
-node_modules/
-dist/
-build/
-.next/
-
-# Generated outputs
-saves/
-runs/
-logs/
-checkpoints/
-*.pt
-*.pth
-*.onnx
-*.ckpt
-*.pkl
-*.avi
-*.mp4
-*.zip
-*.tar
-*.tar.gz
-
-# Local/env
-.env
-*.db
-
-# Python virtual environments
-venv/
-.venv/
-
-# Python cache
-__pycache__/
-*.pyc
-
-# Flutter/Dart generated files
+# Flutter/Dart build output
 .dart_tool/
-build/
 frontend/rtg-flutter-app/.dart_tool/
 frontend/rtg-flutter-app/build/
 
-# Node/frontend generated files
-node_modules/
-dist/
+# Local URDF asset library (large; gitignored)
+urdf_files/
 
-# Generated training/output data
-saves/
-runs/
-logs/
-checkpoints/
+# Generated model / media artifacts
 *.pt
 *.pth
 *.onnx
@@ -292,8 +249,4 @@ checkpoints/
 *.zip
 *.tar
 *.tar.gz
-
-# Local config
-.env
 *.db
-urdf_files/

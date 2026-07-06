@@ -7,10 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **EasyRTG** — a single-user **desktop RL training ground** for URDF robots. A FastAPI backend
 hosts a live PyBullet world, two training lanes (Stable-Baselines3 on CPU; brax/MJX PPO on GPU),
 policy evaluation with live video, and an in-app LLM agent that can drive the whole pipeline
-through tool calls. A **Flutter desktop app** (`frontend/rtg-flutter-app/`) is the canonical UI;
-it auto-spawns the backend on `127.0.0.1:8000` and streams the viewport + telemetry over
-WebSockets. A `react-frontend/` exists but is **drifting/unmaintained** — don't invest there
-without deciding its fate first.
+through tool calls. A **Flutter desktop app** (`frontend/rtg-flutter-app/`) is the canonical and
+only UI; it auto-spawns the backend on `127.0.0.1:8000` and streams the viewport + telemetry over
+WebSockets. (A `react-frontend/` used to exist but was **removed 2026-07-05** — Flutter is
+canonical; recover it from git history if ever needed.)
 
 `docs/APP_RECON.md` is a deep, source-verified catalog of bugs, security findings, and
 improvement opportunities across every subsystem — read it before any nontrivial change; it is
@@ -46,16 +46,20 @@ cd frontend/rtg-flutter-app && flutter pub get && flutter run -d linux
 flutter analyze && flutter test    # what CI runs
 ```
 
-**Tests are NOT hermetic** — there is no `conftest.py`. The suite imports the live singletons
-wired to real on-disk dirs, so running it **overwrites `backend/project_configs/current_env.json`**
-and litters `backend/runs/` with junk timestamped runs (test_phase2/3 POST real `/training/start`).
-Back up `current_env.json` before running tests; restore from `runs/<id>/config.json` if clobbered.
-MJX/mujoco real paths are `importorskip`-gated; spawn tests are gated on a gitignored URDF library.
+**Tests are now hermetic** via `backend/tests/conftest.py` — a **session-scoped** autouse fixture
+redirects every live-singleton write path (`config_service`, `registry`, both training workers,
+`toolbox`, and the `main.py` dir/settings constants) at a tmp dir, so the suite no longer touches
+`project_configs/current_env.json`, `app_settings/`, or `runs/`. Isolation is deliberately
+session-scoped, not per-test: the suite is an ordered pipeline sharing mutable state across files
+(phase1 saves a config phase2/3 read back; phase2 trains a model its own later test resumes), so
+per-test tmp dirs would break the chain — don't "fix" it to function scope. MJX/mujoco real paths
+are `importorskip`-gated; spawn tests are gated on a gitignored URDF library.
 
 ### Key environment variables (`EASYRTG_*`)
 
 - `EASYRTG_HOST` / `EASYRTG_PORT` — bind address (default loopback:8000). **Do not bind
-  non-loopback** — the server is unauthenticated with wildcard CORS.
+  non-loopback** — the server is unauthenticated (CORS is now locked to loopback origins by the
+  P0 fix; `EASYRTG_CORS_ORIGINS` overrides, but there's still no auth).
 - `EASYRTG_DISABLE_EGL=1` — force CPU TinyRenderer (use if NVIDIA EGL rendering crashes).
 - `EASYRTG_PYBULLET_GUI=1` — dev-only native OpenGL window (Windows GPU path).
 - `EASYRTG_SUPERVISE=0` — run uvicorn directly with no restart loop (used by the app launcher).
@@ -100,7 +104,10 @@ frame is rendered (`render_frame` is the sole stepper) — a known coupling bug.
 
 - **SB3 lane (CPU):** `training_worker.py`, `env_factory.py` (VecNormalize, SubprocVecEnv),
   `gym_env.py`, `evaluation.py`, `tuner.py` (Optuna), `advisor.py`, `reward_builder.py`,
-  `goal_rewards.py`, `custom_reward.py`. PPO/SAC/TD3/A2C.
+  `goal_rewards.py`, `custom_reward.py`. PPO/SAC/TD3/A2C. Eval-during-training landed 2026-07-05:
+  `req.eval_freq > 0` adds an SB3 `EvalCallback` on a held-out env (saves `best_model.zip`,
+  eval-based early-stop); a `KVWriter` logger sink harvests loss/KL/entropy/explained-variance +
+  `eval_reward` into `telemetry.jsonl`.
 - **MJX lane (GPU):** `mjx_robot_env.py`, `mjx_training_worker.py` — brax PPO, vmap over N envs.
   See `docs/APP_RECON.md` Appendix A for MJX training-readiness state and robot coverage.
 - `contracts.json` + `normalization.json` in each run capture the action/obs manifest and
@@ -129,4 +136,5 @@ tools bypassing confirmation, wildcard CORS). The **P0 set was fixed 2026-07-05*
 
 `docs/api.md`, `architecture.md`, `gpu_linux_setup.md`, `v1_usage.md` are accurate.
 `mujoco_mjx_migration.md` is mostly implemented; `mujoco_visualizer_migration.md` is a plan, not
-implemented. `redesign.md`, and root-level `plan.md` / `pages.md` are aspirational/stale.
+implemented. `docs/redesign.md` is aspirational/stale. (The root-level `plan.md` / `pages.md`
+noted by earlier revisions were removed 2026-07-05.)

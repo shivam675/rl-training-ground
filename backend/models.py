@@ -146,7 +146,12 @@ class TrainingStartRequest(BaseModel):
     checkpoint_every: int = 0  # timesteps between checkpoints, 0 = off
     resume_from: str | None = None  # path to a model.zip to continue from
     stop_on_nan: bool = True
-    no_improvement_steps: int = 0  # early-stop window, 0 = off
+    no_improvement_steps: int = 0  # early-stop window (timesteps), 0 = off
+    # Eval-during-training (Phase 2): a held-out env scored every eval_freq
+    # timesteps. When on, best-model saving + no_improvement early-stop key off
+    # this eval reward instead of the noisy rolling train reward.
+    eval_freq: int = 0  # timesteps between held-out evals, 0 = off
+    n_eval_episodes: int = Field(default=5, ge=1)
     seed: int | None = None
 
     @field_validator("net_arch")
@@ -167,6 +172,7 @@ class TrainingStatus(BaseModel):
     total_timesteps: int = 0
     episode_reward: float | None = None
     episode_length: int | None = None
+    eval_reward: float | None = None  # latest held-out eval reward, when eval is on
     fps: float | None = None
     message: str = "idle"
     backend: str = "pybullet"

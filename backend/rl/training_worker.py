@@ -19,6 +19,63 @@ KEEP_CHECKPOINTS = 3
 # whole run whenever no client is polling /training/status or the websocket.
 MAX_EVENT_BACKLOG = 512
 
+# SB3 logs these to stdout only; surface the ones present into telemetry so the
+# UI can chart training health (loss/KL/entropy/explained-variance) and eval
+# reward. (sb3_key -> telemetry_key); only keys that appear get recorded, so
+# algorithm-specific ones (PPO's approx_kl, SAC's actor/critic_loss) coexist.
+_CURATED_METRICS = (
+    ("train/loss", "loss"),
+    ("train/value_loss", "value_loss"),
+    ("train/policy_gradient_loss", "policy_gradient_loss"),
+    ("train/entropy_loss", "entropy_loss"),
+    ("train/approx_kl", "approx_kl"),
+    ("train/clip_fraction", "clip_fraction"),
+    ("train/explained_variance", "explained_variance"),
+    ("train/actor_loss", "actor_loss"),
+    ("train/critic_loss", "critic_loss"),
+    ("eval/mean_reward", "eval_reward"),
+    ("eval/mean_ep_length", "eval_ep_length"),
+)
+
+
+def _make_metric_sink():
+    """A logger output-format that captures each SB3 ``logger.dump()`` into a
+    dict. Reading SB3's internal ``name_to_value`` directly races the dump (it
+    is cleared each iteration); hooking the writer catches every dump reliably.
+    Returns ``(sink, latest_dict)`` — latest_dict holds the most recent values.
+    """
+    from stable_baselines3.common.logger import KVWriter
+
+    latest: dict[str, float] = {}
+
+    class _Sink(KVWriter):
+        def write(self, key_values, key_excluded, step=0):
+            # Merge, don't replace: SB3 clears name_to_value between dumps, so an
+            # eval dump carries only eval/* keys and a train dump only train/*.
+            # Merging keeps the most-recent value of each so eval_reward survives
+            # the train dumps that follow it.
+            latest.update(key_values)
+
+        def close(self):
+            pass
+
+    return _Sink(), latest
+
+
+def _harvest_metrics(latest: dict[str, float]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for sb3_key, out_key in _CURATED_METRICS:
+        value = latest.get(sb3_key)
+        if value is None:
+            continue
+        try:
+            fvalue = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(fvalue):
+            out[out_key] = round(fvalue, 6)
+    return out
+
 
 def _validate_custom_rewards(config: Any) -> None:
     """Fail the run if an enabled custom_python reward doesn't pass sandbox
@@ -256,6 +313,7 @@ class TrainingWorker:
         log_path = run_dir / "training_log.txt"
         model = None
         env = None
+        eval_env = None
         try:
             # Reject unsafe/broken custom reward code BEFORE the env builds it,
             # since compiled_reward execs it in-process every step. The check
@@ -264,7 +322,7 @@ class TrainingWorker:
             _validate_custom_rewards(req.config)
 
             from stable_baselines3 import A2C, PPO, SAC, TD3
-            from stable_baselines3.common.callbacks import BaseCallback
+            from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 
             algorithms = {"PPO": PPO, "SAC": SAC, "TD3": TD3, "A2C": A2C}
             # Monitor (inside) logs RAW episode rewards for telemetry/eval, while
@@ -283,6 +341,8 @@ class TrainingWorker:
             )
 
             worker = self
+            metric_sink, metrics_latest = _make_metric_sink()
+            eval_on = req.eval_freq > 0
 
             class TelemetryCallback(BaseCallback):
                 def __init__(self) -> None:
@@ -293,6 +353,12 @@ class TrainingWorker:
                     self.best_reward_at = 0
                     self.last_checkpoint = 0
                     self.stop_reason: str | None = None
+
+                def _on_training_start(self) -> None:
+                    # Attach the metric sink once SB3 has configured the logger,
+                    # so _setup_learn doesn't discard it.
+                    if metric_sink not in self.logger.output_formats:
+                        self.logger.output_formats.append(metric_sink)
 
                 def _ep_stats(self) -> tuple[float | None, float | None]:
                     buffer = list(self.model.ep_info_buffer or [])
@@ -314,11 +380,14 @@ class TrainingWorker:
                         self.last_time = now
                         self.last_timesteps = self.num_timesteps
                         reward_mean, length_mean = self._ep_stats()
+                        metrics = _harvest_metrics(metrics_latest)
                         worker.status.fps = round(fps, 1)
                         worker.status.episode_reward = reward_mean
                         worker.status.episode_length = (
                             int(length_mean) if length_mean is not None else None
                         )
+                        if "eval_reward" in metrics:
+                            worker.status.eval_reward = metrics["eval_reward"]
                         worker.record_telemetry(
                             {
                                 "timestep": int(self.num_timesteps),
@@ -327,6 +396,7 @@ class TrainingWorker:
                                 "fps": round(fps, 1),
                                 "time": round(now, 2),
                                 "device": worker.status.device,
+                                **metrics,
                             }
                         )
                         if reward_mean is not None:
@@ -335,19 +405,23 @@ class TrainingWorker:
                             ):
                                 self.stop_reason = "stopped: NaN/inf episode reward"
                                 return False
-                            if self.best_reward is None or reward_mean > self.best_reward:
-                                self.best_reward = reward_mean
-                                self.best_reward_at = int(self.num_timesteps)
-                            elif (
-                                req.no_improvement_steps > 0
-                                and self.num_timesteps - self.best_reward_at
-                                >= req.no_improvement_steps
-                            ):
-                                self.stop_reason = (
-                                    "stopped: no reward improvement for "
-                                    f"{req.no_improvement_steps} timesteps"
-                                )
-                                return False
+                            # With eval on, EvalCallback owns best-model + the
+                            # no-improvement early-stop (keyed off eval reward).
+                            # Only fall back to the noisy train reward when off.
+                            if not eval_on:
+                                if self.best_reward is None or reward_mean > self.best_reward:
+                                    self.best_reward = reward_mean
+                                    self.best_reward_at = int(self.num_timesteps)
+                                elif (
+                                    req.no_improvement_steps > 0
+                                    and self.num_timesteps - self.best_reward_at
+                                    >= req.no_improvement_steps
+                                ):
+                                    self.stop_reason = (
+                                        "stopped: no reward improvement for "
+                                        f"{req.no_improvement_steps} timesteps"
+                                    )
+                                    return False
                     if (
                         req.checkpoint_every > 0
                         and self.num_timesteps - self.last_checkpoint >= req.checkpoint_every
@@ -394,9 +468,45 @@ class TrainingWorker:
                     f"{' (resumed)' if req.resume_from else ''}\n"
                 )
             callback = TelemetryCallback()
+            callbacks: list[BaseCallback] = [callback]
+            if eval_on:
+                from stable_baselines3.common.callbacks import (
+                    EvalCallback,
+                    StopTrainingOnNoModelImprovement,
+                )
+
+                # Held-out env (single, in-process). EvalCallback syncs the
+                # training env's VecNormalize stats before each eval, saves
+                # best_model.zip, and logs eval/mean_reward (harvested above).
+                eval_env = make_vecnormalize_env(
+                    req.config,
+                    gamma=req.gamma,
+                    seed=(req.seed + 1) if req.seed is not None else None,
+                    training=False,
+                    n_envs=1,
+                )
+                after_eval = None
+                if req.no_improvement_steps > 0:
+                    after_eval = StopTrainingOnNoModelImprovement(
+                        max_no_improvement_evals=max(1, req.no_improvement_steps // req.eval_freq),
+                        min_evals=1,
+                    )
+                callbacks.append(
+                    EvalCallback(
+                        eval_env,
+                        best_model_save_path=str(run_dir),
+                        # eval_freq counts _on_step calls (one per env-step batch),
+                        # so divide the timestep target by the env count.
+                        eval_freq=max(1, req.eval_freq // req.num_envs),
+                        n_eval_episodes=req.n_eval_episodes,
+                        deterministic=True,
+                        callback_after_eval=after_eval,
+                        verbose=0,
+                    )
+                )
             model.learn(
                 total_timesteps=req.total_timesteps,
-                callback=callback,
+                callback=CallbackList(callbacks) if len(callbacks) > 1 else callback,
                 reset_num_timesteps=reset_num_timesteps,
             )
             if not _save_model_atomic(model, run_dir):
@@ -447,11 +557,12 @@ class TrainingWorker:
             # Tear the env down on EVERY exit path. Leaving it open after a
             # crash used to strand the SubprocVecEnv worker processes (one
             # PyBullet world each) for the backend's whole lifetime.
-            if env is not None:
-                try:
-                    env.close()
-                except Exception:
-                    pass
+            for closable in (env, eval_env):
+                if closable is not None:
+                    try:
+                        closable.close()
+                    except Exception:
+                        pass
             time.sleep(0.05)
 
     def drain_events(self) -> list[dict[str, Any]]:

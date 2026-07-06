@@ -67,6 +67,45 @@ def test_training_records_telemetry_and_checkpoints(client):
     assert Path(run_dir, "model.zip").exists()
 
 
+def test_eval_during_training_records_eval_reward_and_saves_best(client):
+    """eval_freq>0 → held-out EvalCallback: eval_reward + richer train metrics
+    land in telemetry, and best_model.zip is saved (best off eval, not train)."""
+    client.post("/simulation/load_urdf", json={"path": "r2d2.urdf"})
+    actions = client.get("/robot/actions").json().get("actions", [])
+    client.post(
+        "/env/config/patch",
+        json={
+            "observations": [{"key": "base_position", "enabled": True}],
+            "actions": (
+                [{"joint_index": actions[0]["joint_index"], "enabled": True}] if actions else []
+            ),
+            "rewards": [{"key": "stay_alive", "enabled": True}],
+        },
+    )
+    res = client.post(
+        "/training/start",
+        json={
+            "algorithm": "PPO",
+            "total_timesteps": 512,
+            "n_steps": 64,
+            "batch_size": 64,
+            "eval_freq": 128,
+            "n_eval_episodes": 2,
+        },
+    )
+    assert res.status_code == 200, res.text
+    from pathlib import Path
+
+    run_dir = Path(res.json()["run_dir"])
+    _wait_for_finish()
+
+    telem = training_worker.telemetry
+    assert any("eval_reward" in p for p in telem), "eval reward should reach telemetry"
+    # PPO logs explained_variance / loss to the SB3 logger; the sink surfaces them.
+    assert any(("explained_variance" in p) or ("loss" in p) for p in telem)
+    assert (run_dir / "best_model.zip").exists(), "EvalCallback should save best_model.zip"
+
+
 def test_telemetry_since_pagination(client):
     res = client.get("/training/telemetry", params={"since": 1}).json()
     assert res["since"] == 1
