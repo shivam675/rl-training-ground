@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import json
 import logging
 import logging.handlers
@@ -49,8 +48,12 @@ from backend.rl.advisor import advise
 from backend.rl.evaluation import EvaluationWorker
 from backend.rl.goal_rewards import apply_behavior_goal
 from backend.rl.reward_builder import default_reward_components, evaluate_reward
-from backend.rl.mjx_training_worker import MJXTrainingWorker
 from backend.rl.training_worker import TrainingWorker
+from backend.rl.isaac.isaac_worker import (
+    IsaacPlayJob,
+    IsaacTrainingWorker,
+    isaaclab_bat_path,
+)
 from backend.rl.tuner import TunerWorker
 from backend.run_registry import RunRegistry
 from backend.simulation.dynamics_check import check_dynamics, fix_dynamics
@@ -67,7 +70,8 @@ APP_PREFERENCES_PATH = APP_SETTINGS_DIR / "preferences.json"
 
 sim = PyBulletManager(interactive=True)  # live viewport: GUI/GPU on Windows
 training_worker = TrainingWorker(RUNS_DIR)
-mjx_training_worker = MJXTrainingWorker(RUNS_DIR)
+isaac_training_worker = IsaacTrainingWorker(RUNS_DIR)
+isaac_play_job = IsaacPlayJob()
 notifier = AgentNotifier()
 config_service = ConfigService(PROJECT_CONFIG_DIR)
 registry = RunRegistry(RUNS_DIR)
@@ -77,24 +81,13 @@ tuner_worker = TunerWorker(config_service, sim, notifier)
 
 
 def start_training_request(req: TrainingStartRequest) -> dict[str, Any]:
-    if req.sim_backend == "mjx":
-        # point_reach is a self-contained toy task with no URDF/robot — don't
-        # demand a loaded robot + enabled obs/actions/rewards for it. Only the
-        # "robot" task needs a validated env config.
-        if req.mjx_task != "point_reach":
-            if req.config is None:
-                req.config = config_service.current_or_default(sim)
-            problems = config_service.validate(req.config, sim)
-            if problems:
-                raise ValueError("; ".join(problems))
-        return mjx_training_worker.start(req)
-    if req.sim_backend == "mujoco":
-        raise ValueError("MuJoCo preview training is not implemented; use pybullet or mjx.")
     if req.config is None:
         req.config = config_service.current_or_default(sim)
     problems = config_service.validate(req.config, sim)
     if problems:
         raise ValueError("; ".join(problems))
+    if req.sim_backend == "isaac":
+        return isaac_training_worker.start(req)
     return training_worker.start(req)
 
 
@@ -110,7 +103,8 @@ toolbox = AgentToolbox(
     autonomy_provider=lambda: load_app_preferences().agent_autonomy,
     training_starter=start_training_request,
     # Deferred: _current_training_worker is defined below; the lambda resolves
-    # the active PyBullet-vs-MJX lane at call time so the agent sees MJX runs.
+    # the active training lane at call time. Kept as indirection so a future
+    # out-of-process lane (Isaac Sim) can be resolved here too.
     worker_resolver=lambda: _current_training_worker(),
 )
 STARTED_AT = time.time()
@@ -143,13 +137,11 @@ async def lifespan(_app: FastAPI):
     _setup_file_logging()
     log = logging.getLogger("easyrtg")
     log.info("backend starting")
-    # Record the interpreter + GPU state up front. If JAX ever falls back to CPU
-    # again, this line shows immediately whether the wrong Python is running
-    # (e.g. not the repo .venv with the CUDA jax plugin) vs a real CUDA problem.
+    # Record the interpreter up front. If something imports from the wrong
+    # Python (e.g. not the repo .venv), this line shows it immediately.
     import sys
 
     log.info("python: %s", sys.executable)
-    log.info("jax devices: %s", _jax_devices() or "jax not importable")
     sim.connect()
     _restore_saved_robot()
     notifier.set_loop(asyncio.get_running_loop())
@@ -232,43 +224,23 @@ async def health() -> HealthResponse:
         renderer=sim.renderer_name,
         pybullet_connected=sim.connected,
         uptime_seconds=round(time.time() - STARTED_AT, 1),
-        training_active=training_worker.status.active or mjx_training_worker.status.active,
-        training_alive=training_worker.is_alive() and mjx_training_worker.is_alive(),
+        training_active=training_worker.status.active or isaac_training_worker.status.active,
+        training_alive=training_worker.is_alive() and isaac_training_worker.is_alive(),
     )
-
-
-def _optional_module(name: str) -> bool:
-    return importlib.util.find_spec(name) is not None
-
-
-def _jax_devices() -> list[str]:
-    if not _optional_module("jax"):
-        return []
-    try:
-        import jax
-
-        return [str(device) for device in jax.devices()]
-    except Exception:
-        return []
 
 
 @app.get("/simulation/backends")
 async def simulation_backends() -> dict[str, Any]:
-    missing = [
-        name
-        for name in ("mujoco", "jax", "brax", "flax", "optax", "chex", "orbax")
-        if not _optional_module(name)
-    ]
-    mujoco_ok = _optional_module("mujoco")
-    jax_ok = _optional_module("jax")
     return {
         "default": "pybullet",
-        "jax_devices": _jax_devices(),
-        "missing": missing,
+        "missing": [],
         "backends": [
-            {"name": "pybullet", "available": True, "role": "legacy preview/training"},
-            {"name": "mujoco", "available": mujoco_ok, "role": "single-env preview"},
-            {"name": "mjx", "available": mujoco_ok and jax_ok, "role": "batched training"},
+            {"name": "pybullet", "available": True, "role": "preview/training"},
+            {
+                "name": "isaac",
+                "available": isaaclab_bat_path().exists(),
+                "role": "GPU parallel training",
+            },
         ],
     }
 
@@ -639,23 +611,23 @@ def _other_job_active(*, exclude: str) -> str | None:
     endpoints use this to refuse a second concurrent job.
     """
     if exclude != "training" and (
-        training_worker.status.active or mjx_training_worker.status.active
+        training_worker.status.active or isaac_training_worker.status.active
     ):
         return "a training run"
     if exclude != "tuning" and bool(tuner_worker.status.get("active")):
         return "hyperparameter tuning"
-    if exclude != "evaluation" and bool(evaluation_worker.status.get("active")):
+    if exclude != "evaluation" and (
+        bool(evaluation_worker.status.get("active")) or isaac_play_job.active
+    ):
         return "an evaluation"
     return None
 
 
 def _current_training_worker():
-    if mjx_training_worker.status.active:
-        return mjx_training_worker
-    if training_worker.status.active:
-        return training_worker
-    if mjx_training_worker.status.run_dir and training_worker.status.run_dir is None:
-        return mjx_training_worker
+    if isaac_training_worker.status.active:
+        return isaac_training_worker
+    if isaac_training_worker.status.run_dir and training_worker.status.run_dir is None:
+        return isaac_training_worker
     return training_worker
 
 
@@ -668,7 +640,7 @@ async def training_start(req: TrainingStartRequest) -> dict[str, Any]:
             code="backend_busy",
             hint="Only one job runs at a time — wait for it to finish or stop it.",
         )
-    if training_worker.status.active or mjx_training_worker.status.active:
+    if training_worker.status.active or isaac_training_worker.status.active:
         raise fail(
             "Training is already running.",
             code="backend_busy",
@@ -686,14 +658,14 @@ async def training_start(req: TrainingStartRequest) -> dict[str, Any]:
         raise fail(
             exc,
             code="training_start_failed",
-            hint="Install MuJoCo/JAX/Brax dependencies for MJX, stop any active run, or check the Logs tab.",
+            hint="Stop any active run, or check the Logs tab.",
         )
 
 
 @app.post("/training/stop")
 async def training_stop() -> dict[str, Any]:
-    if mjx_training_worker.status.active:
-        return mjx_training_worker.stop()
+    if isaac_training_worker.status.active:
+        return isaac_training_worker.stop()
     return training_worker.stop()
 
 
@@ -788,8 +760,14 @@ async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
             hint="Only one job runs at a time — wait for it to finish or stop it.",
         )
     try:
+        run_name = str(payload.get("run_name", ""))
+        run_dir = registry.run_dir(run_name)
+        # Isaac-lane runs save an rsl_rl checkpoint; playback happens in an Isaac
+        # subprocess streamed over WebRTC, not in the SB3 evaluation worker.
+        if run_dir is not None and (run_dir / "model_final.pt").exists():
+            return isaac_play_job.start(run_dir)
         return evaluation_worker.start(
-            run_name=str(payload.get("run_name", "")),
+            run_name=run_name,
             episodes=int(payload.get("episodes", 3)),
             deterministic=bool(payload.get("deterministic", True)),
             visualize=bool(payload.get("visualize", True)),
@@ -804,11 +782,15 @@ async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
 
 @app.post("/evaluation/stop")
 async def evaluation_stop() -> dict[str, Any]:
+    if isaac_play_job.active:
+        return isaac_play_job.stop()
     return evaluation_worker.stop()
 
 
 @app.get("/evaluation/status")
 async def evaluation_status() -> dict[str, Any]:
+    if isaac_play_job.status.get("active"):
+        return isaac_play_job.refresh()
     return evaluation_worker.status
 
 
@@ -1356,7 +1338,7 @@ async def ws_simulation(ws: WebSocket):
             last_broadcast_seq = -1
             if (
                 training_worker.status.active
-                or mjx_training_worker.status.active
+                or isaac_training_worker.status.active
                 or bool(tuner_worker.status.get("active"))
             ):
                 # Pause live rendering while training/tuning runs. render_frame holds

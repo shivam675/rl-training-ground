@@ -54,7 +54,7 @@ def isolate_on_disk_state(tmp_path_factory):
     mp.setattr(main.config_service, "config_dir", cfg)
     mp.setattr(main.config_service, "path", cfg / real_cfg.name)
     mp.setattr(main.config_service, "history_path", cfg / main.config_service.history_path.name)
-    for worker in (main.registry, main.training_worker, main.mjx_training_worker, main.toolbox):
+    for worker in (main.registry, main.training_worker, main.isaac_training_worker, main.toolbox):
         mp.setattr(worker, "runs_dir", runs)
 
     yield

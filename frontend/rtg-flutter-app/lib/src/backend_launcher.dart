@@ -59,7 +59,16 @@ class BackendLauncher {
   /// connect to a manually-started backend. EASYRTG_SUPERVISE=0 makes the
   /// child exec uvicorn directly, so killing it actually stops the server.
   Future<Process?> _spawnBackend() async {
-    final env = {'EASYRTG_SUPERVISE': '0'};
+    final env = {
+      'EASYRTG_SUPERVISE': '0',
+      // Keep PyBullet's native OpenGL GUI window off (it is otherwise ON by
+      // default on Windows, and its redraw thread runs continuously — even
+      // minimized — competing with Isaac Sim for the GPU). The in-app viewport
+      // still works via CPU TinyRenderer, rendered only while watched. Users
+      // can force the GPU viewport back with EASYRTG_PYBULLET_GUI=1.
+      'EASYRTG_PYBULLET_GUI':
+          Platform.environment['EASYRTG_PYBULLET_GUI'] ?? '0',
+    };
 
     // Explicit override always wins: a .ps1, a .sh, or any executable.
     final override = Platform.environment['EASYRTG_BACKEND'];

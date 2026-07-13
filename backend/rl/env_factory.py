@@ -60,9 +60,8 @@ def make_vecnormalize_env(
     )
 
     # Each SB3 env is a full PyBullet process; more than the CPU core count just
-    # oversubscribes and slows down (unlike MJX, which vmaps thousands of envs on
-    # one GPU). Clamp authoritatively so an Isaac-scale num_envs meant for the
-    # MJX lane (the UI default is ~1024) can't accidentally fork 1024 PyBullet
+    # oversubscribes and slows down. Clamp authoritatively so a GPU-scale
+    # num_envs (e.g. an Isaac-lane 1024) can't accidentally fork 1024 PyBullet
     # processes here.
     cpu_cap = max(1, os.cpu_count() or 1)
     n_envs = max(1, min(int(n_envs), cpu_cap))
@@ -83,10 +82,10 @@ def make_vecnormalize_env(
     else:
         # Parallel path: one process per env. ``forkserver`` (not ``fork`` or
         # ``spawn``) is deliberate: the backend may have already initialised CUDA
-        # (jax.devices()/a prior MJX run), and plain ``fork`` of a CUDA+threads
-        # process deadlocks; ``spawn`` would re-import the uvicorn ``__main__``.
+        # (a prior GPU run), and plain ``fork`` of a CUDA+threads process
+        # deadlocks; ``spawn`` would re-import the uvicorn ``__main__``.
         # forkserver forks workers from a clean minimal server, and our env only
-        # imports CPU PyBullet (never torch/jax), so no CUDA leaks into workers.
+        # imports CPU PyBullet (never torch), so no CUDA leaks into workers.
         # A single VecMonitor at the vec level writes one monitor.csv and feeds
         # SB3's ep_info_buffer the same way the per-env Monitor does.
         def make_factory(rank: int):

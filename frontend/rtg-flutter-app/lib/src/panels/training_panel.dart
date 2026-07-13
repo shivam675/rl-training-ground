@@ -159,15 +159,32 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
               inputDecorationTheme: Theme.of(context).inputDecorationTheme,
               dropdownMenuEntries: const [
                 DropdownMenuEntry(value: 'pybullet', label: 'PyBullet'),
-                DropdownMenuEntry(value: 'mjx', label: 'MJX'),
+                DropdownMenuEntry(value: 'isaac', label: 'Isaac Sim'),
               ],
               onSelected: (value) {
                 state.setTrainingBackend(value ?? backend);
-                // setTrainingBackend may reset the env count to the lane
-                // default; reflect that in the text field.
+                // Switching lanes may reset the env count; reflect it in the field.
                 numEnvsController.text = state.trainingNumEnvs.toString();
               },
             ),
+            if (backend == 'isaac')
+              Tooltip(
+                message:
+                    'Stream the training world over WebRTC (view with the '
+                    'NVIDIA Isaac Sim WebRTC Streaming Client at 127.0.0.1). '
+                    'Rendering costs training throughput.',
+                child: FilterChip(
+                  label: const Text('Live view'),
+                  avatar: Icon(
+                    state.trainingLiveView
+                        ? Icons.cast_connected
+                        : Icons.cast_outlined,
+                    size: 18,
+                  ),
+                  selected: state.trainingLiveView,
+                  onSelected: state.setTrainingLiveView,
+                ),
+              ),
             DropdownMenu<String>(
               initialSelection: algorithm,
               label: const Text('Algorithm'),
@@ -202,7 +219,7 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
                 style: monoStyle(context, fontSize: 13),
                 decoration: InputDecoration(
                   labelText: 'Parallel envs',
-                  helperText: backend == 'mjx'
+                  helperText: backend == 'isaac'
                       ? 'GPU, thousands ok'
                       : 'capped at CPU cores',
                   helperStyle: const TextStyle(fontSize: 10),
@@ -239,7 +256,7 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
                     )
               : null,
               icon: const Icon(Icons.school),
-              label: Text(backend == 'mjx' ? 'Start MJX robot' : 'Start $algorithm'),
+              label: Text('Start $algorithm'),
             ),
             OutlinedButton.icon(
               onPressed: state.stopTraining,
@@ -294,12 +311,11 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
               value: statusBackend,
               icon: Icons.memory_outlined,
             ),
-            if (statusBackend == 'mjx')
-              StatChip(
-                label: 'Envs',
-                value: statusNumEnvs,
-                icon: Icons.grid_view_outlined,
-              ),
+            StatChip(
+              label: 'Envs',
+              value: statusNumEnvs,
+              icon: Icons.grid_view_outlined,
+            ),
             StatChip(
               label: 'Observation size',
               value: '$statusObsSize',

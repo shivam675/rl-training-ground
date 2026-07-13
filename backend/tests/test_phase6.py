@@ -85,7 +85,7 @@ def test_ask_autonomy_requires_confirmation(client):
 
 def test_agent_status_and_stop_follow_active_lane():
     """Status/stop must target the active training lane, not always PyBullet —
-    otherwise an agent-started MJX run is invisible and unstoppable."""
+    otherwise an agent-started run on another lane is invisible and unstoppable."""
     class _Status:
         def __init__(self, name, active):
             self.name, self.active = name, active
@@ -103,14 +103,14 @@ def test_agent_status_and_stop_follow_active_lane():
             return {"ok": True}
 
     pybullet = _Worker("pybullet", active=False)
-    mjx = _Worker("mjx", active=True)
+    other = _Worker("isaac", active=True)
     tb = AgentToolbox(
         toolbox.sim, pybullet, toolbox.runs_dir,
-        worker_resolver=lambda: mjx if mjx.status.active else pybullet,
+        worker_resolver=lambda: other if other.status.active else pybullet,
     )
-    assert tb._get_training_status()["lane"] == "mjx"
-    assert tb._stop_training()["lane"] == "mjx"
-    assert mjx.stopped and not pybullet.stopped
+    assert tb._get_training_status()["lane"] == "isaac"
+    assert tb._stop_training()["lane"] == "isaac"
+    assert other.stopped and not pybullet.stopped
 
 
 def test_router_sends_complex_rl_work_to_nvidia():

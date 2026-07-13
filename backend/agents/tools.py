@@ -149,9 +149,9 @@ class AgentToolbox:
     ):
         self.sim = sim
         self.training_worker = training_worker
-        # Resolves the currently-active training lane (PyBullet vs MJX). Without
-        # it the agent's status/stop/telemetry only ever saw the PyBullet worker,
-        # so agent-started MJX runs were invisible and uncontrollable.
+        # Resolves the currently-active training lane. Indirection kept so a
+        # future out-of-process lane (Isaac Sim) can be surfaced to the agent's
+        # status/stop/telemetry without changing callers.
         self.worker_resolver = worker_resolver or (lambda: self.training_worker)
         self.runs_dir = runs_dir
         self.notifier = notifier
@@ -192,7 +192,7 @@ class AgentToolbox:
             tool("get_health", "Backend health: renderer name and PyBullet connection state."),
             tool(
                 "get_simulation_backends",
-                "Available simulation/training backends, MJX dependencies and JAX devices.",
+                "Available simulation/training backends.",
             ),
             tool("get_robot_info", "Currently loaded robot: name, joints, links, limits, warnings."),
             tool(
@@ -319,20 +319,10 @@ class AgentToolbox:
                         "enum": ["PPO", "SAC", "TD3", "A2C"],
                         "description": "Algorithm, default PPO",
                     },
-                    "sim_backend": {
-                        "type": "string",
-                        "enum": ["pybullet", "mjx"],
-                        "description": "Training backend. Use mjx for batched MuJoCo/MJX robot training.",
-                    },
                     "num_envs": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "MJX batched env count, e.g. 256 or 1024.",
-                    },
-                    "mjx_task": {
-                        "type": "string",
-                        "enum": ["robot"],
-                        "description": "MJX robot task using the current EnvConfig.",
+                        "description": "Parallel PyBullet envs, e.g. 4 or 8.",
                     },
                     "total_timesteps": {"type": "integer", "description": "Default 10000"},
                     "learning_rate": {"type": "number", "description": "Default 0.0003"},
@@ -527,22 +517,9 @@ class AgentToolbox:
         }
 
     def _get_simulation_backends(self) -> dict[str, Any]:
-        try:
-            import jax
-
-            devices = [str(device) for device in jax.devices()]
-        except Exception:
-            devices = []
-        missing = [
-            name
-            for name in ("mujoco", "jax", "brax")
-            if importlib.util.find_spec(name) is None
-        ]
         return {
             "default": "pybullet",
-            "available": ["pybullet", "mjx"] if not missing else ["pybullet"],
-            "jax_devices": devices,
-            "missing": missing,
+            "available": ["pybullet"],
         }
 
     def _get_robot_info(self) -> dict[str, Any]:
@@ -663,9 +640,7 @@ class AgentToolbox:
     def _start_training(
         self,
         algorithm: str = "PPO",
-        sim_backend: str = "pybullet",
         num_envs: int = 1,
-        mjx_task: str = "robot",
         total_timesteps: int = 10_000,
         learning_rate: float = 3e-4,
         batch_size: int = 64,
@@ -689,9 +664,7 @@ class AgentToolbox:
         seed_value = int(seed) if seed is not None else None
         req = TrainingStartRequest(
             config=config,
-            sim_backend=sim_backend,
             num_envs=max(1, int(num_envs)),
-            mjx_task=mjx_task if sim_backend == "mjx" else "point_reach",
             algorithm=algorithm,
             total_timesteps=int(total_timesteps),
             learning_rate=float(learning_rate),

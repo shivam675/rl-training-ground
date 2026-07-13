@@ -61,7 +61,8 @@ class RunRegistry:
         entry: dict[str, Any] = {
             "name": run_dir.name,
             "model_saved": (run_dir / "model.zip").exists()
-            or (run_dir / "policy_params.pkl").exists(),
+            or (run_dir / "policy_params.pkl").exists()
+            or (run_dir / "model_final.pt").exists(),  # Isaac lane (rsl_rl checkpoint)
         }
         config = self._read_json(run_dir / "config.json")
         if config:
@@ -119,6 +120,8 @@ class RunRegistry:
             for artifact in (
                 "model.zip",
                 "policy_params.pkl",
+                "model_final.pt",
+                "isaac_policy.json",
                 "metrics.json",
                 "config.json",
                 "telemetry.jsonl",

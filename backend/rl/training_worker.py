@@ -213,8 +213,8 @@ def _torch_training_device(req: TrainingStartRequest | None = None) -> str:
     that a small MLP policy trains *slower* on the GPU than the CPU: the network
     is tiny and the real bottleneck is CPU env stepping, so per-step host<->device
     copies dominate. GPU only pays off for CNN policies or large MLPs. The
-    massively-parallel GPU lane the user wants is MJX (jax.vmap over thousands of
-    envs); for SB3 the speedup comes from parallel envs (SubprocVecEnv), not CUDA.
+    massively-parallel GPU lane is Isaac Sim (thousands of vmapped envs); for SB3
+    the speedup comes from parallel envs (SubprocVecEnv), not CUDA.
 
     So: use CUDA only when it actually helps (CNN or a wide net), else CPU. Set
     EASYRTG_SB3_DEVICE=cuda|cpu to force a choice.

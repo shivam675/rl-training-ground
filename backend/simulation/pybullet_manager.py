@@ -142,9 +142,13 @@ class PyBulletManager:
             return True
         if env in {"0", "false", "no"}:
             return False
-        # No explicit setting: GUI is the only hardware-OpenGL path on Windows
-        # (no EGL plugin), so default it on there. Other OSes use headless EGL.
-        return os.name == "nt"
+        # No explicit setting: default OFF everywhere. The GUI window's redraw
+        # thread runs continuously (even minimized) and on Optimus laptops lands
+        # on the display-driving Intel iGPU — constant lag while Isaac Sim owns
+        # the discrete GPU. CPU TinyRenderer serves the in-app viewport on
+        # demand instead; opt back in with EASYRTG_PYBULLET_GUI=1 (it was the
+        # only hardware-OpenGL path on Windows, where there's no EGL plugin).
+        return False
 
     def _tidy_gui_window(self) -> None:
         try:

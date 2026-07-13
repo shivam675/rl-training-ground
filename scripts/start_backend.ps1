@@ -21,6 +21,14 @@ try {
     Set-Location (Join-Path $PSScriptRoot '..')
     $python = Resolve-Python
 
+    # Default the native PyBullet OpenGL GUI window OFF. On Windows it is
+    # otherwise ON by default (only hardware-GL path), and its redraw thread
+    # runs continuously — even minimized — competing with Isaac Sim for the
+    # GPU. DIRECT + CPU TinyRenderer keeps the in-app viewport working
+    # (rendered on demand) and makes an idle sim cost ~nothing.
+    # Set EASYRTG_PYBULLET_GUI=1 before launching to get the GPU viewport back.
+    if (-not $env:EASYRTG_PYBULLET_GUI) { $env:EASYRTG_PYBULLET_GUI = '0' }
+
     # EASYRTG_SUPERVISE=0 -> run uvicorn directly (no restart loop). Used by the
     # desktop app's launcher so killing this process kills the server too.
     if ($env:EASYRTG_SUPERVISE -eq '0') {

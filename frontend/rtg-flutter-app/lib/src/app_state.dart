@@ -466,25 +466,31 @@ class AppState extends ChangeNotifier {
   }
 
   void setTrainingBackend(String value) {
-    final next = value == 'mjx' ? 'mjx' : 'pybullet';
-    if (trainingBackend == next) return;
-    trainingBackend = next;
-    // Pick a sensible parallel-env default per lane: MJX vmaps thousands of envs
-    // on one GPU, while each PyBullet env is its own process (capped at CPU
-    // cores backend-side). Reset to the lane default when crossing the two
-    // regimes so a 1024 left over from MJX doesn't carry into PyBullet.
-    if (next == 'mjx' && trainingNumEnvs < 64) {
-      trainingNumEnvs = 1024;
-    } else if (next == 'pybullet' && trainingNumEnvs > 64) {
+    if (trainingBackend == value) return;
+    trainingBackend = value;
+    // Reset to a lane-appropriate parallel-env default when crossing regimes.
+    // Isaac vmaps thousands of envs on one GPU (per-step cost is ~constant, so
+    // more envs = proportionally more throughput — the #1 Isaac speed lever;
+    // 64 envs ran ~500 steps/s, 2048 ran ~17,700). PyBullet is one process per
+    // env, CPU-bound. Don't carry a tiny count into Isaac or a huge one into PyBullet.
+    if (value == 'isaac' && trainingNumEnvs < 512) {
+      trainingNumEnvs = 2048;
+    } else if (value == 'pybullet' && trainingNumEnvs > 64) {
       trainingNumEnvs = 8;
     }
-    final blocker = mjxTrainingBlocker;
-    if (next == 'mjx' && blocker != null) message = blocker;
     notifyListeners();
   }
 
   void setTrainingNumEnvs(int value) {
     trainingNumEnvs = value.clamp(1, 16384).toInt();
+    notifyListeners();
+  }
+
+  // Isaac lane only: stream the training world over WebRTC (costs throughput).
+  bool trainingLiveView = false;
+
+  void setTrainingLiveView(bool value) {
+    trainingLiveView = value;
     notifyListeners();
   }
 
@@ -522,28 +528,6 @@ class AppState extends ChangeNotifier {
 
   Future<Map<String, dynamic>> checkModelCapabilities() {
     return api.getJson('/agent/capabilities');
-  }
-
-  List<String> get missingSimulationDeps => [
-    for (final dep in (simulationBackends?['missing'] as List? ?? []))
-      dep.toString(),
-  ];
-
-  bool get mjxAvailable =>
-      ((simulationBackends?['backends'] as List?) ?? []).any(
-        (item) =>
-            item is Map && item['name'] == 'mjx' && item['available'] == true,
-      );
-
-  String? get mjxTrainingBlocker {
-    final missing = missingSimulationDeps;
-    if (missing.isNotEmpty) {
-      return 'Install MJX dependencies: ${missing.join(', ')}';
-    }
-    if (simulationBackends != null && !mjxAvailable) {
-      return 'MJX backend unavailable.';
-    }
-    return null;
   }
 
   void setStreamResolutionScale(double value) {
@@ -718,7 +702,7 @@ class AppState extends ChangeNotifier {
       await api.postJson('/training/start', {
         'sim_backend': trainingBackend,
         'num_envs': trainingNumEnvs,
-        if (trainingBackend == 'mjx') 'mjx_task': 'robot',
+        if (trainingBackend == 'isaac') 'live_view': trainingLiveView,
         'algorithm': algorithm,
         'total_timesteps': totalTimesteps,
         'learning_rate': params['learning_rate'],
@@ -767,11 +751,6 @@ class AppState extends ChangeNotifier {
 
   List<String> trainingBlockers() {
     final blockers = <String>[];
-    if (trainingBackend == 'mjx') {
-      final blocker = mjxTrainingBlocker;
-      if (blocker != null) blockers.add(blocker);
-      return blockers;
-    }
     if (!hasRobot) blockers.add('load a robot');
     if (!hasEnabledObservations) blockers.add('enable observations');
     if (!hasEnabledActions) blockers.add('enable actions');

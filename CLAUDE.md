@@ -5,21 +5,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 **EasyRTG** — a single-user **desktop RL training ground** for URDF robots. A FastAPI backend
-hosts a live PyBullet world, two training lanes (Stable-Baselines3 on CPU; brax/MJX PPO on GPU),
-policy evaluation with live video, and an in-app LLM agent that can drive the whole pipeline
-through tool calls. A **Flutter desktop app** (`frontend/rtg-flutter-app/`) is the canonical and
-only UI; it auto-spawns the backend on `127.0.0.1:8000` and streams the viewport + telemetry over
-WebSockets. (A `react-frontend/` used to exist but was **removed 2026-07-05** — Flutter is
-canonical; recover it from git history if ever needed.)
+hosts a live PyBullet world, a Stable-Baselines3 CPU training lane, policy evaluation with live
+video, and an in-app LLM agent that can drive the whole pipeline through tool calls. A **Flutter
+desktop app** (`frontend/rtg-flutter-app/`) is the canonical and only UI; it auto-spawns the
+backend on `127.0.0.1:8000` and streams the viewport + telemetry over WebSockets. (A
+`react-frontend/` used to exist but was **removed 2026-07-05** — Flutter is canonical; recover it
+from git history if ever needed.)
+
+A massively-parallel **NVIDIA Isaac Sim GPU lane** is being added (installed at `C:/isaacsim`,
+Isaac Sim 6.0.1 + Isaac Lab 3.0). It runs as a **separate subprocess** under Isaac Sim's own
+Python (it can't be embedded in the backend process) and writes into the same `runs/<ts>/`
+telemetry layout. The old **brax/MJX + MuJoCo lanes were removed 2026-07-12** in favor of this —
+recover from git history if ever needed.
 
 `docs/APP_RECON.md` is a deep, source-verified catalog of bugs, security findings, and
 improvement opportunities across every subsystem — read it before any nontrivial change; it is
-the best map of where the sharp edges are.
+the best map of where the sharp edges are. (Note: it predates the 2026-07-12 MJX/MuJoCo removal,
+so its MJX sections are historical.)
 
 ## Environment & commands
 
-The Python env is **`.venv` (Python 3.12, managed with `uv`)**. GPU is a GTX 1660 Ti with
-`jax[cuda13]` + torch `cu130` wheels.
+The app Python env is **`.venv` (Python 3.12, managed with `uv`)** — FastAPI, PyBullet, SB3,
+torch `cu130`. GPU is an **RTX 5000 (16 GB)**. Isaac Sim uses its **own bundled Python 3.12** at
+`C:/isaacsim` (reached via `C:\isaacsim\python.bat`), kept entirely separate from `.venv`.
 
 **ROS PYTHONPATH leak (critical):** if ROS 2 / Gazebo is sourced in the shell, it injects a
 Python 3.14 site-packages onto `PYTHONPATH`, which shadows the 3.12 venv with ABI-incompatible
@@ -52,8 +60,8 @@ redirects every live-singleton write path (`config_service`, `registry`, both tr
 `project_configs/current_env.json`, `app_settings/`, or `runs/`. Isolation is deliberately
 session-scoped, not per-test: the suite is an ordered pipeline sharing mutable state across files
 (phase1 saves a config phase2/3 read back; phase2 trains a model its own later test resumes), so
-per-test tmp dirs would break the chain — don't "fix" it to function scope. MJX/mujoco real paths
-are `importorskip`-gated; spawn tests are gated on a gitignored URDF library.
+per-test tmp dirs would break the chain — don't "fix" it to function scope. Spawn tests are gated
+on a gitignored URDF library.
 
 ### Key environment variables (`EASYRTG_*`)
 
@@ -61,9 +69,12 @@ are `importorskip`-gated; spawn tests are gated on a gitignored URDF library.
   non-loopback** — the server is unauthenticated (CORS is now locked to loopback origins by the
   P0 fix; `EASYRTG_CORS_ORIGINS` overrides, but there's still no auth).
 - `EASYRTG_DISABLE_EGL=1` — force CPU TinyRenderer (use if NVIDIA EGL rendering crashes).
-- `EASYRTG_PYBULLET_GUI=1` — dev-only native OpenGL window (Windows GPU path).
+- `EASYRTG_PYBULLET_GUI=1` — native OpenGL window (Windows GPU viewport path). PyBullet's
+  Windows *code default* is GUI on, but **both launchers (Flutter app + start_backend.ps1) now
+  default it to 0** — the GUI window's redraw thread runs continuously (even minimized) and
+  competes with Isaac Sim for the GPU. With 0, the viewport uses CPU TinyRenderer on demand.
 - `EASYRTG_SUPERVISE=0` — run uvicorn directly with no restart loop (used by the app launcher).
-- `EASYRTG_REQUIRE_CUDA` / `EASYRTG_REQUIRE_JAX_GPU` — fail fast if GPU isn't available.
+- `EASYRTG_REQUIRE_CUDA` — fail fast if a CUDA Torch GPU isn't available.
 - Others: `EASYRTG_CORS_ORIGINS`, `EASYRTG_SB`, `EASYRTG_TRY_EGL_ON_WINDOWS`,
   `EASYRTG_TINY_RENDERER_{MIN,MAX}_WIDTH`.
 
@@ -72,11 +83,11 @@ are `importorskip`-gated; spawn tests are gated on a gitignored URDF library.
 ### Orchestration — `backend/main.py` (~1400 LOC)
 
 The FastAPI app instantiates **module-level singletons** at import time (`sim`,
-`training_worker`, `mjx_training_worker`, `config_service`, `registry`, `evaluation_worker`,
-`tuner_worker`, `notifier`, `toolbox`). It exposes REST endpoints + **3 WebSockets**
-(`/ws/simulation`, `/ws/training_logs`, `/ws/agent_events`). `start_training_request()` is the
-central router that dispatches to the SB3 vs MJX lane by `req.sim_backend` and runs config
-validation before launching.
+`training_worker`, `config_service`, `registry`, `evaluation_worker`, `tuner_worker`, `notifier`,
+`toolbox`). It exposes REST endpoints + **3 WebSockets** (`/ws/simulation`, `/ws/training_logs`,
+`/ws/agent_events`). `start_training_request()` validates the config and launches the SB3 lane;
+`_current_training_worker()` is a resolver kept as the seam where the future Isaac Sim
+out-of-process lane will be surfaced to status/stop/telemetry.
 
 ### Threading & state model (essential for reasoning about bugs)
 
@@ -85,8 +96,8 @@ validation before launching.
   the bindings keep process-global state even across DIRECT clients. The live world is
   effectively single-threaded and **only one heavy job runs at a time** (`_other_job_active`
   guard in `main.py`).
-- Four background daemon threads: `TrainingWorker`, `MJXTrainingWorker`, `TunerWorker`,
-  `EvaluationWorker`. None are joined on shutdown (daemon death only, no graceful stop).
+- Three background daemon threads: `TrainingWorker`, `TunerWorker`, `EvaluationWorker`. None are
+  joined on shutdown (daemon death only, no graceful stop).
 - **The filesystem is the source of truth.** `project_configs/current_env.json` (+ undo
   history), `app_settings/` (prefs, agent settings, prepared URDFs, logs),
   `runs/<timestamp>/` (config.json, telemetry.jsonl, model.zip, checkpoints, vecnormalize.pkl,
@@ -95,12 +106,12 @@ validation before launching.
 ### Simulation — `backend/simulation/`
 
 `PyBulletManager` (load/step/render/camera/obs) is the live world. `urdf_preprocessor.py`
-fixes URDFs (mesh resolution, `balanceinertia`) before loading — **the MJX lane must route
-through this too** or `package://` meshes fail to compile. `mujoco_backend.py` / `mjx_backend.py`
-are the MuJoCo CPU preview and JAX/MJX backends. Note: physics currently only advances when a
-frame is rendered (`render_frame` is the sole stepper) — a known coupling bug.
+fixes URDFs (mesh resolution, `balanceinertia`) before loading — the Isaac Sim lane's URDF→USD
+import should route through this too or `package://` meshes fail to resolve. Note: physics
+currently only advances when a frame is rendered (`render_frame` is the sole stepper) — a known
+coupling bug.
 
-### RL — two lanes under `backend/rl/`
+### RL — `backend/rl/`
 
 - **SB3 lane (CPU):** `training_worker.py`, `env_factory.py` (VecNormalize, SubprocVecEnv),
   `gym_env.py`, `evaluation.py`, `tuner.py` (Optuna), `advisor.py`, `reward_builder.py`,
@@ -108,8 +119,17 @@ frame is rendered (`render_frame` is the sole stepper) — a known coupling bug.
   `req.eval_freq > 0` adds an SB3 `EvalCallback` on a held-out env (saves `best_model.zip`,
   eval-based early-stop); a `KVWriter` logger sink harvests loss/KL/entropy/explained-variance +
   `eval_reward` into `telemetry.jsonl`.
-- **MJX lane (GPU):** `mjx_robot_env.py`, `mjx_training_worker.py` — brax PPO, vmap over N envs.
-  See `docs/APP_RECON.md` Appendix A for MJX training-readiness state and robot coverage.
+- **Isaac Sim lane (GPU):** `backend/rl/isaac/` — `isaac_worker.py` (app venv: subprocess
+  launch + telemetry tail; `IsaacPlayJob` for playback), `isaac_train.py` / `isaac_play.py`
+  (run UNDER Isaac's Python via `C:\IsaacLab\isaaclab.bat -p`), `configurable_env.py` (generic
+  `EnvConfig → DirectRLEnv`), `env_spec.py` / `env_math.py` (pure, app-venv-tested). Real rsl_rl
+  PPO training verified on ANYmal (~15k steps/s at 2048 envs — env count is the throughput
+  lever). Evaluate on an Isaac run streams playback via **WebRTC** (NVIDIA StreamSDK, TCP 49100 /
+  UDP 47998 — proprietary signaling, view with the official Isaac Sim WebRTC Streaming Client);
+  training has an opt-in `live_view` stream. **Physics the `EnvConfig` doesn't specify (PD
+  gains, action scales) falls back to Isaac Lab's ANYmal reference defaults** (ANYmal-tuned;
+  revisit per-robot). `custom_python` rewards are unsupported on this lane (can't run in a
+  vmapped GPU env). Setup + phased plan + API gotchas: `docs/isaac_setup.md`.
 - `contracts.json` + `normalization.json` in each run capture the action/obs manifest and
   normalization stats — the basis for any future ONNX/TorchScript export.
 
@@ -135,6 +155,6 @@ tools bypassing confirmation, wildcard CORS). The **P0 set was fixed 2026-07-05*
 ## Docs
 
 `docs/api.md`, `architecture.md`, `gpu_linux_setup.md`, `v1_usage.md` are accurate.
-`mujoco_mjx_migration.md` is mostly implemented; `mujoco_visualizer_migration.md` is a plan, not
-implemented. `docs/redesign.md` is aspirational/stale. (The root-level `plan.md` / `pages.md`
-noted by earlier revisions were removed 2026-07-05.)
+`docs/isaac_setup.md` is the Isaac Sim GPU-lane setup + phased integration plan (progress tracker).
+`docs/redesign.md` is aspirational/stale. (The MJX/MuJoCo migration docs and the root-level
+`plan.md` / `pages.md` were removed; recover from git history if needed.)

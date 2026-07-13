@@ -125,9 +125,12 @@ class RewardTestRequest(BaseModel):
 class TrainingStartRequest(BaseModel):
     # When omitted, the backend builds the config from the saved/current robot.
     config: EnvConfig | None = None
-    sim_backend: Literal["pybullet", "mujoco", "mjx"] = "pybullet"
+    sim_backend: Literal["pybullet", "isaac"] = "pybullet"
     num_envs: int = Field(default=1, ge=1)
-    mjx_task: str = "point_reach"
+    # Isaac lane only: stream the training world over WebRTC (viewable with
+    # NVIDIA's Isaac Sim WebRTC Streaming Client). Forces rendering on inside
+    # Isaac, so throughput drops — opt-in.
+    live_view: bool = False
     algorithm: Literal["PPO", "SAC", "TD3", "DQN", "A2C"] = "PPO"
     total_timesteps: int = 10_000
     learning_rate: float = 3e-4

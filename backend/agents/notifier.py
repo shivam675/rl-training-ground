@@ -100,8 +100,8 @@ async def watch_training(notifier: AgentNotifier, worker_resolver) -> None:
     best_episode_length: int | None = None
     last_health_timestep = -1
     while True:
-        # Resolve the active lane each tick so an MJX run is watched too, not
-        # only the PyBullet worker.
+        # Resolve the active lane each tick so whichever worker is running is
+        # watched, not only the PyBullet worker.
         status = worker_resolver().status
         if status.active and not was_active:
             notified_milestones.clear()
@@ -249,9 +249,20 @@ async def watch_training(notifier: AgentNotifier, worker_resolver) -> None:
                 )
         elif was_active:
             if status.message == "complete":
+                # Only claim a saved model if one actually landed — the Isaac lane
+                # doesn't write an SB3 model.zip (checkpoints come in Phase 2/3).
+                import os
+
+                run_dir = status.run_dir or ""
+                has_model = bool(run_dir) and os.path.exists(os.path.join(run_dir, "model.zip"))
+                body = (
+                    f"Model saved in {run_dir}/model.zip."
+                    if has_model
+                    else f"Run finished. Artifacts in {run_dir}."
+                )
                 notifier.notify(
                     title="Training complete",
-                    body=f"Model saved in {status.run_dir}/model.zip.",
+                    body=body,
                     severity="success",
                     category="training",
                     next_steps=[
