@@ -8,7 +8,7 @@ import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from backend.models import TrainingStartRequest, TrainingStatus
 from backend.rl.training_worker import (
@@ -246,20 +246,32 @@ class IsaacPlayJob:
     Fills the /evaluation/* role for Isaac-lane runs: start() spawns the play
     subprocess, stop() drops a STOP sentinel + reaps the tree. Status mimics
     EvaluationWorker.status keys so the UI needs no special casing.
+
+    With ``record=True`` the child also writes ``eval_video.mp4`` into the run
+    dir; ``on_ended`` (wired by main.py) fires once per session after the
+    process is fully gone so the caller can replay that video in the viewport.
     """
+
+    VIDEO_NAME = "eval_video.mp4"
 
     def __init__(self) -> None:
         self._proc: subprocess.Popen | None = None
         self._run_dir: Path | None = None
+        self._record = False
+        self._reaping = False
+        self._ended_fired = False
         self.launcher_cmd: list[str] = ["cmd", "/c", str(isaaclab_bat_path()), "-p"]
         self.play_script: Path = _PLAY_SCRIPT
         self.status: dict[str, Any] = {"active": False, "message": "idle"}
+        self.on_ended: Callable[[Path, bool], None] | None = None  # (run_dir, recorded)
 
     @property
     def active(self) -> bool:
-        return bool(self._proc and self._proc.poll() is None)
+        # Reaping counts: the dying Kit process still holds the GPU and the
+        # WebRTC ports, so nothing new may start until it is gone.
+        return self._reaping or bool(self._proc and self._proc.poll() is None)
 
-    def start(self, run_dir: Path) -> dict[str, Any]:
+    def start(self, run_dir: Path, record: bool = False) -> dict[str, Any]:
         if self.active:
             raise RuntimeError("An Isaac playback is already running.")
         bat = isaaclab_bat_path()
@@ -269,28 +281,68 @@ class IsaacPlayJob:
                 "EASYRTG_ISAACLAB_BAT to its isaaclab.bat."
             )
         (run_dir / "STOP").unlink(missing_ok=True)
+        if record:
+            # A stale video from an earlier session must not replay if this
+            # session's recording fails to produce one.
+            (run_dir / self.VIDEO_NAME).unlink(missing_ok=True)
         self._run_dir = run_dir
+        self._record = record
+        self._ended_fired = False
         cmd = list(self.launcher_cmd) + [str(self.play_script), "--run-dir", str(run_dir)]
+        if record:
+            cmd.append("--record")
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         self._proc = subprocess.Popen(cmd, creationflags=creationflags)
+        if record:
+            # Recording runs headless (no WebRTC stream) — the mp4 is the view.
+            message = (
+                "Isaac evaluation recording (Kit boot ~30-60s, no live stream). "
+                "Stop it when you have enough — the video then plays in the viewport."
+            )
+        else:
+            message = f"Isaac playback starting (Kit boot ~30-60s). {STREAM_HINT}"
         self.status = {
             "active": True,
             "run_name": run_dir.name,
-            "message": f"Isaac playback starting (Kit boot ~30-60s). {STREAM_HINT}",
-            "stream": {"host": "127.0.0.1", "signal_port": 49100, "media_port": 47998},
+            "message": message,
+            "recording": record,
         }
-        return {"ok": True, "run_name": run_dir.name, "backend": "isaac", "message": self.status["message"]}
+        if not record:
+            self.status["stream"] = {"host": "127.0.0.1", "signal_port": 49100, "media_port": 47998}
+        return {"ok": True, "run_name": run_dir.name, "backend": "isaac", "message": message}
 
     def stop(self) -> dict[str, Any]:
+        proc = self._proc
         if self._run_dir is not None:
             try:
                 (self._run_dir / "STOP").touch()
             except OSError:
                 pass
-        _kill_tree(self._proc)
         self._proc = None
         self.status = {"active": False, "message": "stopped"}
-        return {"ok": True, "message": "Playback stopped."}
+        if proc is None or proc.poll() is not None:
+            self._fire_ended()
+            return {"ok": True, "message": "Playback stopped."}
+        # The child exits on the STOP sentinel by itself, finalizing the video
+        # first; give it a grace window before the hard kill, off-thread so the
+        # stop request returns immediately.
+        self._reaping = True
+
+        def _reap() -> None:
+            try:
+                deadline = time.monotonic() + 30.0
+                while time.monotonic() < deadline and proc.poll() is None:
+                    time.sleep(0.25)
+                _kill_tree(proc)
+            finally:
+                self._reaping = False
+                self._fire_ended()
+
+        threading.Thread(target=_reap, daemon=True, name="isaac-play-reaper").start()
+        message = "Playback stopping."
+        if self._record:
+            message += " The recording will play in the viewport shortly."
+        return {"ok": True, "message": message}
 
     def refresh(self) -> dict[str, Any]:
         """Sync status with the real process state (it exits on its own errors)."""
@@ -300,4 +352,16 @@ class IsaacPlayJob:
                 "active": False,
                 "message": "playback ended" if code == 0 else f"playback failed (exit {code})",
             }
+            self._fire_ended()  # crash/natural exit — replay whatever got recorded
         return self.status
+
+    def _fire_ended(self) -> None:
+        if self._ended_fired:
+            return
+        self._ended_fired = True
+        callback, run_dir = self.on_ended, self._run_dir
+        if callback and run_dir:
+            try:
+                callback(run_dir, self._record)
+            except Exception:
+                pass

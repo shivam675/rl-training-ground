@@ -12,11 +12,16 @@ backend on `127.0.0.1:8000` and streams the viewport + telemetry over WebSockets
 `react-frontend/` used to exist but was **removed 2026-07-05** — Flutter is canonical; recover it
 from git history if ever needed.)
 
-A massively-parallel **NVIDIA Isaac Sim GPU lane** is being added (installed at `C:/isaacsim`,
+A massively-parallel **NVIDIA Isaac Sim GPU lane** is integrated (installed at `C:/isaacsim`,
 Isaac Sim 6.0.1 + Isaac Lab 3.0). It runs as a **separate subprocess** under Isaac Sim's own
 Python (it can't be embedded in the backend process) and writes into the same `runs/<ts>/`
-telemetry layout. The old **brax/MJX + MuJoCo lanes were removed 2026-07-12** in favor of this —
-recover from git history if ever needed.
+telemetry layout. **Progress: Phases 0–3a are done** — real rsl_rl PPO training verified on
+ANYmal, and Evaluate on an Isaac run streams WebRTC playback (`IsaacPlayJob`). **Pending
+(Phase 3b):** auto-launch the external Isaac Sim WebRTC Streaming Client window when Isaac
+evaluation starts (today the user must open it manually; an embedded Flutter viewport is a
+future spike), plus remaining obs/action components and checkpoint resume.
+Progress tracker: `docs/isaac_setup.md`. The old **brax/MJX + MuJoCo lanes were removed
+2026-07-12** in favor of this — recover from git history if ever needed.
 
 `docs/APP_RECON.md` is a deep, source-verified catalog of bugs, security findings, and
 improvement opportunities across every subsystem — read it before any nontrivial change; it is
@@ -53,6 +58,21 @@ env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest ba
 cd frontend/rtg-flutter-app && flutter pub get && flutter run -d linux
 flutter analyze && flutter test    # what CI runs
 ```
+
+On **Windows** (the current dev box) the bash commands above don't apply — use the `.ps1`
+launchers (`scripts/start_backend.ps1`, `scripts/dev_run.ps1`, `flutter run -d windows`) and
+the venv's Scripts python for tests. **`--basetemp` is required**: the default pytest temp dir
+(`%LOCALAPPDATA%\Temp\pytest-of-<user>`) was created by an admin-elevated Isaac build and is
+access-denied to a normal-user pytest (WinError 5 for every test).
+
+```powershell
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = "1"
+.\.venv\Scripts\python.exe -m pytest backend/tests/ -q --basetemp=.pytest_tmp
+```
+
+`scripts/build_app.ps1` builds the standalone Windows app (Flutter runner +
+PyInstaller-frozen backend in `dist\<AppName>\`, no Python install needed; refuses to package
+a CPU-only Torch).
 
 **Tests are now hermetic** via `backend/tests/conftest.py` — a **session-scoped** autouse fixture
 redirects every live-singleton write path (`config_service`, `registry`, both training workers,
@@ -102,6 +122,9 @@ out-of-process lane will be surfaced to status/stop/telemetry.
   history), `app_settings/` (prefs, agent settings, prepared URDFs, logs),
   `runs/<timestamp>/` (config.json, telemetry.jsonl, model.zip, checkpoints, vecnormalize.pkl,
   normalization.json). `RunRegistry` and `ConfigService` are the accessors.
+- `backend/streaming.py` (`FrameBroadcast`) lets a background job (evaluation playback) take
+  over the viewport: `/ws/simulation` streams the broadcast's frames instead of the live sim
+  while active, forwarding camera commands to the broadcaster's own camera.
 
 ### Simulation — `backend/simulation/`
 
@@ -126,7 +149,13 @@ coupling bug.
   PPO training verified on ANYmal (~15k steps/s at 2048 envs — env count is the throughput
   lever). Evaluate on an Isaac run streams playback via **WebRTC** (NVIDIA StreamSDK, TCP 49100 /
   UDP 47998 — proprietary signaling, view with the official Isaac Sim WebRTC Streaming Client);
-  training has an opt-in `live_view` stream. **Physics the `EnvConfig` doesn't specify (PD
+  training has an opt-in `live_view` stream. **Record video** (`record` on `/evaluation/start`)
+  runs the play subprocess headless instead (no WebRTC) and writes `eval_video.mp4`
+  (fragmented mp4, 960×540@30fps, ≤5 min, ~4.5× wall-to-clip ratio) into the run dir; when
+  playback stops, `VideoPlayback` (`streaming.py`) replays it in the app viewport via
+  `FrameBroadcast` — no external client needed to see the result. Capture perf gotchas
+  (annotator device, visualizer pumping, `render_enabled`) are documented in
+  `docs/isaac_setup.md` Phase 3b. **Physics the `EnvConfig` doesn't specify (PD
   gains, action scales) falls back to Isaac Lab's ANYmal reference defaults** (ANYmal-tuned;
   revisit per-robot). `custom_python` rewards are unsupported on this lane (can't run in a
   vmapped GPU env). Setup + phased plan + API gotchas: `docs/isaac_setup.md`.
@@ -135,9 +164,10 @@ coupling bug.
 
 ### Agent — `backend/agents/`
 
-Dual LLM providers (`ollama_client.py` + `openai_client.py`, OpenAI-compatible), a regex
-`router.py` that picks a provider per message, an `AgentToolbox` (`tools.py`) exposing ~28
-tools that can drive the whole pipeline, and a proactive `notifier.py`. Default autonomy is
+`HelperAgent` (`helper_agent.py`) is the live chat agent. Dual LLM providers
+(`ollama_client.py` + `openai_client.py`, OpenAI-compatible), a regex `router.py` that picks a
+provider per message, an `AgentToolbox` (`tools.py`) exposing 28 tools (11 destructive + 17
+read-only) that can drive the whole pipeline, and a proactive `notifier.py`. Default autonomy is
 `"act"`. **`DESTRUCTIVE_TOOLS`** (`tools.py`) is the confirmation gate — config-mutating tools
 like `patch_env_config` / `apply_behavior_goal` are deliberately security-sensitive (they can
 inject `custom_python` reward code that execs in-process). The legacy role agents

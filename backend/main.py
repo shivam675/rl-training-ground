@@ -58,7 +58,7 @@ from backend.rl.tuner import TunerWorker
 from backend.run_registry import RunRegistry
 from backend.simulation.dynamics_check import check_dynamics, fix_dynamics
 from backend.simulation.pybullet_manager import PyBulletManager
-from backend.streaming import FrameBroadcast
+from backend.streaming import FrameBroadcast, VideoPlayback
 
 ROOT = Path(__file__).resolve().parent
 PROJECT_CONFIG_DIR = ROOT / "project_configs"
@@ -78,6 +78,16 @@ registry = RunRegistry(RUNS_DIR)
 broadcast = FrameBroadcast()
 evaluation_worker = EvaluationWorker(registry, notifier, broadcast)
 tuner_worker = TunerWorker(config_service, sim, notifier)
+video_playback = VideoPlayback(broadcast)
+
+
+def _replay_isaac_recording(run_dir: Path, recorded: bool) -> None:
+    """After a recorded Isaac playback ends, show the video in the viewport."""
+    if recorded:
+        video_playback.play(run_dir / IsaacPlayJob.VIDEO_NAME, f"Recording · {run_dir.name}")
+
+
+isaac_play_job.on_ended = _replay_isaac_recording
 
 
 def start_training_request(req: TrainingStartRequest) -> dict[str, Any]:
@@ -760,12 +770,13 @@ async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
             hint="Only one job runs at a time — wait for it to finish or stop it.",
         )
     try:
+        video_playback.stop()  # a new evaluation takes the viewport back
         run_name = str(payload.get("run_name", ""))
         run_dir = registry.run_dir(run_name)
         # Isaac-lane runs save an rsl_rl checkpoint; playback happens in an Isaac
         # subprocess streamed over WebRTC, not in the SB3 evaluation worker.
         if run_dir is not None and (run_dir / "model_final.pt").exists():
-            return isaac_play_job.start(run_dir)
+            return isaac_play_job.start(run_dir, record=bool(payload.get("record", False)))
         return evaluation_worker.start(
             run_name=run_name,
             episodes=int(payload.get("episodes", 3)),
@@ -784,6 +795,9 @@ async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
 async def evaluation_stop() -> dict[str, Any]:
     if isaac_play_job.active:
         return isaac_play_job.stop()
+    if video_playback.active:  # second Stop while the recording plays = dismiss it
+        video_playback.stop()
+        return {"ok": True, "message": "Recording playback stopped."}
     return evaluation_worker.stop()
 
 

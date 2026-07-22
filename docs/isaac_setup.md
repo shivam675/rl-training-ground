@@ -79,10 +79,12 @@ fallback.
   PPO iteration a ~500k-step batch with almost no gradient updates (this also drove
   the late-training instability seen in early runs).
 - The Isaac lane saves an rsl_rl `model_final.pt` (+ `isaac_policy.json`), not an
-  SB3 `model.zip`. The registry now recognizes it as a saved model; **in-app
-  evaluation/playback for the Isaac lane is not wired yet** (the Eval tab drives
-  PyBullet+SB3) — clicking Evaluate returns a clear message, not a crash. Full
-  Isaac playback is the next Phase 3 item.
+  SB3 `model.zip`. The registry recognizes it as a saved model, and **Evaluate on
+  an Isaac run now streams playback over WebRTC** (`/evaluation/start` routes
+  `model_final.pt` runs to `IsaacPlayJob`; start/stop/status mirror the SB3
+  evaluation worker). Viewing still requires manually opening the external
+  Isaac Sim WebRTC Streaming Client — the in-app viewport / auto-launched
+  window is the open Phase 3b item.
 
 ## Integration plan / progress
 
@@ -128,5 +130,38 @@ fallback.
   - **Live training view**: opt-in `live_view` flag on `/training/start` (Flutter
     "Live view" chip on the Isaac lane) appends `--livestream 2` — rendering costs
     training throughput, so off by default.
-- [ ] **Phase 3b** — remaining obs/action components (link states, contacts,
-  reaction forces); checkpoint resume; optional embedded-webview client spike.
+- [ ] **Phase 3b** — pending:
+  - **Eval recording (done 2026-07-17):** the Evaluate flow has a **Record video**
+    toggle — `/evaluation/start {record:true}` passes `--record` to `isaac_play.py`,
+    which then runs **headless with a Kit visualizer but no WebRTC** and captures
+    the persp camera at 960×540/30 fps into `eval_video.mp4` (imageio/ffmpeg,
+    fragmented mp4 so a force-kill can't corrupt it, capped 5 min) in the run dir.
+    On stop, `IsaacPlayJob` waits up to 30 s for the child to finalize the file
+    before the kill, then fires `on_ended` → `VideoPlayback`
+    (`backend/streaming.py`) replays the mp4 in the app viewport through
+    `FrameBroadcast`. So the in-app answer to "what did my policy do" no longer
+    requires the external client. **Wall ratio ≈ 4.5× (45 s of recording → 10 s of
+    true-speed clip); first-ever record boot pays a one-time shader compile
+    (~6 min), ~15 s cached thereafter.** Capture perf gotchas learned by
+    measurement (avg ms/frame logged to `play_log.txt` after each session):
+    - Isaac Lab's `VideoRecorder.render_rgb_array()` costs ~0.75 s/frame at any
+      resolution (full `app.update()` + cold synthetic-data round trip) — we
+      attach our own replicator rgb annotator once instead.
+    - A `device="cpu"` annotator makes **every** render pay a ~150 ms
+      texture→host stall; `device="cuda"` + torch `.cpu()` drops it to ~1 ms.
+    - `SimulationContext.render()` only pumps Kit through **visualizers** — plain
+      headless+`enable_cameras` with no visualizer renders nothing (empty
+      annotator forever).
+    - `env.render_enabled = False` skips the ~44 ms Kit pump on every physics
+      step; we pump once per captured frame instead. Remaining floor is ~100 ms
+      of per-step app/physics overhead at `num_envs=1` (`--device cpu` made no
+      difference).
+  - **Eval LIVE viewing UX (decided 2026-07-13):** the live stream still needs
+    NVIDIA's client opened manually. Plan: **auto-launch the external Isaac Sim
+    WebRTC Streaming Client window** when Isaac evaluation starts (small, no
+    embedding risk; needs the client installed + its exe path discoverable, e.g.
+    an `EASYRTG_ISAAC_STREAM_CLIENT` override). An embedded Flutter viewport
+    (NVIDIA's JS streaming lib in a webview) stays a future optional spike —
+    proprietary signaling may not be embeddable.
+  - Remaining obs/action components: link states, contacts, reaction forces.
+  - Checkpoint resume for Isaac training runs.

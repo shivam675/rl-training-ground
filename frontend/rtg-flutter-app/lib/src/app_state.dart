@@ -362,12 +362,14 @@ class AppState extends ChangeNotifier {
     String runName, {
     int episodes = 3,
     bool deterministic = true,
+    bool record = false,
   }) async {
     await guard(() async {
       await api.postJson('/evaluation/start', {
         'run_name': runName,
         'episodes': episodes,
         'deterministic': deterministic,
+        'record': record,
       });
       evaluationStatus = await api.getJson('/evaluation/status');
       message = 'Evaluating $runName ($episodes episodes).';

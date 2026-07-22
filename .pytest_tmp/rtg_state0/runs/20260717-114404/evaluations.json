@@ -1,0 +1,17 @@
+[
+  {
+    "model_path": "X:\\workspace\\auto-rl\\sxc1742\\.pytest_tmp\\rtg_state0\\runs\\20260717-114404\\model.zip",
+    "deterministic": true,
+    "time": "2026-07-17T11:45:44",
+    "episodes": [
+      {
+        "episode": 1,
+        "reward": 1000.0,
+        "length": 1000
+      }
+    ],
+    "mean_reward": 1000.0,
+    "mean_length": 1000.0,
+    "run_name": "20260717-114404"
+  }
+]

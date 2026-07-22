@@ -10,3 +10,5 @@ pybullet>=3.2.5  # physics + 3D render (a from-source build also works)
 torch>=2.3  # standalone build replaces CPU Torch with the configured CUDA wheel
 pytest>=8.0
 numpy>=1.26  # imported across sim/RL modules (was riding in transitively)
+imageio>=2.34  # decode recorded eval videos for viewport replay
+imageio-ffmpeg>=0.5  # bundled ffmpeg binary for the above (Isaac's python has its own)

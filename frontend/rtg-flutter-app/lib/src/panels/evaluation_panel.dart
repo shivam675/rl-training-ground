@@ -17,6 +17,7 @@ class EvaluationPanel extends ConsumerStatefulWidget {
 class _EvaluationPanelState extends ConsumerState<EvaluationPanel> {
   final selected = <String>{};
   int episodes = 3;
+  bool record = false;
 
   @override
   void initState() {
@@ -112,6 +113,23 @@ class _EvaluationPanelState extends ConsumerState<EvaluationPanel> {
                     style: const TextStyle(fontSize: 12.5),
                   ),
                 ),
+                if (evalStatus['recording'] == true) ...[
+                  Icon(
+                    Icons.fiber_manual_record,
+                    size: 14,
+                    color: context.colors.danger,
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    'REC',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: context.colors.danger,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 if (evalStatus['visualize'] == true) ...[
                   FilledButton.tonalIcon(
                     onPressed: () => ref.read(navIndexProvider.notifier).state =
@@ -125,7 +143,15 @@ class _EvaluationPanelState extends ConsumerState<EvaluationPanel> {
                   // Always actionable while an evaluation is active — a Cancel
                   // gated on the generic `busy` flag could be dead just because
                   // an unrelated request was in flight.
-                  onPressed: state.stopEvaluation,
+                  onPressed: () async {
+                    // The recording replays in the viewport once playback has
+                    // shut down — jump there so it's actually seen.
+                    final wasRecording = evalStatus['recording'] == true;
+                    await state.stopEvaluation();
+                    if (wasRecording && mounted) {
+                      ref.read(navIndexProvider.notifier).state = AppPage.home;
+                    }
+                  },
                   style: OutlinedButton.styleFrom(
                     foregroundColor: scheme.error,
                     side: BorderSide(
@@ -168,6 +194,7 @@ class _EvaluationPanelState extends ConsumerState<EvaluationPanel> {
               onEvaluate: () => state.startEvaluation(
                 run['name'].toString(),
                 episodes: episodes,
+                record: record && run['backend'] == 'isaac',
               ),
               onExport: () async {
                 final path = await state.exportRun(run['name'].toString());
@@ -204,6 +231,29 @@ class _EvaluationPanelState extends ConsumerState<EvaluationPanel> {
               selected: {episodes},
               onSelectionChanged: (sel) => setState(() => episodes = sel.first),
             ),
+            if (state.runs.any((r) => r['backend'] == 'isaac')) ...[
+              const SizedBox(width: 16),
+              Tooltip(
+                message:
+                    'Isaac runs: save a video of the playback and replay it '
+                    'in the viewport after it stops.',
+                child: FilterChip(
+                  selected: record,
+                  onSelected: (value) => setState(() => record = value),
+                  avatar: Icon(
+                    Icons.fiber_manual_record,
+                    size: 14,
+                    color: record
+                        ? context.colors.danger
+                        : scheme.onSurface.withValues(alpha: 0.5),
+                  ),
+                  label: const Text(
+                    'Record video',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
         if (result != null) ...[

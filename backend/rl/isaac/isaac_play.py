@@ -20,32 +20,73 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 
+VIDEO_NAME = "eval_video.mp4"
+MAX_VIDEO_SECONDS = 300  # ponytail: hard cap so an unattended session can't fill the disk
+
+
+def _note(run_dir: Path, msg: str) -> None:
+    """Append a non-fatal note to play_log.txt (recording must never kill playback)."""
+    try:
+        with (run_dir / "play_log.txt").open("a", encoding="utf-8") as fh:
+            fh.write(msg + "\n")
+    except OSError:
+        pass
+
+
+def _open_recorder(run_dir: Path, fps: float):
+    """imageio ffmpeg writer for eval_video.mp4. Fragmented mp4 so the file stays
+    playable even if the process is force-killed before close()."""
+    import imageio.v2 as imageio
+
+    return imageio.get_writer(
+        str(run_dir / VIDEO_NAME),
+        fps=fps,
+        codec="libx264",
+        quality=7,
+        macro_block_size=1,  # no silent resize; we crop to even dims ourselves
+        output_params=["-movflags", "frag_keyframe+empty_moov"],
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--num-envs", type=int, default=1)
+    parser.add_argument("--record", action="store_true")
 
     from isaaclab.app import AppLauncher
 
     AppLauncher.add_app_launcher_args(parser)
     args, _ = parser.parse_known_args()
-    # Playback exists to be WATCHED: force local WebRTC streaming (which also
-    # forces headless + rendering on inside AppLauncher).
-    args.livestream = 2
-    # Same as isaac_train: disable Kit's 120s hang watchdog (hard-crashes long
-    # PhysX warmups) and pass --no-window (an OS window resize away from the
-    # negotiated stream resolution makes WebRTC drop every frame).
-    # Kit visualizer + has_gui + pinned 1080p: all three are required for the
-    # WebRTC stream to receive frames — see the isaac_train comment.
-    args.visualizer = ["kit"]
-    args.visualizer_explicit = True
-    args.kit_args = (
-        f"{args.kit_args or ''} --/app/hangDetector/enabled=false --no-window"
-        " --/isaaclab/has_gui=true"
-        " --/app/window/width=1920"
-        " --/app/window/height=1080"
-        " --/exts/omni.kit.livestream.app/primaryStream/allowDynamicResize=true"
-    ).strip()
+    if args.record:
+        # Recording IS the view — no livestream (the WebRTC encode + pinned-1080p
+        # render made each captured frame cost ~0.8s). Headless offscreen instead,
+        # but the Kit visualizer must stay: SimulationContext.render() only pumps
+        # the app (and the synthetic-data graph our annotator reads) through
+        # visualizers — without one it is a no-op and get_data() stays empty.
+        args.headless = True
+        args.enable_cameras = True
+        args.visualizer = ["kit"]
+        args.visualizer_explicit = True
+        args.kit_args = f"{args.kit_args or ''} --/app/hangDetector/enabled=false --no-window".strip()
+    else:
+        # Playback exists to be WATCHED live: force local WebRTC streaming
+        # (which also forces headless + rendering on inside AppLauncher).
+        args.livestream = 2
+        # Same as isaac_train: disable Kit's 120s hang watchdog (hard-crashes long
+        # PhysX warmups) and pass --no-window (an OS window resize away from the
+        # negotiated stream resolution makes WebRTC drop every frame).
+        # Kit visualizer + has_gui + pinned 1080p: all three are required for the
+        # WebRTC stream to receive frames — see the isaac_train comment.
+        args.visualizer = ["kit"]
+        args.visualizer_explicit = True
+        args.kit_args = (
+            f"{args.kit_args or ''} --/app/hangDetector/enabled=false --no-window"
+            " --/isaaclab/has_gui=true"
+            " --/app/window/width=1920"
+            " --/app/window/height=1080"
+            " --/exts/omni.kit.livestream.app/primaryStream/allowDynamicResize=true"
+        ).strip()
 
     run_dir = Path(args.run_dir)
     stop_file = run_dir / "STOP"
@@ -54,6 +95,7 @@ def main() -> int:
     app_launcher = AppLauncher(args)
     simulation_app = app_launcher.app
 
+    recorder = None
     try:
         import torch
 
@@ -73,6 +115,10 @@ def main() -> int:
 
         cfg, spec, request = build_env_cfg(run_dir, int(args.num_envs))
         env = ConfigurableEnv(cfg)
+        if args.record:
+            # Kit pumping per physics step costs ~44 ms each; skip it and pump
+            # once per captured frame instead (the sim.render() in the loop).
+            env.render_enabled = False
         wrapped = RslRlVecEnvWrapper(env, clip_actions=None)
 
         # Runner is only used to restore the checkpoint into the same net shapes.
@@ -84,12 +130,56 @@ def main() -> int:
         policy = runner.get_inference_policy(device=str(env.device))
 
         status_path.write_text(
-            json.dumps({"streaming": True, "signal_port": 49100, "host": "127.0.0.1"}),
+            json.dumps(
+                {"streaming": not args.record, "recording": bool(args.record)}
+                | ({} if args.record else {"signal_port": 49100, "host": "127.0.0.1"})
+            ),
             encoding="utf-8",
         )
 
         step_dt = env.step_dt  # real-time pacing so the motion is watchable
+
+        # Optional recording: a persistent replicator rgb annotator on the persp
+        # camera, read every `stride` steps (~<=30 fps of sim time). Isaac Lab's
+        # VideoRecorder.render_rgb_array() pays a full ``app.update()`` + a cold
+        # synthetic-data round-trip per frame (~0.75 s measured, at any res) —
+        # attaching once and pairing one ``sim.render()`` with a non-blocking
+        # ``get_data()`` keeps the pipeline hot instead.
+        annotator = None
+        stride, frames, max_frames, fps = 1, 0, 0, 30.0
+        t_render = t_read = t_append = 0.0
+        if args.record:
+            stride = max(1, round(1.0 / (step_dt * 30.0)))
+            fps = 1.0 / (step_dt * stride)
+            max_frames = int(fps * MAX_VIDEO_SECONDS)
+            try:
+                import numpy as np
+                import omni.replicator.core as rep
+
+                try:
+                    from isaacsim.core.rendering_manager import ViewportManager
+
+                    ViewportManager.set_camera_view(
+                        "/OmniverseKit_Persp",
+                        eye=[float(x) for x in cfg.viewer.eye],
+                        target=[float(x) for x in cfg.viewer.lookat],
+                    )
+                except Exception:
+                    _note(run_dir, "recording: using default camera view")
+                render_product = rep.create.render_product("/OmniverseKit_Persp", (960, 540))
+                # device="cuda": texture->device copy inside the SD graph, host copy
+                # done here via torch. A device="cpu" annotator makes EVERY render
+                # pay a synchronous texture->host stall (~150 ms/frame measured).
+                annotator = rep.AnnotatorRegistry.get_annotator("rgb", device="cuda")
+                annotator.attach([render_product])
+            except Exception:
+                import traceback
+
+                _note(run_dir, "recording disabled (annotator):\n" + traceback.format_exc())
+                annotator = None
+
         obs = wrapped.get_observations()
+        step = 0
         while simulation_app.is_running() and not stop_file.exists():
             start = time.perf_counter()
             with torch.inference_mode():
@@ -97,7 +187,66 @@ def main() -> int:
                 obs, _, dones, _ = wrapped.step(actions)
                 if hasattr(policy, "reset") and dones.any():
                     policy.reset(dones)
+            if annotator is not None and step % stride == 0:
+                try:
+                    t0 = time.perf_counter()
+                    env.sim.render()
+                    t1 = time.perf_counter()
+                    data = annotator.get_data()
+                    t2 = time.perf_counter()
+                    if isinstance(data, dict):
+                        data = data.get("data")
+                    try:  # cuda annotator returns a warp array on the GPU
+                        import warp as wp
+
+                        if isinstance(data, wp.array):
+                            data = wp.to_torch(data)
+                    except Exception:
+                        pass
+                    if hasattr(data, "cpu"):  # torch tensor -> host
+                        data = data.cpu().numpy()
+                    frame = np.asarray(data, dtype=np.uint8)
+                    if frame.ndim == 1 and frame.size:
+                        frame = frame.reshape(540, 960, -1)
+                    if frame.ndim == 3 and frame.size:  # empty while the pipeline warms up
+                        if recorder is None:  # lazy: no husk file if capture never delivers
+                            recorder = _open_recorder(run_dir, fps)
+                        # even dims for yuv420p; drop any alpha channel
+                        recorder.append_data(frame[: frame.shape[0] // 2 * 2, : frame.shape[1] // 2 * 2, :3])
+                        frames += 1
+                        t_render += t1 - t0
+                        t_read += t2 - t1
+                        t_append += time.perf_counter() - t2
+                    if frames >= max_frames:
+                        _note(run_dir, f"recording capped at {MAX_VIDEO_SECONDS}s")
+                        recorder.close()
+                        recorder = None
+                        annotator = None
+                except Exception:
+                    import traceback
+
+                    _note(run_dir, "recording disabled (capture):\n" + traceback.format_exc())
+                    try:
+                        if recorder is not None:
+                            recorder.close()
+                    except Exception:
+                        pass
+                    recorder = None
+                    annotator = None
+            step += 1
             time.sleep(max(0.0, step_dt - (time.perf_counter() - start)))
+        if frames:  # perf breadcrumb for future tuning
+            _note(
+                run_dir,
+                f"recorded {frames} frames @ {fps:.1f}fps; avg ms/frame: "
+                f"render {1000 * t_render / frames:.0f}, read {1000 * t_read / frames:.0f}, "
+                f"encode {1000 * t_append / frames:.0f}",
+            )
+        # Finalize the video before the (slow) Kit teardown so a supervising
+        # kill during shutdown can't truncate it.
+        if recorder is not None:
+            recorder.close()
+            recorder = None
         env.close()
         return 0
     except Exception as exc:
@@ -107,6 +256,11 @@ def main() -> int:
         print(f"isaac play failed: {exc}", file=sys.stderr)
         return 1
     finally:
+        if recorder is not None:  # crash path — salvage what was captured
+            try:
+                recorder.close()
+            except Exception:
+                pass
         status_path.unlink(missing_ok=True)
         simulation_app.close()
 

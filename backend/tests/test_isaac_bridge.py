@@ -122,12 +122,89 @@ def test_evaluation_start_routes_isaac_runs_to_play_job(monkeypatch):
 
     started = {}
 
-    def fake_start(rd):
+    def fake_start(rd, record=False):
         started["run_dir"] = rd
+        started["record"] = record
         return {"ok": True, "backend": "isaac"}
 
     monkeypatch.setattr(main.isaac_play_job, "start", fake_start)
     with TestClient(main.app) as client:
         res = client.post("/evaluation/start", json={"run_name": run_dir.name})
-    assert res.status_code == 200 and res.json()["backend"] == "isaac"
-    assert started["run_dir"] == run_dir
+        assert res.status_code == 200 and res.json()["backend"] == "isaac"
+        assert started["run_dir"] == run_dir
+        assert started["record"] is False  # default: no recording
+
+        res = client.post(
+            "/evaluation/start", json={"run_name": run_dir.name, "record": True}
+        )
+        assert res.status_code == 200 and started["record"] is True
+
+
+def test_play_job_record_flag_and_ended_callback(tmp_path, monkeypatch):
+    from backend.rl.isaac import isaac_worker as mod
+
+    captured = {}
+    monkeypatch.setattr(
+        mod.subprocess, "Popen", lambda cmd, **kw: captured.update(cmd=cmd) or _FakeProc()
+    )
+    monkeypatch.setattr(mod, "_kill_tree", lambda proc: captured.update(killed=True))
+
+    job = mod.IsaacPlayJob()
+    job.launcher_cmd = [sys.executable]
+    ended = []
+    job.on_ended = lambda run_dir, recorded: ended.append((run_dir, recorded))
+
+    stale = tmp_path / mod.IsaacPlayJob.VIDEO_NAME
+    stale.write_bytes(b"old")  # must not survive into a new recording session
+
+    job.start(tmp_path, record=True)
+    assert captured["cmd"][-1] == "--record"
+    assert job.status["recording"] is True
+    assert not stale.exists()
+
+    job.stop()  # _FakeProc is still alive on the first poll -> reaper thread path
+    for _ in range(100):
+        if ended:
+            break
+        time.sleep(0.05)
+    assert ended == [(tmp_path, True)]
+    assert (tmp_path / "STOP").exists()
+    assert captured.get("killed") is True
+
+    # A crash/natural exit (refresh) must not fire the callback a second time.
+    job.refresh()
+    assert len(ended) == 1
+
+
+def test_video_playback_round_trip(tmp_path):
+    import imageio.v2 as imageio
+    import numpy as np
+
+    from backend.streaming import FrameBroadcast, VideoPlayback
+
+    clip = tmp_path / "clip.mp4"
+    writer = imageio.get_writer(str(clip), fps=20, codec="libx264", macro_block_size=1)
+    for i in range(6):
+        writer.append_data(np.full((64, 64, 3), i * 40, dtype=np.uint8))
+    writer.close()
+
+    broadcast = FrameBroadcast()
+    player = VideoPlayback(broadcast)
+    assert player.play(tmp_path / "missing.mp4", "nope") is False
+    assert player.play(clip, "clip") is True
+
+    frame = None
+    for _ in range(100):
+        if broadcast.frame is not None:
+            frame = broadcast.frame
+            break
+        time.sleep(0.05)
+    assert frame is not None and frame.startswith(b"\xff\xd8")  # JPEG in the viewport
+    assert broadcast.label == "clip"
+
+    for _ in range(200):  # 6 frames @20fps — ends on its own, then frees the viewport
+        if not player.active:
+            break
+        time.sleep(0.05)
+    assert not player.active
+    assert not broadcast.active and broadcast.frame is None
