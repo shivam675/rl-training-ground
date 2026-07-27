@@ -18,7 +18,48 @@ class EmptyApi extends BackendApi {
   ) async => {'ok': true};
 }
 
+class TelemetryApi extends EmptyApi {
+  final requests = <String>[];
+  int poll = 0;
+
+  @override
+  Future<Map<String, dynamic>> getJson(String path) async {
+    requests.add(path);
+    if (path == '/training/status') return {'active': true};
+    if (path.startsWith('/training/telemetry')) {
+      poll += 1;
+      final start = poll == 1 ? 0 : 2001;
+      final count = poll == 1 ? 2001 : 1;
+      return {
+        'total': start + count,
+        'points': [
+          for (var i = start; i < start + count; i++) {'timestep': i},
+        ],
+      };
+    }
+    return {'ok': true};
+  }
+}
+
 void main() {
+  testWidgets('telemetry keeps a bounded window without resetting its cursor', (
+    tester,
+  ) async {
+    final api = TelemetryApi();
+    final state = AppState(api)..trainingStatus = {'active': true};
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(state.telemetry.length, 2000);
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(api.requests, contains('/training/telemetry?since=2001'));
+    expect(state.telemetry.length, 2000);
+    expect(state.telemetry.last['timestep'], 2001);
+    state.dispose();
+  });
+
   testWidgets('EasyRTG shell renders', (WidgetTester tester) async {
     // EasyRTG is a desktop app; the default 800x600 test window is below its
     // usable width once the co-pilot dock is docked. Use a realistic size.
@@ -30,7 +71,9 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: EasyRtgApp()));
 
     expect(find.text('EasyRTG'), findsWidgets);
-    expect(find.text('3D Simulation'), findsOneWidget);
+    // Home now leads with the assistant as the main canvas (no 3D viewport),
+    // beside the Setup & Status + Training sidebar.
+    expect(find.text('Assistant'), findsWidgets);
     expect(find.text('Setup & Status'), findsOneWidget);
   });
 

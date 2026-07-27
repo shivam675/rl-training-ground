@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "X:\workspace\auto-rl\sxc1742\backend\rl\isaac\isaac_train.py", line 293, in main
+    env = ConfigurableEnv(cfg)
+          ^^^^^^^^^^^^^^^^^^^^
+  File "X:\workspace\auto-rl\sxc1742\backend\rl\isaac\configurable_env.py", line 89, in __init__
+    super().__init__(cfg, render_mode, **kwargs)
+  File "c:/isaaclab/source/isaaclab/isaaclab/envs/direct_rl_env.py", line 120, in __init__
+    self._init_sim(render_mode, **kwargs)
+  File "c:/isaaclab/source/isaaclab/isaaclab/envs/direct_rl_env.py", line 157, in _init_sim
+    self._setup_scene()
+  File "X:\workspace\auto-rl\sxc1742\backend\rl\isaac\configurable_env.py", line 115, in _setup_scene
+    spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+  File "c:/isaaclab/source/isaaclab/isaaclab/sim/spawners/from_files/from_files.py", line 208, in spawn_ground_plane
+    create_prim(prim_path, usd_path=cfg.usd_path, translation=translation, orientation=orientation, stage=stage)
+  File "c:/isaaclab/source/isaaclab/isaaclab/sim/utils/prims.py", line 157, in create_prim
+    add_usd_reference(prim_path=prim_path, usd_path=usd_path, stage=stage)
+  File "c:/isaaclab/source/isaaclab/isaaclab/sim/utils/prims.py", line 915, in add_usd_reference
+    raise FileNotFoundError(f"Unable to open the usd file at path: {usd_path}")
+FileNotFoundError: Unable to open the usd file at path: https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Environments/Grid/default_environment.usd

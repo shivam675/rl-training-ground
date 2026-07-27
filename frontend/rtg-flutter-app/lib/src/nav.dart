@@ -11,6 +11,9 @@ enum AppPage {
   rewards('Rewards', Icons.functions),
   training('Training', Icons.school),
   evaluation('Evaluation', Icons.fact_check),
+  // Entered programmatically during Isaac training live-view / evaluation — not
+  // in the rail. Shows the WebRTC live stream or a recorded-eval video.
+  viewer('3D View', Icons.view_in_ar),
   settings('Settings', Icons.settings),
   logs('Logs', Icons.terminal);
 
@@ -21,5 +24,5 @@ enum AppPage {
 }
 
 /// Selected page in the navigation rail; panels can jump the user elsewhere
-/// (e.g. Evaluation's "Watch live" button switches to the Home viewport).
+/// (e.g. starting an evaluation switches to the 3D View page).
 final navIndexProvider = StateProvider<AppPage>((ref) => AppPage.home);

@@ -1,0 +1,14 @@
+--- git commit ---
+ffff603eafc6b74264a5261cc0183d6a65390d78
+
+
+--- git status ---
+HEAD detached at v3.0.0-beta2.patch1
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	2.7.0+cu128
+
+nothing added to commit but untracked files present (use "git add" to track) 
+
+
+--- git diff ---

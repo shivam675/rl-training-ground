@@ -87,13 +87,16 @@ class ConfigService:
             }
             for item in sim.actions().get("actions", [])
         ]
-        return EnvConfig(
-            urdf_path=urdf_path,
-            observations=DEFAULT_OBSERVATIONS,
-            actions=actions,
-            rewards=default_rewards(),
-            terminations={"max_steps": 1000},
-            algorithm={"name": algorithm},
+        return self.ensure_spawn_height(
+            EnvConfig(
+                urdf_path=urdf_path,
+                observations=DEFAULT_OBSERVATIONS,
+                actions=actions,
+                rewards=default_rewards(),
+                terminations={"max_steps": 1000},
+                algorithm={"name": algorithm},
+            ),
+            sim,
         )
 
     def apply_patch(self, config: EnvConfig, patch: dict[str, Any]) -> EnvConfig:
@@ -306,6 +309,19 @@ class ConfigService:
             updates["project_name"] = name
         return config.model_copy(update=updates) if updates else config
 
+    @staticmethod
+    def ensure_spawn_height(config: EnvConfig, sim) -> EnvConfig:
+        """Fill a missing height from the collision-grounded robot preview."""
+        if config.initial_base_height is not None:
+            return config
+        getter = getattr(sim, "spawn_height", None)
+        height = getter() if callable(getter) else None
+        return (
+            config.model_copy(update={"initial_base_height": float(height)})
+            if height is not None and float(height) > 0.0
+            else config
+        )
+
     def save(self, config: EnvConfig) -> Path:
         # Anything we persist becomes "a project", so it always gets an id.
         config = self.ensure_identity(config)
@@ -350,7 +366,7 @@ class ConfigService:
         info = sim.robot_info()
         urdf_path = info.get("path")
         if saved is not None and saved.urdf_path == urdf_path and saved.actions:
-            return self.ensure_reward_catalog(saved)
+            return self.ensure_spawn_height(self.ensure_reward_catalog(saved), sim)
         return self.build_default(sim)
 
     def as_dict(self, config: EnvConfig) -> dict[str, Any]:

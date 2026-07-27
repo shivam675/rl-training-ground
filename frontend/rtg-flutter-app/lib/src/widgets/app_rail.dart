@@ -36,7 +36,7 @@ class AppRail extends ConsumerWidget {
   final VoidCallback onAbout;
 
   static const _build = [AppPage.robot, AppPage.obsAction, AppPage.rewards];
-  static const _train = [AppPage.training, AppPage.evaluation];
+  static const _train = [AppPage.training, AppPage.evaluation, AppPage.viewer];
   static const _tools = [AppPage.settings, AppPage.logs];
 
   @override

@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from backend.models import TrainingStartRequest
+from backend.rl.isaac import isaac_train
 from backend.rl.isaac.isaac_worker import IsaacTrainingWorker, isaaclab_bat_path
 
 
@@ -18,6 +19,60 @@ def test_isaac_command_uses_isaaclab_launcher():
     assert str(isaaclab_bat_path()) in worker.launcher_cmd
     assert worker.launcher_cmd[-1] == "-p"
     assert worker.train_script.name == "isaac_train.py"
+
+
+def test_isaac_joint_defaults_stay_within_urdf_limits(tmp_path):
+    urdf = tmp_path / "robot.urdf"
+    urdf.write_text(
+        """<robot name="test">
+        <joint name="hip" type="revolute"><limit lower="-1" upper="1"/></joint>
+        <joint name="calf" type="revolute"><limit lower="-2.7" upper="-0.9"/></joint>
+        <joint name="slide" type="prismatic"><limit lower="0.2" upper="1"/></joint>
+        <joint name="wheel" type="continuous"><limit effort="1" velocity="1"/></joint>
+        <joint name="fixed" type="fixed"/>
+        </robot>""",
+        encoding="utf-8",
+    )
+
+    assert isaac_train._default_joint_positions(urdf) == {
+        "hip": 0.0,
+        "calf": -0.9,
+        "slide": 0.2,
+        "wheel": 0.0,
+    }
+
+
+def test_isaac_initial_base_height_uses_config_and_legacy_fallback():
+    assert isaac_train._initial_base_height({"initial_base_height": 0.43}) == 0.43
+    assert isaac_train._initial_base_height({}) == 0.60
+
+
+def test_isaac_learning_uses_one_runner_session_and_stops_between_iterations():
+    class FakeLogger:
+        def log(self, **_):
+            pass
+
+    class FakeRunner:
+        def __init__(self):
+            self.logger = FakeLogger()
+            self.learn_calls = 0
+
+        def learn(self, num_learning_iterations, init_at_random_ep_len):
+            self.learn_calls += 1
+            for iteration in range(num_learning_iterations):
+                self.logger.log(it=iteration)
+
+    runner = FakeRunner()
+    completed = []
+    isaac_train._learn_interruptibly(
+        runner,
+        10,
+        on_iteration=completed.append,
+        should_stop=lambda: len(completed) == 3,
+    )
+
+    assert runner.learn_calls == 1
+    assert completed == [0, 1, 2]
 
 
 def test_isaac_worker_tails_child_telemetry(tmp_path):
@@ -36,7 +91,8 @@ def test_isaac_worker_tails_child_telemetry(tmp_path):
         "    with t.open('a', encoding='utf-8') as h:\n"
         "        h.write(json.dumps({'timestep': i * 100, 'reward_mean': float(i),\n"
         "                            'fps': 1900.0, 'episode_length_mean': 300}) + '\\n')\n"
-        "    time.sleep(0.05)\n",
+        "    time.sleep(0.05)\n"
+        "Path(a.run_dir, 'model_final.pt').write_bytes(b'checkpoint')\n",
         encoding="utf-8",
     )
     worker = IsaacTrainingWorker(tmp_path)
@@ -56,6 +112,62 @@ def test_isaac_worker_tails_child_telemetry(tmp_path):
     assert worker.status.timestep == 300
     assert worker.status.episode_reward == 3.0
     assert any(e["type"] == "training_complete" for e in worker.drain_events())
+
+
+def test_isaac_worker_rejects_zero_exit_without_model(tmp_path):
+    stub = tmp_path / "stub_train.py"
+    stub.write_text(
+        "import argparse\n"
+        "p = argparse.ArgumentParser()\n"
+        "p.add_argument('--run-dir')\n"
+        "p.add_argument('--total-timesteps')\n"
+        "p.add_argument('--num-envs')\n"
+        "p.parse_args()\n",
+        encoding="utf-8",
+    )
+    worker = IsaacTrainingWorker(tmp_path)
+    worker.launcher_cmd = [sys.executable]
+    worker.train_script = stub
+
+    worker.start(TrainingStartRequest(sim_backend="isaac", num_envs=8, total_timesteps=300))
+    for _ in range(100):
+        if not worker.status.active:
+            break
+        time.sleep(0.1)
+
+    assert worker.status.message == "failed (no model saved)"
+    assert any(e["type"] == "training_failed" for e in worker.drain_events())
+
+
+def test_isaac_worker_rejects_failure_telemetry_with_salvaged_model(tmp_path):
+    stub = tmp_path / "stub_train.py"
+    stub.write_text(
+        "import argparse, json\n"
+        "from pathlib import Path\n"
+        "p = argparse.ArgumentParser()\n"
+        "p.add_argument('--run-dir')\n"
+        "p.add_argument('--total-timesteps')\n"
+        "p.add_argument('--num-envs')\n"
+        "a = p.parse_args()\n"
+        "run = Path(a.run_dir)\n"
+        "(run / 'model_final.pt').write_bytes(b'salvaged')\n"
+        "with (run / 'telemetry.jsonl').open('a', encoding='utf-8') as h:\n"
+        "    h.write(json.dumps({'timestep': 0, 'message': "
+        "'isaac training failed: boom'}) + '\\n')\n",
+        encoding="utf-8",
+    )
+    worker = IsaacTrainingWorker(tmp_path)
+    worker.launcher_cmd = [sys.executable]
+    worker.train_script = stub
+
+    worker.start(TrainingStartRequest(sim_backend="isaac", num_envs=8, total_timesteps=300))
+    for _ in range(100):
+        if not worker.status.active:
+            break
+        time.sleep(0.1)
+
+    assert worker.status.message == "failed: boom"
+    assert any(e["type"] == "training_failed" for e in worker.drain_events())
 
 
 class _FakeProc:
@@ -105,6 +217,8 @@ def test_play_job_lifecycle(tmp_path, monkeypatch):
     result = job.start(tmp_path)
     assert result["ok"] and job.active  # first poll -> None
     assert "127.0.0.1" in job.status["message"]
+    # Live playback exposes the browser WebRTC client URL for the in-app 3D view.
+    assert "8211" in job.status["stream"]["webrtc_url"]
 
     job.stop()
     assert (tmp_path / "STOP").exists()
@@ -208,3 +322,22 @@ def test_video_playback_round_trip(tmp_path):
         time.sleep(0.05)
     assert not player.active
     assert not broadcast.active and broadcast.frame is None
+
+
+def test_stream_client_path_and_launch(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend import main
+    from backend.rl.isaac import isaac_worker
+
+    # Path honors the override; a missing exe surfaces a clear 400, not a crash
+    # (live view on Windows launches this desktop client — see manual_livestream).
+    monkeypatch.setenv("EASYRTG_ISAAC_STREAM_CLIENT", r"C:\nope\missing-client.exe")
+    assert isaac_worker.stream_client_path().name == "missing-client.exe"
+
+    with TestClient(main.app) as client:
+        info = client.get("/isaac/stream_client").json()
+        assert info["available"] is False
+        res = client.post("/isaac/stream_client/launch")
+        assert res.status_code == 400
+        assert res.json()["detail"]["code"] == "stream_client_missing"

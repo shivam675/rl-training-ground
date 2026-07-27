@@ -1,0 +1,480 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "URDF USD Converter v0.1.3"
+    }
+    defaultPrim = "a1"
+    doc = """Generated from Composed Stage of root layer C:\\Users\\bolub\\AppData\\Local\\Temp\\tmpa4zyvjfk\\a1.usdc
+
+
+Generated from Composed Stage of root layer C:\\Users\\bolub\\AppData\\Local\\Temp\\urdf_import_robot_resolved_nnnc1fpq\\usdex_robot_resolved\\a1.usdc
+
+
+Generated from Composed Stage of root layer C:\\Users\\bolub\\AppData\\Local\\Temp\\urdf_import_robot_resolved_nnnc1fpq\\temp_robot_resolved\\robot_resolved.usd
+
+
+Generated from Composed Stage of root layer X:\\workspace\\auto-rl\\sxc1742\\.codex_smoke\\isaac-a1-spawn-4\\usd\\robot_resolved\\payloads\\base.usd
+"""
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    subLayers = [
+        @./physics.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "a1"
+{
+    over "Physics"
+    {
+        def MjcActuator "FR_hip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/FR_hip_joint>
+        }
+
+        def MjcActuator "FR_thigh_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/FR_thigh_joint>
+        }
+
+        def MjcActuator "FR_calf_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/FR_calf_joint>
+        }
+
+        def MjcActuator "FL_hip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/FL_hip_joint>
+        }
+
+        def MjcActuator "FL_thigh_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/FL_thigh_joint>
+        }
+
+        def MjcActuator "FL_calf_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/FL_calf_joint>
+        }
+
+        def MjcActuator "RR_hip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/RR_hip_joint>
+        }
+
+        def MjcActuator "RR_thigh_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/RR_thigh_joint>
+        }
+
+        def MjcActuator "RR_calf_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/RR_calf_joint>
+        }
+
+        def MjcActuator "RL_hip_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/RL_hip_joint>
+        }
+
+        def MjcActuator "RL_thigh_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/RL_thigh_joint>
+        }
+
+        def MjcActuator "RL_calf_joint_actuator"
+        {
+            uniform double[] mjc:biasPrm = [0, 0, -0.009999999776482582, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:biasType = "affine"
+            uniform double mjc:forceRange:max = 33.5
+            uniform double mjc:forceRange:min = -33.5
+            uniform double[] mjc:gainPrm = [0.009999999776482582, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            uniform token mjc:gainType = "fixed"
+            custom rel mjc:target
+            prepend rel mjc:target = </a1/Physics/RL_calf_joint>
+        }
+
+        over "FR_hip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "FR_thigh_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "FR_calf_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "FL_hip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "FL_thigh_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "FL_calf_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "RR_hip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "RR_thigh_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "RR_calf_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "RL_hip_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "RL_thigh_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+
+        over "RL_calf_joint" (
+            delete apiSchemas = ["PhysicsDriveAPI:angular", "PhysicsJointStateAPI:angular"]
+        )
+        {
+            custom float mjc:frictionloss = 0.2
+        }
+    }
+
+    over "Geometry"
+    {
+        over "base"
+        {
+            over "FR_hip"
+            {
+                over "FR_thigh"
+                {
+                    over "FR_calf"
+                    {
+                        over "calf"
+                        {
+                        }
+
+                        over "sphere"
+                        {
+                        }
+
+                        over "box"
+                        {
+                        }
+
+                        over "sphere_1"
+                        {
+                        }
+                    }
+
+                    over "thigh_mirror"
+                    {
+                    }
+
+                    over "box"
+                    {
+                    }
+                }
+
+                over "hip"
+                {
+                }
+
+                over "cylinder"
+                {
+                }
+
+                over "cylinder_1"
+                {
+                }
+            }
+
+            over "FL_hip"
+            {
+                over "FL_thigh"
+                {
+                    over "FL_calf"
+                    {
+                        over "calf"
+                        {
+                        }
+
+                        over "sphere"
+                        {
+                        }
+
+                        over "box"
+                        {
+                        }
+
+                        over "sphere_1"
+                        {
+                        }
+                    }
+
+                    over "thigh"
+                    {
+                    }
+
+                    over "box"
+                    {
+                    }
+                }
+
+                over "hip"
+                {
+                }
+
+                over "cylinder"
+                {
+                }
+
+                over "cylinder_1"
+                {
+                }
+            }
+
+            over "RR_hip"
+            {
+                over "RR_thigh"
+                {
+                    over "RR_calf"
+                    {
+                        over "calf"
+                        {
+                        }
+
+                        over "sphere"
+                        {
+                        }
+
+                        over "box"
+                        {
+                        }
+
+                        over "sphere_1"
+                        {
+                        }
+                    }
+
+                    over "thigh_mirror"
+                    {
+                    }
+
+                    over "box"
+                    {
+                    }
+                }
+
+                over "hip"
+                {
+                }
+
+                over "cylinder"
+                {
+                }
+
+                over "cylinder_1"
+                {
+                }
+            }
+
+            over "RL_hip"
+            {
+                over "RL_thigh"
+                {
+                    over "RL_calf"
+                    {
+                        over "calf"
+                        {
+                        }
+
+                        over "sphere"
+                        {
+                        }
+
+                        over "box"
+                        {
+                        }
+
+                        over "sphere_1"
+                        {
+                        }
+                    }
+
+                    over "thigh"
+                    {
+                    }
+
+                    over "box"
+                    {
+                    }
+                }
+
+                over "hip"
+                {
+                }
+
+                over "cylinder"
+                {
+                }
+
+                over "cylinder_1"
+                {
+                }
+            }
+
+            over "trunk"
+            {
+            }
+
+            over "box_1"
+            {
+            }
+
+            over "box"
+            {
+            }
+
+            over "box_2"
+            {
+            }
+
+            over "box_3"
+            {
+            }
+        }
+    }
+
+    over "Materials"
+    {
+        over "red"
+        {
+        }
+
+        over "orange"
+        {
+        }
+    }
+
+    over "VisualMaterials"
+    {
+    }
+}
+

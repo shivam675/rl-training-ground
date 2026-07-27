@@ -91,13 +91,27 @@ def resolve_agent_cfg_deprecations(agent_cfg):
     return handle_deprecated_rsl_rl_cfg(agent_cfg, metadata.version("rsl-rl-lib"))
 
 
-def _movable_joints(urdf_path: Path) -> list[str]:
+def _default_joint_positions(urdf_path: Path) -> dict[str, float]:
     root = ET.parse(urdf_path).getroot()
-    return [
-        j.get("name")
-        for j in root.findall("joint")
-        if j.get("type") in ("revolute", "continuous", "prismatic")
-    ]
+    positions = {}
+    for joint in root.findall("joint"):
+        name = joint.get("name")
+        if not name or joint.get("type") not in ("revolute", "continuous", "prismatic"):
+            continue
+        position = 0.0
+        limit = joint.find("limit")
+        if limit is not None:
+            if limit.get("lower") is not None:
+                position = max(position, float(limit.get("lower")))
+            if limit.get("upper") is not None:
+                position = min(position, float(limit.get("upper")))
+        positions[name] = position
+    return positions
+
+
+def _initial_base_height(env_config: dict) -> float:
+    """Per-robot grounded height; 0.60 keeps legacy run files playable."""
+    return float(env_config.get("initial_base_height") or 0.60)
 
 
 def build_env_cfg(run_dir: Path, num_envs: int):
@@ -139,7 +153,8 @@ def build_env_cfg(run_dir: Path, num_envs: int):
     ).usd_path
 
     # Dimensions: obs from enabled keys (joint_* -> #movable DOFs), actions from spec.
-    n_dofs = len(_movable_joints(urdf_path))
+    joint_pos = _default_joint_positions(urdf_path)
+    n_dofs = len(joint_pos)
     obs_dim = sum((n_dofs if SUPPORTED_OBS[k] is None else SUPPORTED_OBS[k]) for k in spec.obs_keys)
     step_dt = _SIM_DT * _DECIMATION
 
@@ -148,7 +163,11 @@ def build_env_cfg(run_dir: Path, num_envs: int):
     cfg.observation_space = obs_dim
     cfg.action_space = len(spec.actions)
     cfg.episode_length_s = spec.max_steps * step_dt
-    cfg.robot_cfg = make_robot_cfg(usd_path)
+    cfg.robot_cfg = make_robot_cfg(
+        usd_path,
+        joint_pos,
+        _initial_base_height(env_config),
+    )
     cfg.spec = spec
     cfg.action_joint_names = [a.joint_name for a in spec.actions]
     return cfg, spec, request
@@ -195,6 +214,35 @@ def _resolve_package_urls(urdf_path: Path, out_path: Path) -> Path:
     resolved = re.sub(r"package://([^/]+)/(\S+?)(?=[\"'\s>])", repl, text)
     out_path.write_text(resolved, encoding="utf-8")
     return out_path
+
+
+def _learn_interruptibly(runner, num_iterations, *, on_iteration, should_stop) -> None:
+    """Run one rsl_rl session while retaining per-iteration telemetry and STOP."""
+    if should_stop():
+        return
+
+    class _StopTraining(Exception):
+        pass
+
+    original_log = runner.logger.log
+
+    def log_iteration(*args, **kwargs):
+        result = original_log(*args, **kwargs)
+        on_iteration(int(kwargs["it"]))
+        if should_stop():
+            raise _StopTraining
+        return result
+
+    runner.logger.log = log_iteration
+    try:
+        runner.learn(
+            num_learning_iterations=num_iterations,
+            init_at_random_ep_len=True,
+        )
+    except _StopTraining:
+        pass
+    finally:
+        runner.logger.log = original_log
 
 
 def main() -> int:
@@ -258,8 +306,30 @@ def main() -> int:
 
         cfg, spec, request = build_env_cfg(run_dir, int(args.num_envs))
         obs_dim, action_dim = cfg.observation_space, cfg.action_space
+        env_config = request.get("config") or request
+        initial_base_height = _initial_base_height(env_config)
+        _write_point(
+            telemetry,
+            {
+                "timestep": 0,
+                "message": "isaac configuration",
+                "initial_base_height": initial_base_height,
+                "action_dim": action_dim,
+                "num_envs": int(args.num_envs),
+            },
+        )
 
         env = ConfigurableEnv(cfg)
+        _write_point(
+            telemetry,
+            {
+                "timestep": 0,
+                "message": "isaac initialized",
+                "actual_base_height": float(
+                    env.robot.data.root_pos_w.torch[0, 2].item()
+                ),
+            },
+        )
         wrapped = RslRlVecEnvWrapper(env, clip_actions=None)
 
         # num_steps_per_env is the rsl_rl locomotion regime (short rollouts x many
@@ -280,12 +350,33 @@ def main() -> int:
         log_dir = run_dir / "rsl_rl"
         runner = OnPolicyRunner(wrapped, agent_cfg.to_dict(), log_dir=str(log_dir), device=str(env.device))
 
+        # Persist a usable checkpoint even if the run is killed ungracefully.
+        # eval/play loads model_final.pt, so save it (+ its manifest) PERIODICALLY
+        # and again at the end — not just on clean completion. A STOP or a crash
+        # then still leaves the latest learned policy on disk, not nothing.
+        def _save_final() -> None:
+            runner.save(str(run_dir / "model_final.pt"))
+            (run_dir / "isaac_policy.json").write_text(
+                json.dumps(
+                    {
+                        "framework": "rsl_rl",
+                        "checkpoint": "model_final.pt",
+                        "obs_dim": obs_dim,
+                        "action_dim": action_dim,
+                        "action_joint_names": [a.joint_name for a in spec.actions],
+                        "initial_base_height": initial_base_height,
+                        "usd_path": cfg.robot_cfg.spawn.usd_path,
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+        save_every = max(1, max_iterations // 10)  # ~10 saves across the run
         started = time.perf_counter()
         steps_per_iter = num_steps_per_env * int(args.num_envs)
-        for it in range(max_iterations):
-            if stop_file.exists():
-                break
-            runner.learn(num_learning_iterations=1, init_at_random_ep_len=(it == 0))
+
+        def _after_iteration(it: int) -> None:
             # Completed-episode stats live on the runner's logger (deque, maxlen=100).
             logger = getattr(runner, "logger", None)
             rew = _mean(getattr(logger, "rewbuffer", None))
@@ -304,23 +395,24 @@ def main() -> int:
                     "device": str(env.device),
                 },
             )
+            if (it + 1) % save_every == 0:
+                _save_final()
 
-        runner.save(str(run_dir / "model_final.pt"))
-        # Manifest for a future Isaac-side eval/play path (Phase 3).
-        (run_dir / "isaac_policy.json").write_text(
-            json.dumps(
-                {
-                    "framework": "rsl_rl",
-                    "checkpoint": "model_final.pt",
-                    "obs_dim": obs_dim,
-                    "action_dim": action_dim,
-                    "action_joint_names": [a.joint_name for a in spec.actions],
-                    "usd_path": cfg.robot_cfg.spawn.usd_path,
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+        # One learn() call keeps one TensorBoard writer. Re-entering learn(1)
+        # created an unclosed writer thread and event file every PPO iteration.
+        try:
+            _learn_interruptibly(
+                runner,
+                max_iterations,
+                on_iteration=_after_iteration,
+                should_stop=stop_file.exists,
+            )
+            _save_final()
+        finally:
+            writer = getattr(runner.logger, "writer", None)
+            close = getattr(writer, "close", None)
+            if callable(close):
+                close()
         env.close()
         return 0
     except Exception as exc:  # surface into telemetry the worker tails
@@ -328,6 +420,10 @@ def main() -> int:
 
         _write_point(telemetry, {"timestep": 0, "message": f"isaac training failed: {exc}"})
         (run_dir / "training_log.txt").write_text(traceback.format_exc(), encoding="utf-8")
+        try:  # keep whatever was learned before the crash, if the runner exists
+            _save_final()
+        except Exception:
+            pass
         return 1
     finally:
         simulation_app.close()

@@ -152,39 +152,29 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            DropdownMenu<String>(
-              initialSelection: backend,
-              label: const Text('Backend'),
-              width: 150,
-              inputDecorationTheme: Theme.of(context).inputDecorationTheme,
-              dropdownMenuEntries: const [
-                DropdownMenuEntry(value: 'pybullet', label: 'PyBullet'),
-                DropdownMenuEntry(value: 'isaac', label: 'Isaac Sim'),
-              ],
-              onSelected: (value) {
-                state.setTrainingBackend(value ?? backend);
-                // Switching lanes may reset the env count; reflect it in the field.
-                numEnvsController.text = state.trainingNumEnvs.toString();
-              },
+            // Training is Isaac-only (GPU, massively-parallel). PyBullet is
+            // inspection / reward test / tuning only — there is no PyBullet
+            // training lane to choose anymore.
+            const Chip(
+              avatar: Icon(Icons.bolt, size: 16),
+              label: Text('Isaac Sim · GPU'),
             ),
-            if (backend == 'isaac')
-              Tooltip(
-                message:
-                    'Stream the training world over WebRTC (view with the '
-                    'NVIDIA Isaac Sim WebRTC Streaming Client at 127.0.0.1). '
-                    'Rendering costs training throughput.',
-                child: FilterChip(
-                  label: const Text('Live view'),
-                  avatar: Icon(
-                    state.trainingLiveView
-                        ? Icons.cast_connected
-                        : Icons.cast_outlined,
-                    size: 18,
-                  ),
-                  selected: state.trainingLiveView,
-                  onSelected: state.setTrainingLiveView,
+            Tooltip(
+              message:
+                  'Stream the training world over WebRTC to the in-app 3D View '
+                  'page. Rendering costs training throughput.',
+              child: FilterChip(
+                label: const Text('Live view'),
+                avatar: Icon(
+                  state.trainingLiveView
+                      ? Icons.cast_connected
+                      : Icons.cast_outlined,
+                  size: 18,
                 ),
+                selected: state.trainingLiveView,
+                onSelected: state.setTrainingLiveView,
               ),
+            ),
             DropdownMenu<String>(
               initialSelection: algorithm,
               label: const Text('Algorithm'),
@@ -246,15 +236,23 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
             ),
             FilledButton.icon(
               onPressed: canStart
-                  ? () => state.startTraining(
-                      widget.urdfPath,
-                      algorithm: algorithm,
-                      totalTimesteps:
-                          int.tryParse(timestepsController.text.trim()) ??
-                          10000,
-                      hyperparams: trainingParams,
-                    )
-              : null,
+                  ? () async {
+                      final live = state.trainingLiveView;
+                      await state.startTraining(
+                        widget.urdfPath,
+                        algorithm: algorithm,
+                        totalTimesteps:
+                            int.tryParse(timestepsController.text.trim()) ??
+                            10000,
+                        hyperparams: trainingParams,
+                      );
+                      // Live view streams into the 3D page — take the user there.
+                      if (live && mounted) {
+                        ref.read(navIndexProvider.notifier).state =
+                            AppPage.viewer;
+                      }
+                    }
+                  : null,
               icon: const Icon(Icons.school),
               label: Text('Start $algorithm'),
             ),

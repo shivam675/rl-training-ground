@@ -51,6 +51,46 @@ def test_spawn_snaps_lowest_point_to_clearance():
         manager.disconnect()
 
 
+def test_spawn_height_is_recorded_after_collision_grounding():
+    manager = PyBulletManager()
+    manager.connect()
+    try:
+        manager.load_urdf(LoadUrdfRequest(path="r2d2.urdf"))
+        assert manager.spawn_height() == pytest.approx(_base_z(manager))
+    finally:
+        manager.disconnect()
+
+
+def test_spawn_clamps_zero_joint_pose_into_urdf_limits(tmp_path):
+    urdf = tmp_path / "negative_joint.urdf"
+    urdf.write_text(
+        """<robot name="negative-joint">
+        <link name="base">
+          <collision><geometry><box size="0.2 0.2 0.2"/></geometry></collision>
+        </link>
+        <link name="leg">
+          <collision><geometry><box size="0.05 0.05 0.2"/></geometry></collision>
+        </link>
+        <joint name="calf" type="revolute">
+          <parent link="base"/><child link="leg"/>
+          <origin xyz="0 0 -0.1"/><axis xyz="0 1 0"/>
+          <limit lower="-0.5" upper="-0.2" effort="10" velocity="10"/>
+        </joint>
+        </robot>""",
+        encoding="utf-8",
+    )
+    manager = PyBulletManager()
+    manager.connect()
+    try:
+        manager.load_urdf(LoadUrdfRequest(path=str(urdf)))
+        position = p.getJointState(
+            manager.robot_body, 0, physicsClientId=manager.cid
+        )[0]
+        assert position == pytest.approx(-0.2)
+    finally:
+        manager.disconnect()
+
+
 def test_spawn_snap_can_be_disabled():
     manager = PyBulletManager()
     manager.connect()

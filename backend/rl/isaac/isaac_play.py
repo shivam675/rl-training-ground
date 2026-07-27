@@ -23,6 +23,12 @@ if str(_REPO_ROOT) not in sys.path:
 VIDEO_NAME = "eval_video.mp4"
 MAX_VIDEO_SECONDS = 300  # ponytail: hard cap so an unattended session can't fill the disk
 
+# Chase camera for recording: a world-frame offset from the robot base. The cam
+# parks at base + offset and looks at the base, so the moving robot stays framed
+# "at a distance". Position-tracking (constant offset) — simple and stable.
+# ponytail: yaw-follow (rotate the offset by base heading) if a trailing view matters.
+_CHASE_OFFSET = (-3.0, -2.5, 1.8)  # behind (-x), to the side (-y), above (+z)
+
 
 def _note(run_dir: Path, msg: str) -> None:
     """Append a non-fatal note to play_log.txt (recording must never kill playback)."""
@@ -114,6 +120,23 @@ def main() -> int:
             raise FileNotFoundError(f"No Isaac checkpoint at {checkpoint}")
 
         cfg, spec, request = build_env_cfg(run_dir, int(args.num_envs))
+
+        # Accurate evaluation: the checkpoint's net shapes must match this env or
+        # the policy loads silently-wrong weights. The env is rebuilt from the
+        # same config.json, so a mismatch means config.json drifted after training.
+        manifest_path = run_dir / "isaac_policy.json"
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            m_obs, m_act = manifest.get("obs_dim"), manifest.get("action_dim")
+            if (m_obs is not None and m_obs != cfg.observation_space) or (
+                m_act is not None and m_act != cfg.action_space
+            ):
+                raise ValueError(
+                    f"Checkpoint/env mismatch: trained obs/action {m_obs}/{m_act} vs "
+                    f"env {cfg.observation_space}/{cfg.action_space} — config.json "
+                    "changed since training; re-train or restore the original config."
+                )
+
         env = ConfigurableEnv(cfg)
         if args.record:
             # Kit pumping per physics step costs ~44 ms each; skip it and pump
@@ -127,7 +150,15 @@ def main() -> int:
         )
         runner = OnPolicyRunner(wrapped, agent_cfg.to_dict(), log_dir=None, device=str(env.device))
         runner.load(str(checkpoint), map_location=str(env.device))
+        # get_inference_policy returns the actor WITH its trained obs-normalization
+        # (rsl_rl bakes EmpiricalNormalization into the checkpoint), so eval sees
+        # the exact policy that was trained — no separate norm stats to load.
         policy = runner.get_inference_policy(device=str(env.device))
+        _note(
+            run_dir,
+            f"eval: loaded {checkpoint.name} · obs {cfg.observation_space} "
+            f"act {cfg.action_space} · obs-normalization from checkpoint",
+        )
 
         status_path.write_text(
             json.dumps(
@@ -146,6 +177,7 @@ def main() -> int:
         # attaching once and pairing one ``sim.render()`` with a non-blocking
         # ``get_data()`` keeps the pipeline hot instead.
         annotator = None
+        set_camera_view = None  # chase-cam updater; captured below when recording
         stride, frames, max_frames, fps = 1, 0, 0, 30.0
         t_render = t_read = t_append = 0.0
         if args.record:
@@ -159,13 +191,11 @@ def main() -> int:
                 try:
                     from isaacsim.core.rendering_manager import ViewportManager
 
-                    ViewportManager.set_camera_view(
-                        "/OmniverseKit_Persp",
-                        eye=[float(x) for x in cfg.viewer.eye],
-                        target=[float(x) for x in cfg.viewer.lookat],
-                    )
+                    # Keep the callable; the capture loop re-aims it at the robot
+                    # each frame (chase cam) instead of a one-time static view.
+                    set_camera_view = ViewportManager.set_camera_view
                 except Exception:
-                    _note(run_dir, "recording: using default camera view")
+                    _note(run_dir, "recording: chase camera unavailable, using default view")
                 render_product = rep.create.render_product("/OmniverseKit_Persp", (960, 540))
                 # device="cuda": texture->device copy inside the SD graph, host copy
                 # done here via torch. A device="cpu" annotator makes EVERY render
@@ -189,6 +219,24 @@ def main() -> int:
                     policy.reset(dones)
             if annotator is not None and step % stride == 0:
                 try:
+                    if set_camera_view is not None:
+                        # Re-aim the persp cam: park it a fixed distance from the
+                        # robot base and look at it, so the moving robot stays
+                        # framed. A camera glitch must not kill the recording.
+                        try:
+                            base = env.robot.data.root_pos_w.torch[0].detach().cpu().tolist()
+                            set_camera_view(
+                                "/OmniverseKit_Persp",
+                                eye=[
+                                    base[0] + _CHASE_OFFSET[0],
+                                    base[1] + _CHASE_OFFSET[1],
+                                    base[2] + _CHASE_OFFSET[2],
+                                ],
+                                target=[base[0], base[1], base[2]],
+                            )
+                        except Exception:
+                            set_camera_view = None  # stop trying; keep recording
+                            _note(run_dir, "chase camera update failed; using default view")
                     t0 = time.perf_counter()
                     env.sim.render()
                     t1 = time.perf_counter()

@@ -16,6 +16,7 @@ import 'panels/reward_panel.dart';
 import 'panels/robot_panel.dart';
 import 'panels/settings_panel.dart';
 import 'panels/training_panel.dart';
+import 'panels/viewer_3d_page.dart';
 import 'project_io.dart';
 import 'theme/theme_controller.dart';
 import 'widgets/app_rail.dart';
@@ -345,7 +346,9 @@ class _EasyRtgHomeState extends ConsumerState<EasyRtgHome> {
                       ],
                     ),
                   ),
-                  const AssistantDock(),
+                  // On Home the assistant IS the main canvas, so the right dock
+                  // would be a redundant second copy — show it only elsewhere.
+                  if (selected != AppPage.home) const AssistantDock(),
                 ],
               );
             },
@@ -414,6 +417,11 @@ class _EasyRtgHomeState extends ConsumerState<EasyRtgHome> {
         title: 'Evaluation',
         icon: Icons.fact_check_outlined,
         child: EvaluationPanel(),
+      ),
+      AppPage.viewer => const Panel(
+        title: '3D View',
+        icon: Icons.view_in_ar,
+        child: Viewer3DPage(),
       ),
       AppPage.settings => const Panel(
         title: 'Settings',

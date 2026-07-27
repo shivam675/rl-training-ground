@@ -1,0 +1,2 @@
+{"timestep": 0, "message": "isaac configuration", "initial_base_height": 0.43000000000000005, "action_dim": 12, "num_envs": 1}
+{"timestep": 24, "reward_mean": 9.1836, "episode_length_mean": 14.0, "fps": 2.2, "time": 10.85, "num_envs": 1, "device": "cuda:0"}

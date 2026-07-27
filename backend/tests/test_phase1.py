@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.config_service import ConfigService
-from backend.main import app, config_service, sim, toolbox, training_worker
+from backend.main import (
+    app,
+    config_service,
+    isaac_training_worker,
+    sim,
+    toolbox,
+    training_worker,
+)
 from backend.models import AppPreferences, EnvConfig, OllamaSettings, TrainingStartRequest
 from backend.simulation.pybullet_manager import PyBulletManager
 
@@ -101,6 +109,69 @@ def test_config_roundtrip_with_robot(client, tmp_path):
     assert loaded is not None
     assert loaded.urdf_path == config.urdf_path
     assert len(loaded.actions) == len(config.actions)
+
+
+def test_config_fills_missing_spawn_height_and_keeps_explicit_override(tmp_path):
+    class FakeSim:
+        def spawn_height(self):
+            return 0.43
+
+    service = ConfigService(tmp_path)
+    filled = service.ensure_spawn_height(EnvConfig(), FakeSim())
+    explicit = service.ensure_spawn_height(
+        EnvConfig(initial_base_height=0.52),
+        FakeSim(),
+    )
+
+    assert filled.initial_base_height == pytest.approx(0.43)
+    assert explicit.initial_base_height == pytest.approx(0.52)
+
+
+def test_a1_locomotion_goal_enables_all_twelve_leg_joints():
+    from backend.rl.goal_rewards import _locomotion_action_patches
+
+    names = [
+        f"{leg}_{joint}_joint"
+        for leg in ("FR", "FL", "RR", "RL")
+        for joint in ("hip", "thigh", "calf")
+    ]
+    patches = _locomotion_action_patches(
+        [
+            {"joint_index": index, "joint_name": name}
+            for index, name in enumerate(names)
+        ]
+    )
+
+    assert sum(patch["enabled"] for patch in patches) == 12
+
+
+def test_a1_locomotion_action_ranges_stay_inside_joint_limits():
+    from backend.rl.goal_rewards import _locomotion_action_patches
+
+    actions = [
+        {
+            "joint_index": 0,
+            "joint_name": "FR_hip_joint",
+            "lower_limit": -0.802,
+            "upper_limit": 0.802,
+        },
+        {
+            "joint_index": 1,
+            "joint_name": "FR_thigh_joint",
+            "lower_limit": -1.047,
+            "upper_limit": 4.188,
+        },
+        {
+            "joint_index": 2,
+            "joint_name": "FR_calf_joint",
+            "lower_limit": -2.697,
+            "upper_limit": -0.916,
+        },
+    ]
+
+    for action, patch in zip(actions, _locomotion_action_patches(actions)):
+        assert action["lower_limit"] <= patch["scale_low"] < patch["scale_high"]
+        assert patch["scale_high"] <= action["upper_limit"]
 
 
 def test_validate_flags_bad_action_scales(client):
@@ -206,9 +277,13 @@ def test_toolbox_start_training_end_to_end(client):
     assert "error" in second
 
     asyncio.run(toolbox.execute("stop_training", {}))
-    if training_worker._thread is not None:
-        training_worker._thread.join(timeout=60)
-    assert training_worker.status.active is False
+    # Training is Isaac-only now: the agent tool drives the Isaac lane (stubbed
+    # in conftest), so wait for THAT worker — not the SB3 one — to wind down.
+    for _ in range(100):
+        if not isaac_training_worker.status.active:
+            break
+        time.sleep(0.1)
+    assert isaac_training_worker.status.active is False
 
 
 def test_worker_rejects_dqn():

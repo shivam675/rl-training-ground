@@ -98,6 +98,7 @@ class PyBulletManager:
         self.robot_body: int | None = None
         self.plane_body: int | None = None
         self.current_request: LoadUrdfRequest | None = None
+        self._spawn_height: float | None = None
         self.gravity = (0.0, 0.0, -9.81)
         self.urdf_report: dict[str, Any] | None = None
 
@@ -241,6 +242,7 @@ class PyBulletManager:
         p.setGravity(*self.gravity, physicsClientId=self.cid)
         p.setTimeStep(1.0 / SIM_HZ, physicsClientId=self.cid)
         self.robot_body = None
+        self._spawn_height = None
         self._motor_limits.clear()
         self.plane_body = p.loadURDF(PLANE_URDF, physicsClientId=self.cid)
         self.sim_time = 0.0
@@ -288,8 +290,13 @@ class PyBulletManager:
                 flags=flags,
                 physicsClientId=self.cid,
             )
+            self._reset_joints_within_limits()
             if req.auto_spawn_height and not req.fixed_base:
                 self._snap_robot_above_plane(req.spawn_clearance)
+            pos, _ = p.getBasePositionAndOrientation(
+                self.robot_body, physicsClientId=self.cid
+            )
+            self._spawn_height = float(pos[2])
             self.current_request = req.model_copy(update={"path": path})
             self.sim_time = 0.0
             self._frame_loaded_robot()
@@ -342,6 +349,26 @@ class PyBulletManager:
             self.robot_body, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), physicsClientId=self.cid
         )
 
+    def _reset_joints_within_limits(self) -> None:
+        assert self.cid is not None and self.robot_body is not None
+        for joint_index in range(
+            p.getNumJoints(self.robot_body, physicsClientId=self.cid)
+        ):
+            info = p.getJointInfo(
+                self.robot_body, joint_index, physicsClientId=self.cid
+            )
+            if info[2] == p.JOINT_FIXED:
+                continue
+            lower, upper = float(info[8]), float(info[9])
+            position = min(max(0.0, lower), upper) if lower <= upper else 0.0
+            p.resetJointState(
+                self.robot_body,
+                joint_index,
+                targetValue=position,
+                targetVelocity=0.0,
+                physicsClientId=self.cid,
+            )
+
     def reset_robot_state(self, req: LoadUrdfRequest) -> bool:
         """In-place episode reset: teleport the base and zero all joint state
         without tearing the world down.
@@ -372,16 +399,13 @@ class PyBulletManager:
                 (0.0, 0.0, 0.0),
                 physicsClientId=self.cid,
             )
-            for joint_index in range(p.getNumJoints(self.robot_body, physicsClientId=self.cid)):
-                p.resetJointState(
-                    self.robot_body,
-                    joint_index,
-                    targetValue=0.0,
-                    targetVelocity=0.0,
-                    physicsClientId=self.cid,
-                )
+            self._reset_joints_within_limits()
             if req.auto_spawn_height and not req.fixed_base:
                 self._snap_robot_above_plane(req.spawn_clearance)
+            pos, _ = p.getBasePositionAndOrientation(
+                self.robot_body, physicsClientId=self.cid
+            )
+            self._spawn_height = float(pos[2])
             if self.current_request is not None:
                 self.current_request = req.model_copy(
                     update={"path": self.current_request.path}
@@ -732,6 +756,11 @@ class PyBulletManager:
                 return None
             pos, _ = p.getBasePositionAndOrientation(self.robot_body, physicsClientId=self.cid)
             return float(pos[2])
+
+    def spawn_height(self) -> float | None:
+        """Base z recorded immediately after collision-aware placement."""
+        with self.lock:
+            return self._spawn_height
 
     def observation_vector(self, keys: list[str]) -> list[float]:
         with self.lock:

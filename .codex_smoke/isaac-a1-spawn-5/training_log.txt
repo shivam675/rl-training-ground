@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "X:\workspace\auto-rl\sxc1742\backend\rl\isaac\isaac_train.py", line 278, in main
+    cfg, spec, request = build_env_cfg(run_dir, int(args.num_envs))
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "X:\workspace\auto-rl\sxc1742\backend\rl\isaac\isaac_train.py", line 134, in build_env_cfg
+    request = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\IsaacLab\_isaac_sim\kit\python\Lib\pathlib.py", line 1027, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\IsaacLab\_isaac_sim\kit\python\Lib\pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'X:\\workspace\\auto-rl\\sxc1742\\.codex_smoke\\isaac-a1-spawn-5\\config.json'

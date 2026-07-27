@@ -53,6 +53,8 @@ from backend.rl.isaac.isaac_worker import (
     IsaacPlayJob,
     IsaacTrainingWorker,
     isaaclab_bat_path,
+    launch_stream_client,
+    stream_client_path,
 )
 from backend.rl.tuner import TunerWorker
 from backend.run_registry import RunRegistry
@@ -93,12 +95,36 @@ isaac_play_job.on_ended = _replay_isaac_recording
 def start_training_request(req: TrainingStartRequest) -> dict[str, Any]:
     if req.config is None:
         req.config = config_service.current_or_default(sim)
+    req.config = config_service.ensure_spawn_height(req.config, sim)
     problems = config_service.validate(req.config, sim)
     if problems:
         raise ValueError("; ".join(problems))
     if req.sim_backend == "isaac":
         return isaac_training_worker.start(req)
     return training_worker.start(req)
+
+
+def start_evaluation_request(
+    run_name: str,
+    episodes: int = 3,
+    deterministic: bool = True,
+    visualize: bool = True,
+    record: bool = False,
+) -> dict[str, Any]:
+    """Route an evaluation to the right lane, for both ``/evaluation/start`` and
+    the agent tool. Isaac-lane runs (rsl_rl ``model_final.pt``) play back in an
+    Isaac subprocess — streamed over WebRTC, or recorded to ``eval_video.mp4``
+    when ``record``. Legacy SB3 runs use the in-process evaluation worker."""
+    video_playback.stop()  # a new evaluation takes the viewport back
+    run_dir = registry.run_dir(run_name)
+    if run_dir is not None and (run_dir / "model_final.pt").exists():
+        return isaac_play_job.start(run_dir, record=bool(record))
+    return evaluation_worker.start(
+        run_name=run_name,
+        episodes=int(episodes),
+        deterministic=bool(deterministic),
+        visualize=bool(visualize),
+    )
 
 
 toolbox = AgentToolbox(
@@ -112,6 +138,7 @@ toolbox = AgentToolbox(
     tuner_worker,
     autonomy_provider=lambda: load_app_preferences().agent_autonomy,
     training_starter=start_training_request,
+    evaluation_starter=start_evaluation_request,
     # Deferred: _current_training_worker is defined below; the lambda resolves
     # the active training lane at call time. Kept as indirection so a future
     # out-of-process lane (Isaac Sim) can be resolved here too.
@@ -241,16 +268,17 @@ async def health() -> HealthResponse:
 
 @app.get("/simulation/backends")
 async def simulation_backends() -> dict[str, Any]:
+    isaac_ready = isaaclab_bat_path().exists()
     return {
-        "default": "pybullet",
-        "missing": [],
+        "default": "isaac",
+        "missing": [] if isaac_ready else ["isaac"],
         "backends": [
-            {"name": "pybullet", "available": True, "role": "preview/training"},
             {
                 "name": "isaac",
-                "available": isaaclab_bat_path().exists(),
-                "role": "GPU parallel training",
+                "available": isaac_ready,
+                "role": "training / evaluation (GPU, multi-instance)",
             },
+            {"name": "pybullet", "available": True, "role": "inspection / reward test / tuning (headless)"},
         ],
     }
 
@@ -770,18 +798,12 @@ async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
             hint="Only one job runs at a time — wait for it to finish or stop it.",
         )
     try:
-        video_playback.stop()  # a new evaluation takes the viewport back
-        run_name = str(payload.get("run_name", ""))
-        run_dir = registry.run_dir(run_name)
-        # Isaac-lane runs save an rsl_rl checkpoint; playback happens in an Isaac
-        # subprocess streamed over WebRTC, not in the SB3 evaluation worker.
-        if run_dir is not None and (run_dir / "model_final.pt").exists():
-            return isaac_play_job.start(run_dir, record=bool(payload.get("record", False)))
-        return evaluation_worker.start(
-            run_name=run_name,
+        return start_evaluation_request(
+            run_name=str(payload.get("run_name", "")),
             episodes=int(payload.get("episodes", 3)),
             deterministic=bool(payload.get("deterministic", True)),
             visualize=bool(payload.get("visualize", True)),
+            record=bool(payload.get("record", False)),
         )
     except Exception as exc:
         raise fail(
@@ -806,6 +828,32 @@ async def evaluation_status() -> dict[str, Any]:
     if isaac_play_job.status.get("active"):
         return isaac_play_job.refresh()
     return evaluation_worker.status
+
+
+@app.get("/isaac/stream_client")
+async def isaac_stream_client_info() -> dict[str, Any]:
+    """Where the desktop WebRTC streaming client lives and whether it's found.
+    Live view on Windows uses this app (the browser client is Ubuntu-only)."""
+    exe = stream_client_path()
+    return {"path": str(exe), "available": exe.exists()}
+
+
+@app.post("/isaac/stream_client/launch")
+async def isaac_stream_client_launch() -> dict[str, Any]:
+    """Open NVIDIA's Isaac Sim WebRTC Streaming Client (it connects to
+    127.0.0.1:49100 to show the live Isaac world)."""
+    try:
+        exe = launch_stream_client()
+    except FileNotFoundError as exc:
+        raise fail(
+            f"Streaming client not found at {exc}.",
+            code="stream_client_missing",
+            hint="Install NVIDIA's Isaac Sim WebRTC Streaming Client, or set "
+            "EASYRTG_ISAAC_STREAM_CLIENT to its .exe path.",
+        )
+    except Exception as exc:
+        raise fail(exc, code="stream_client_launch_failed")
+    return {"ok": True, "path": str(exe)}
 
 
 @app.get("/logs/backend")
@@ -1349,32 +1397,18 @@ async def ws_simulation(ws: WebSocket):
                     )
                 await asyncio.sleep(1 / 60)
                 continue
+            # No broadcast: this socket does NOT render the live PyBullet world.
+            # PyBullet is headless — inspection / reward test / tuning only, never
+            # a viewport. So there is nothing to stream here except a recorded
+            # evaluation's frames (relayed via `broadcast` above). Isaac live view
+            # is a separate in-app WebRTC WebView, not this socket. Send an idle
+            # heartbeat so the 3D page can show "Nothing in view".
             last_broadcast_seq = -1
-            if (
-                training_worker.status.active
-                or isaac_training_worker.status.active
-                or bool(tuner_worker.status.get("active"))
-            ):
-                # Pause live rendering while training/tuning runs. render_frame holds
-                # the process-global PyBullet lock for the whole EGL getCameraImage;
-                # the training thread shares that lock, so continuous rendering of a
-                # heavy robot starved it (the ~3s/timestep bug). Send a heartbeat so
-                # the viewport can show a "training in progress" placeholder.
-                now = time.monotonic()
-                if now - last_status_at >= 0.5:
-                    last_status_at = now
-                    await ws.send_json(
-                        {"type": "status", **sim.status(), "training": True}
-                    )
-                await asyncio.sleep(0.2)
-                continue
-            # PyBullet EGL contexts are thread-affine on NVIDIA drivers. Rendering
-            # in asyncio.to_thread can segfault after the WebSocket opens.
-            frame = sim.render_frame(width, height, quality, stream_scale)
-            await ws.send_bytes(frame)
-            if int(sim.sim_time * 10) % 10 == 0:
-                await ws.send_json({"type": "status", **sim.status()})
-            await asyncio.sleep(1 / 60)
+            now = time.monotonic()
+            if now - last_status_at >= 0.5:
+                last_status_at = now
+                await ws.send_json({"type": "status", **sim.status(), "idle": True})
+            await asyncio.sleep(0.2)
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:

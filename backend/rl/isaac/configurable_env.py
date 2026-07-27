@@ -35,10 +35,6 @@ ANYMAL_STIFFNESS = 40.0
 ANYMAL_DAMPING = 5.0
 ANYMAL_EFFORT_LIMIT = 80.0
 ANYMAL_VELOCITY_LIMIT = 7.5
-ANYMAL_BASE_HEIGHT = 0.6
-ANYMAL_DEFAULT_JOINT_POS = {
-    ".*HAA": 0.0, ".*F_HFE": 0.4, ".*H_HFE": -0.4, ".*F_KFE": -0.8, ".*H_KFE": 0.8,
-}
 
 _SIM_DT = 1.0 / 240.0
 _DECIMATION = 4  # -> 60 Hz control, mirroring the PyBullet lane (240 Hz, 4 substeps)
@@ -61,14 +57,18 @@ class ConfigurableEnvCfg(DirectRLEnvCfg):
     action_joint_names: list = field(default_factory=list)
 
 
-def make_robot_cfg(usd_path: str) -> ArticulationCfg:
+def make_robot_cfg(
+    usd_path: str,
+    joint_pos: dict[str, float],
+    base_height: float,
+) -> ArticulationCfg:
     # fix_base is handled at URDF->USD conversion time, not here.
     return ArticulationCfg(
         prim_path="/World/envs/env_.*/Robot",
         spawn=sim_utils.UsdFileCfg(usd_path=usd_path),
         init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.0, 0.0, ANYMAL_BASE_HEIGHT),
-            joint_pos=ANYMAL_DEFAULT_JOINT_POS,  # regex; matches nothing -> 0.0 on non-ANYmal
+            pos=(0.0, 0.0, base_height),
+            joint_pos=joint_pos,
         ),
         actuators={
             "all": ImplicitActuatorCfg(

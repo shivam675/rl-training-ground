@@ -145,6 +145,7 @@ class AgentToolbox:
         autonomy_provider=None,
         confirm_tools: set[str] | None = None,
         training_starter: Callable[[TrainingStartRequest], dict[str, Any]] | None = None,
+        evaluation_starter: Callable[..., dict[str, Any]] | None = None,
         worker_resolver: Callable[[], Any] | None = None,
     ):
         self.sim = sim
@@ -163,6 +164,11 @@ class AgentToolbox:
         self.autonomy_provider = autonomy_provider or (lambda: "act")
         self.confirm_tools = confirm_tools or set()
         self.training_starter = training_starter or training_worker.start
+        # Routes evaluation to the right lane (Isaac playback / record vs legacy
+        # SB3 worker); falls back to the SB3 worker's start when unset.
+        self.evaluation_starter = evaluation_starter or (
+            evaluation_worker.start if evaluation_worker is not None else None
+        )
 
     # ------------------------------------------------------------------ schema
 
@@ -312,7 +318,8 @@ class AgentToolbox:
             ),
             tool(
                 "start_training",
-                "Start an RL training run on the loaded robot.",
+                "Start an RL training run on the loaded robot. Runs on Isaac Sim "
+                "(GPU, massively-parallel) — the only training lane.",
                 {
                     "algorithm": {
                         "type": "string",
@@ -322,9 +329,11 @@ class AgentToolbox:
                     "num_envs": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "Parallel PyBullet envs, e.g. 4 or 8.",
+                        "description": "Parallel Isaac envs (the throughput lever), "
+                        "e.g. 2048 or 4096. Defaults to 2048.",
                     },
-                    "total_timesteps": {"type": "integer", "description": "Default 10000"},
+                    "total_timesteps": {"type": "integer", "description": "Default 1000000 "
+                    "(Isaac does ~49k steps/iteration at 2048 envs — keep it in the millions)"},
                     "learning_rate": {"type": "number", "description": "Default 0.0003"},
                     "batch_size": {"type": "integer", "description": "Default 64"},
                     "gamma": {"type": "number", "description": "Default 0.99"},
@@ -377,8 +386,9 @@ class AgentToolbox:
             ),
             tool(
                 "evaluate_run",
-                "Start a background evaluation of a run's saved model "
-                "(N deterministic episodes). Check progress with get_evaluation_status.",
+                "Start playback/evaluation of a run's saved policy. Isaac-lane runs "
+                "stream over WebRTC (watch on the 3D view). Check progress with "
+                "get_evaluation_status.",
                 {
                     "run_name": {"type": "string"},
                     "episodes": {"type": "integer", "description": "Default 3"},
@@ -518,8 +528,12 @@ class AgentToolbox:
 
     def _get_simulation_backends(self) -> dict[str, Any]:
         return {
-            "default": "pybullet",
-            "available": ["pybullet"],
+            "default": "isaac",
+            "training_backend": "isaac",
+            "inspection_backend": "pybullet",
+            "available": ["isaac", "pybullet"],
+            "note": "Training/evaluation run on Isaac Sim (GPU, multi-instance). "
+            "PyBullet is inspection / reward test / tuning only.",
         }
 
     def _get_robot_info(self) -> dict[str, Any]:
@@ -640,8 +654,8 @@ class AgentToolbox:
     def _start_training(
         self,
         algorithm: str = "PPO",
-        num_envs: int = 1,
-        total_timesteps: int = 10_000,
+        num_envs: int = 2048,
+        total_timesteps: int = 1_000_000,
         learning_rate: float = 3e-4,
         batch_size: int = 64,
         gamma: float = 0.99,
@@ -662,9 +676,15 @@ class AgentToolbox:
         if problems:
             return {"error": "Invalid environment config: " + "; ".join(problems)}
         seed_value = int(seed) if seed is not None else None
+        # Training is Isaac-only: the GPU lane with massively-parallel envs. A
+        # single env defeats the point, so a <=1 request is bumped to the
+        # documented ANYmal-scale default; explicit larger counts are honored.
+        envs = int(num_envs)
+        envs = 2048 if envs <= 1 else envs
         req = TrainingStartRequest(
             config=config,
-            num_envs=max(1, int(num_envs)),
+            sim_backend="isaac",
+            num_envs=envs,
             algorithm=algorithm,
             total_timesteps=int(total_timesteps),
             learning_rate=float(learning_rate),
@@ -683,7 +703,7 @@ class AgentToolbox:
         if self.notifier is not None:
             self.notifier.notify_threadsafe(
                 title="Agent started training",
-                body=f"{algorithm} for {total_timesteps} timesteps.",
+                body=f"{algorithm} on Isaac Sim · {envs} parallel envs · {total_timesteps} timesteps.",
                 severity="info",
                 category="agent_action",
             )
@@ -734,13 +754,15 @@ class AgentToolbox:
         return self.registry.compare([str(n) for n in run_names])
 
     def _evaluate_run(self, run_name: str, episodes: int = 3) -> dict[str, Any]:
-        if self.evaluation_worker is None:
-            return {"error": "Evaluation worker unavailable."}
-        result = self.evaluation_worker.start(
+        if self.evaluation_starter is None:
+            return {"error": "Evaluation unavailable."}
+        # Isaac-lane runs play back over WebRTC (watch on the 3D view); legacy
+        # SB3 runs play in the viewport. Routing is handled by the starter.
+        result = self.evaluation_starter(
             run_name=str(run_name), episodes=int(episodes), deterministic=True
         )
         result["note"] = (
-            "Playback is live in the Simulation viewport — tell the user to watch it there."
+            "Playback started — tell the user to open the 3D view to watch it."
         )
         return result
 

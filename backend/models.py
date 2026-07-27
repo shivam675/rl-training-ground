@@ -105,6 +105,7 @@ class EnvConfig(BaseModel):
     project_name: str | None = None
     urdf_path: str | None = None
     fixed_base: bool = False
+    initial_base_height: float | None = Field(default=None, gt=0.0)
     gravity: Vec3 = (0.0, 0.0, -9.81)
     timestep: float = 1.0 / 240.0
     frame_skip: int = 4
@@ -183,6 +184,8 @@ class TrainingStatus(BaseModel):
     device: str | None = None
     observation_size: int | None = None
     action_size: int | None = None
+    # Isaac live-view (WebRTC) browser-client URL the app embeds in the 3D page.
+    stream_url: str | None = None
 
 
 class EvaluationRequest(BaseModel):

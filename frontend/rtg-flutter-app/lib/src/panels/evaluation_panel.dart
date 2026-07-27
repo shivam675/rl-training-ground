@@ -130,26 +130,25 @@ class _EvaluationPanelState extends ConsumerState<EvaluationPanel> {
                   ),
                   const SizedBox(width: 10),
                 ],
-                if (evalStatus['visualize'] == true) ...[
-                  FilledButton.tonalIcon(
-                    onPressed: () => ref.read(navIndexProvider.notifier).state =
-                        AppPage.home,
-                    icon: const Icon(Icons.smart_display_outlined, size: 16),
-                    label: const Text('Watch live'),
-                  ),
-                  const SizedBox(width: 8),
-                ],
+                FilledButton.tonalIcon(
+                  onPressed: () => ref.read(navIndexProvider.notifier).state =
+                      AppPage.viewer,
+                  icon: const Icon(Icons.smart_display_outlined, size: 16),
+                  label: const Text('Open 3D view'),
+                ),
+                const SizedBox(width: 8),
                 OutlinedButton.icon(
                   // Always actionable while an evaluation is active — a Cancel
                   // gated on the generic `busy` flag could be dead just because
                   // an unrelated request was in flight.
                   onPressed: () async {
-                    // The recording replays in the viewport once playback has
+                    // The recording replays on the 3D page once playback has
                     // shut down — jump there so it's actually seen.
                     final wasRecording = evalStatus['recording'] == true;
                     await state.stopEvaluation();
                     if (wasRecording && mounted) {
-                      ref.read(navIndexProvider.notifier).state = AppPage.home;
+                      ref.read(navIndexProvider.notifier).state =
+                          AppPage.viewer;
                     }
                   },
                   style: OutlinedButton.styleFrom(
@@ -191,11 +190,18 @@ class _EvaluationPanelState extends ConsumerState<EvaluationPanel> {
                 final name = run['name'].toString();
                 value ? selected.add(name) : selected.remove(name);
               }),
-              onEvaluate: () => state.startEvaluation(
-                run['name'].toString(),
-                episodes: episodes,
-                record: record && run['backend'] == 'isaac',
-              ),
+              onEvaluate: () async {
+                // record=false → live WebRTC in-app; record=true → headless
+                // record then replay. Either way, land on the 3D View page.
+                await state.startEvaluation(
+                  run['name'].toString(),
+                  episodes: episodes,
+                  record: record && run['backend'] == 'isaac',
+                );
+                if (context.mounted) {
+                  ref.read(navIndexProvider.notifier).state = AppPage.viewer;
+                }
+              },
               onExport: () async {
                 final path = await state.exportRun(run['name'].toString());
                 if (path != null && context.mounted) {
@@ -231,29 +237,35 @@ class _EvaluationPanelState extends ConsumerState<EvaluationPanel> {
               selected: {episodes},
               onSelectionChanged: (sel) => setState(() => episodes = sel.first),
             ),
-            if (state.runs.any((r) => r['backend'] == 'isaac')) ...[
-              const SizedBox(width: 16),
-              Tooltip(
-                message:
-                    'Isaac runs: save a video of the playback and replay it '
-                    'in the viewport after it stops.',
-                child: FilterChip(
-                  selected: record,
-                  onSelected: (value) => setState(() => record = value),
-                  avatar: Icon(
-                    Icons.fiber_manual_record,
-                    size: 14,
-                    color: record
-                        ? context.colors.danger
-                        : scheme.onSurface.withValues(alpha: 0.5),
-                  ),
-                  label: const Text(
-                    'Record video',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ),
+            const SizedBox(width: 16),
+            Text(
+              '3D view:',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: scheme.onSurface.withValues(alpha: 0.7),
               ),
-            ],
+            ),
+            const SizedBox(width: 8),
+            // Live = embed the Isaac WebRTC stream in the 3D page; Record = run
+            // headless, then replay the mp4 there (also on cancel, up to that
+            // point). Applies to Isaac runs; ignored for legacy SB3 runs.
+            SegmentedButton<bool>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(
+                  value: false,
+                  label: Text('Watch live'),
+                  icon: Icon(Icons.cast_connected, size: 15),
+                ),
+                ButtonSegment(
+                  value: true,
+                  label: Text('Record video'),
+                  icon: Icon(Icons.videocam_outlined, size: 15),
+                ),
+              ],
+              selected: {record},
+              onSelectionChanged: (sel) => setState(() => record = sel.first),
+            ),
           ],
         ),
         if (result != null) ...[

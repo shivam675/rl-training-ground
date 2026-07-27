@@ -24,16 +24,58 @@ _DEFAULT_ISAACLAB_BAT = Path(r"C:\IsaacLab\isaaclab.bat")
 _TRAIN_SCRIPT = Path(__file__).resolve().parent / "isaac_train.py"
 _PLAY_SCRIPT = Path(__file__).resolve().parent / "isaac_play.py"
 
-# What the user must run to watch a WebRTC stream (train live-view or playback).
+# Shown while a WebRTC stream is coming up (train live-view or playback). The
+# app embeds it in the 3D View page; the external client is a fallback.
 STREAM_HINT = (
-    "Streaming via WebRTC — connect NVIDIA's 'Isaac Sim WebRTC Streaming Client' "
-    "to 127.0.0.1 (signaling TCP 49100, media UDP 47998)."
+    "Streaming via WebRTC — open the 3D View page to watch it live (or connect "
+    "NVIDIA's Isaac Sim WebRTC Streaming Client to 127.0.0.1)."
 )
 
 
 def isaaclab_bat_path() -> Path:
     override = os.environ.get("EASYRTG_ISAACLAB_BAT")
     return Path(override) if override else _DEFAULT_ISAACLAB_BAT
+
+
+def webrtc_client_url() -> str:
+    """URL of the in-browser WebRTC client the running Kit process serves when
+    ``livestream=2`` is on (train live-view or eval playback). Isaac Sim 6.0
+    serves it at :8211; the app embeds it in a WebView. If an install exposes the
+    client elsewhere (e.g. the Docker web viewer on :8210), override the whole URL
+    with ``EASYRTG_ISAAC_WEBRTC_URL`` (or just the host with
+    ``EASYRTG_ISAAC_WEBRTC_HOST``)."""
+    override = os.environ.get("EASYRTG_ISAAC_WEBRTC_URL")
+    if override:
+        return override
+    host = os.environ.get("EASYRTG_ISAAC_WEBRTC_HOST", "127.0.0.1")
+    return f"http://{host}:8211/streaming/webrtc-client/?server={host}"
+
+
+def stream_client_path() -> Path:
+    """NVIDIA's standalone 'Isaac Sim WebRTC Streaming Client' — the live-view
+    client on Windows. (The in-browser client is a Docker web viewer NVIDIA
+    supports only on Ubuntu/DGX, not Windows, so it can't be embedded in-app.)
+    Override with EASYRTG_ISAAC_STREAM_CLIENT; defaults to the per-user install."""
+    override = os.environ.get("EASYRTG_ISAAC_STREAM_CLIENT")
+    if override:
+        return Path(override)
+    local = os.environ.get("LOCALAPPDATA", "")
+    return (
+        Path(local)
+        / "Programs"
+        / "isaacsim-webrtc-streaming-client"
+        / "isaacsim-webrtc-streaming-client.exe"
+    )
+
+
+def launch_stream_client() -> Path:
+    """Spawn the desktop streaming client (connects to 127.0.0.1:49100). Raises
+    FileNotFoundError if it isn't installed / the path is wrong."""
+    exe = stream_client_path()
+    if not exe.exists():
+        raise FileNotFoundError(str(exe))
+    subprocess.Popen([str(exe)])
+    return exe
 
 
 class IsaacTrainingWorker:
@@ -101,6 +143,7 @@ class IsaacTrainingWorker:
             # on inside Isaac, so throughput drops — never on by default.
             cmd += ["--livestream", "2"]
             self.status.message = f"starting · {STREAM_HINT}"
+            self.status.stream_url = webrtc_client_url()  # for the in-app 3D view
         # New process group so the whole Kit tree can be reaped on stop().
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         self._proc = subprocess.Popen(cmd, creationflags=creationflags)
@@ -151,13 +194,28 @@ class IsaacTrainingWorker:
                 if proc is not None and proc.poll() is not None:
                     pos, buf = self._drain_file(path, pos, buf)  # final flush
                     code = proc.returncode
-                    if code == 0:
+                    failure = next(
+                        (
+                            str(point["message"])
+                            for point in reversed(self.telemetry)
+                            if str(point.get("message", "")).startswith("isaac training failed:")
+                        ),
+                        None,
+                    )
+                    if code == 0 and failure is None and (run_dir / "model_final.pt").is_file():
                         self.status.message = "complete"
                         self.events.append(
                             {"type": "training_complete", "run_dir": str(run_dir)}
                         )
                     else:
-                        self.status.message = f"failed (exit {code})"
+                        if failure is not None:
+                            self.status.message = failure.replace(
+                                "isaac training failed:", "failed:", 1
+                            )
+                        else:
+                            self.status.message = (
+                                f"failed (exit {code})" if code else "failed (no model saved)"
+                            )
                         self.events.append(
                             {
                                 "type": "training_failed",
@@ -308,7 +366,14 @@ class IsaacPlayJob:
             "recording": record,
         }
         if not record:
-            self.status["stream"] = {"host": "127.0.0.1", "signal_port": 49100, "media_port": 47998}
+            # Live playback: the app embeds webrtc_url in a WebView (the 3D page).
+            self.status["stream"] = {
+                "host": "127.0.0.1",
+                "signal_port": 49100,
+                "media_port": 47998,
+                "webrtc_url": webrtc_client_url(),
+            }
+            self.status["webrtc_url"] = webrtc_client_url()
         return {"ok": True, "run_name": run_dir.name, "backend": "isaac", "message": message}
 
     def stop(self) -> dict[str, Any]:

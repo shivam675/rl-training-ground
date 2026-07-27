@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../agent/chat_view.dart';
 import '../app_state.dart';
 import '../nav.dart';
 import '../theme/app_theme.dart';
 import '../theme/easy_colors.dart';
 import '../widgets/common.dart';
 import 'dashboard_panel.dart';
-import 'simulation_panel.dart';
 import 'training_panel.dart';
 
-/// Home cockpit: a large live viewport beside a status/control sidebar. The
-/// chat moved to the co-pilot dock; the 4-quadrant grid is gone. While setup is
-/// incomplete the Training panel collapses to a thin bar so the setup checklist
-/// gets the room; once training unlocks it smoothly opens into the full control.
+/// Home cockpit: the assistant is the main canvas, with the setup/status +
+/// training controls in a side column. The 3D viewport moved to its own page
+/// (entered during Isaac training live-view / evaluation) — there is no live
+/// PyBullet viewport on Home anymore. While setup is incomplete the Training
+/// panel collapses to a thin bar so the setup checklist gets the room; once
+/// training unlocks it smoothly opens into the full control.
 class HomePanel extends StatelessWidget {
   const HomePanel({super.key, this.urdfPath});
 
@@ -21,16 +23,11 @@ class HomePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Row(
       children: [
-        const Expanded(
-          flex: 5,
-          child: Panel(
-            title: '3D Simulation',
-            icon: Icons.view_in_ar,
-            child: SimulationViewport(),
-          ),
-        ),
+        const Expanded(flex: 5, child: AssistantChat()),
+        VerticalDivider(width: 1, color: scheme.outlineVariant),
         Expanded(flex: 3, child: _HomeSidebar(urdfPath: urdfPath)),
       ],
     );
@@ -280,14 +277,18 @@ class _TrainingControlCardState extends ConsumerState<TrainingControlCard> {
             else
               FilledButton.icon(
                 onPressed: canStart
-                    ? () => state.startTraining(
-                        widget.urdfPath,
-                        algorithm: algorithm,
-                        totalTimesteps:
-                            int.tryParse(timestepsController.text.trim()) ??
-                            10000,
-                        hyperparams: trainingParams,
-                      )
+                    ? () async {
+                        final live = state.trainingLiveView;
+                        await state.startTraining(
+                          widget.urdfPath,
+                          algorithm: algorithm,
+                          totalTimesteps:
+                              int.tryParse(timestepsController.text.trim()) ??
+                              10000,
+                          hyperparams: trainingParams,
+                        );
+                        if (live && context.mounted) go(AppPage.viewer);
+                      }
                     : null,
                 icon: const Icon(Icons.school, size: 16),
                 label: Text('Start $algorithm'),

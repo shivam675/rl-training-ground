@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import pybullet as p
 
 
-LOCOMOTION_JOINT_WORDS = ("hip", "knee", "ankle", "leg", "waist")
+LOCOMOTION_JOINT_WORDS = ("hip", "thigh", "calf", "knee", "ankle", "leg", "waist")
 NON_LOCOMOTION_JOINT_WORDS = ("shoulder", "elbow", "wrist", "head", "camera")
 
 
@@ -175,43 +176,63 @@ def _base_observations() -> list[dict[str, Any]]:
 def _locomotion_action_patches(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     named = [
         (
+            action,
             int(action["joint_index"]),
             str(action.get("joint_name", "")).lower(),
         )
         for action in actions
     ]
     has_locomotion_names = any(
-        any(word in name for word in LOCOMOTION_JOINT_WORDS) for _, name in named
+        any(word in name for word in LOCOMOTION_JOINT_WORDS)
+        for _, _, name in named
     )
     patches = []
-    for joint_index, name in named:
+    for action, joint_index, name in named:
         if has_locomotion_names:
             enabled = any(word in name for word in LOCOMOTION_JOINT_WORDS)
         else:
             enabled = not any(word in name for word in NON_LOCOMOTION_JOINT_WORDS)
+        scale_low, scale_high = _position_action_range(action)
         patches.append(
             {
                 "joint_index": joint_index,
                 "enabled": enabled,
                 "control_mode": "position",
-                "scale_low": -0.6,
-                "scale_high": 0.6,
+                "scale_low": scale_low,
+                "scale_high": scale_high,
             }
         )
     return patches
 
 
 def _all_action_patches(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        {
-            "joint_index": int(action["joint_index"]),
-            "enabled": True,
-            "control_mode": "position",
-            "scale_low": -0.6,
-            "scale_high": 0.6,
-        }
-        for action in actions
-    ]
+    patches = []
+    for action in actions:
+        scale_low, scale_high = _position_action_range(action)
+        patches.append(
+            {
+                "joint_index": int(action["joint_index"]),
+                "enabled": True,
+                "control_mode": "position",
+                "scale_low": scale_low,
+                "scale_high": scale_high,
+            }
+        )
+    return patches
+
+
+def _position_action_range(action: dict[str, Any]) -> tuple[float, float]:
+    """Keep the default 1.2 rad window inside finite URDF joint limits."""
+    try:
+        low = float(action.get("lower_limit"))
+        high = float(action.get("upper_limit"))
+    except (TypeError, ValueError):
+        return -0.6, 0.6
+    if not math.isfinite(low) or not math.isfinite(high) or low >= high:
+        return -0.6, 0.6
+    width = min(1.2, high - low)
+    center = min(max(0.0, low + width / 2.0), high - width / 2.0)
+    return center - width / 2.0, center + width / 2.0
 
 
 def _base_height(sim) -> float:

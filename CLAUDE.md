@@ -4,24 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**EasyRTG** — a single-user **desktop RL training ground** for URDF robots. A FastAPI backend
-hosts a live PyBullet world, a Stable-Baselines3 CPU training lane, policy evaluation with live
-video, and an in-app LLM agent that can drive the whole pipeline through tool calls. A **Flutter
-desktop app** (`frontend/rtg-flutter-app/`) is the canonical and only UI; it auto-spawns the
-backend on `127.0.0.1:8000` and streams the viewport + telemetry over WebSockets. (A
-`react-frontend/` used to exist but was **removed 2026-07-05** — Flutter is canonical; recover it
-from git history if ever needed.)
+**EasyRTG** — a single-user **desktop RL training ground** for URDF robots. **Training,
+evaluation, and all policy work run on the NVIDIA Isaac Sim GPU lane** (massively-parallel,
+multi-instance). **PyBullet is kept but headless** — it is the engine for URDF inspection, reward
+testing, and Optuna tuning only; the app/agent never start a PyBullet training run (as of
+2026-07-22). A FastAPI backend hosts that PyBullet inspection world, the Isaac subprocess lane,
+and an in-app LLM agent that can drive the whole pipeline through tool calls. A **Flutter desktop
+app** (`frontend/rtg-flutter-app/`) is the canonical and only UI; it auto-spawns the backend on
+`127.0.0.1:8000`. The **Home page leads with the agent chat as the main canvas** (no 3D viewport);
+the **3D view lives on its own page** (`AppPage.viewer`, `panels/viewer_3d_page.dart`) entered
+when the user starts an Isaac training live-view or an evaluation. (A `react-frontend/` used to
+exist but was **removed 2026-07-05**; recover from git history if ever needed.)
 
-A massively-parallel **NVIDIA Isaac Sim GPU lane** is integrated (installed at `C:/isaacsim`,
-Isaac Sim 6.0.1 + Isaac Lab 3.0). It runs as a **separate subprocess** under Isaac Sim's own
-Python (it can't be embedded in the backend process) and writes into the same `runs/<ts>/`
-telemetry layout. **Progress: Phases 0–3a are done** — real rsl_rl PPO training verified on
-ANYmal, and Evaluate on an Isaac run streams WebRTC playback (`IsaacPlayJob`). **Pending
-(Phase 3b):** auto-launch the external Isaac Sim WebRTC Streaming Client window when Isaac
-evaluation starts (today the user must open it manually; an embedded Flutter viewport is a
-future spike), plus remaining obs/action components and checkpoint resume.
-Progress tracker: `docs/isaac_setup.md`. The old **brax/MJX + MuJoCo lanes were removed
-2026-07-12** in favor of this — recover from git history if ever needed.
+The **NVIDIA Isaac Sim GPU lane** (installed at `C:/isaacsim`, Isaac Sim 6.0.1 + Isaac Lab 3.0)
+runs as a **separate subprocess** under Isaac Sim's own Python (it can't be embedded in the
+backend process) and writes into the same `runs/<ts>/` telemetry layout. Real rsl_rl PPO training
+is verified on ANYmal. **Evaluation has two modes** the user picks per-run: *Watch live* and
+*Record video*. **Live WebRTC can NOT be embedded in-app on Windows** — NVIDIA's in-browser client
+is a Docker web viewer they support only on Ubuntu/DGX (Isaac Sim 6.0 docs), so live view launches
+NVIDIA's standalone desktop **Isaac Sim WebRTC Streaming Client** (connects to `127.0.0.1:49100`;
+the 3D page has a Launch button → `POST /isaac/stream_client/launch`, path via
+`EASYRTG_ISAAC_STREAM_CLIENT`). *Record video* runs headless and replays `eval_video.mp4` on the 3D
+page (also on cancel, up to that point) — **this is the fully in-app 3D view**. Recording uses a
+**chase camera attached to the robot** at a fixed distance. The 3D page (`viewer_3d_page.dart`)
+never renders PyBullet — `/ws/simulation` is broadcast-only (relays the recorded mp4; PyBullet is
+headless, never a viewport). Progress tracker: `docs/isaac_setup.md`. The old **brax/MJX + MuJoCo
+lanes were removed 2026-07-12** — recover from git history if ever needed.
 
 `docs/APP_RECON.md` is a deep, source-verified catalog of bugs, security findings, and
 improvement opportunities across every subsystem — read it before any nontrivial change; it is
@@ -95,6 +103,13 @@ on a gitignored URDF library.
   competes with Isaac Sim for the GPU. With 0, the viewport uses CPU TinyRenderer on demand.
 - `EASYRTG_SUPERVISE=0` — run uvicorn directly with no restart loop (used by the app launcher).
 - `EASYRTG_REQUIRE_CUDA` — fail fast if a CUDA Torch GPU isn't available.
+- `EASYRTG_ISAACLAB_BAT` — path to `isaaclab.bat` (default `C:\IsaacLab\isaaclab.bat`).
+- `EASYRTG_ISAAC_STREAM_CLIENT` — path to NVIDIA's desktop **Isaac Sim WebRTC Streaming Client**
+  `.exe` used for live view (default: the per-user install
+  `%LOCALAPPDATA%\Programs\isaacsim-webrtc-streaming-client\isaacsim-webrtc-streaming-client.exe`).
+- `EASYRTG_ISAAC_WEBRTC_URL` / `EASYRTG_ISAAC_WEBRTC_HOST` — legacy override for a WebRTC
+  browser-client URL. **Unused for embedding on Windows** (NVIDIA's browser client is Ubuntu/Docker
+  only); `webrtc_client_url()` still exists but the app uses the desktop client, not a WebView.
 - Others: `EASYRTG_CORS_ORIGINS`, `EASYRTG_SB`, `EASYRTG_TRY_EGL_ON_WINDOWS`,
   `EASYRTG_TINY_RENDERER_{MIN,MAX}_WIDTH`.
 
@@ -136,29 +151,37 @@ coupling bug.
 
 ### RL — `backend/rl/`
 
-- **SB3 lane (CPU):** `training_worker.py`, `env_factory.py` (VecNormalize, SubprocVecEnv),
-  `gym_env.py`, `evaluation.py`, `tuner.py` (Optuna), `advisor.py`, `reward_builder.py`,
-  `goal_rewards.py`, `custom_reward.py`. PPO/SAC/TD3/A2C. Eval-during-training landed 2026-07-05:
-  `req.eval_freq > 0` adds an SB3 `EvalCallback` on a held-out env (saves `best_model.zip`,
-  eval-based early-stop); a `KVWriter` logger sink harvests loss/KL/entropy/explained-variance +
-  `eval_reward` into `telemetry.jsonl`.
-- **Isaac Sim lane (GPU):** `backend/rl/isaac/` — `isaac_worker.py` (app venv: subprocess
-  launch + telemetry tail; `IsaacPlayJob` for playback), `isaac_train.py` / `isaac_play.py`
-  (run UNDER Isaac's Python via `C:\IsaacLab\isaaclab.bat -p`), `configurable_env.py` (generic
-  `EnvConfig → DirectRLEnv`), `env_spec.py` / `env_math.py` (pure, app-venv-tested). Real rsl_rl
-  PPO training verified on ANYmal (~15k steps/s at 2048 envs — env count is the throughput
-  lever). Evaluate on an Isaac run streams playback via **WebRTC** (NVIDIA StreamSDK, TCP 49100 /
-  UDP 47998 — proprietary signaling, view with the official Isaac Sim WebRTC Streaming Client);
-  training has an opt-in `live_view` stream. **Record video** (`record` on `/evaluation/start`)
-  runs the play subprocess headless instead (no WebRTC) and writes `eval_video.mp4`
-  (fragmented mp4, 960×540@30fps, ≤5 min, ~4.5× wall-to-clip ratio) into the run dir; when
-  playback stops, `VideoPlayback` (`streaming.py`) replays it in the app viewport via
-  `FrameBroadcast` — no external client needed to see the result. Capture perf gotchas
-  (annotator device, visualizer pumping, `render_enabled`) are documented in
-  `docs/isaac_setup.md` Phase 3b. **Physics the `EnvConfig` doesn't specify (PD
-  gains, action scales) falls back to Isaac Lab's ANYmal reference defaults** (ANYmal-tuned;
-  revisit per-robot). `custom_python` rewards are unsupported on this lane (can't run in a
-  vmapped GPU env). Setup + phased plan + API gotchas: `docs/isaac_setup.md`.
+- **SB3 lane (CPU) — training is retired; kept for Optuna + reward test + inspection:**
+  `training_worker.py`, `env_factory.py` (VecNormalize, SubprocVecEnv), `gym_env.py`,
+  `evaluation.py`, `tuner.py` (Optuna), `advisor.py`, `reward_builder.py`, `goal_rewards.py`,
+  `custom_reward.py`. The app/agent no longer start SB3 training or eval (both route to Isaac —
+  the app sends `sim_backend:"isaac"`, the `start_training` tool forces it). The `/training/start`
+  + `/evaluation/start` SB3 branches still exist **only because the pytest suite exercises them**
+  (`test_phase1/2/3/9`); `gym_env`/`env_factory` are still live because **Optuna tuning
+  (`tuner.py`) trains SB3 trials on PyBullet** — its tuned hyperparameters are PyBullet-physics
+  values, a known caveat when applied to Isaac. (Deleting the dead SB3 train/eval code is a
+  pending cleanup — it would require reworking those tests.)
+- **Isaac Sim lane (GPU) — the training/eval lane:** `backend/rl/isaac/` — `isaac_worker.py`
+  (app venv: subprocess launch + telemetry tail; `IsaacTrainingWorker`, `IsaacPlayJob`,
+  `webrtc_client_url()`), `isaac_train.py` / `isaac_play.py` (run UNDER Isaac's Python via
+  `C:\IsaacLab\isaaclab.bat -p`), `configurable_env.py` (generic `EnvConfig → DirectRLEnv`),
+  `env_spec.py` / `env_math.py` (pure, app-venv-tested). Real rsl_rl PPO verified on ANYmal
+  (~15k steps/s at 2048 envs — env count is the throughput lever). `isaac_train.py` saves
+  `model_final.pt` (+ `isaac_policy.json` manifest) **periodically and on early-exit/crash**, not
+  just on clean completion, so a STOP or kill still leaves a usable checkpoint (obs-normalization
+  is baked into the rsl_rl checkpoint, so eval loads the exact trained policy). **Evaluation
+  (`IsaacPlayJob`) has two modes** via `record` on `/evaluation/start`: *live* streams over
+  **WebRTC** (TCP 49100 / UDP 47998) to NVIDIA's **desktop** streaming client — **not embeddable
+  in-app on Windows** (browser client is Ubuntu/Docker-only), launched via `launch_stream_client()`
+  / `POST /isaac/stream_client/launch` (`EASYRTG_ISAAC_STREAM_CLIENT`); *record* runs headless and
+  writes `eval_video.mp4` (fragmented mp4, 960×540@30fps, ≤5 min), which `VideoPlayback`
+  (`streaming.py`) replays on the 3D page via `FrameBroadcast` on stop/cancel. **Recording uses a
+  per-frame chase camera** parked at `_CHASE_OFFSET` from the robot base (`isaac_play.py`); live
+  view keeps free camera control. Capture perf gotchas (annotator device, visualizer pumping,
+  `render_enabled`) are in `docs/isaac_setup.md` Phase 3b. **Physics the `EnvConfig` doesn't
+  specify (PD gains, action scales) falls back to Isaac Lab's ANYmal reference defaults**
+  (revisit per-robot). `custom_python` rewards are unsupported here (can't run in a vmapped GPU
+  env). Setup + gotchas: `docs/isaac_setup.md`.
 - `contracts.json` + `normalization.json` in each run capture the action/obs manifest and
   normalization stats — the basis for any future ONNX/TorchScript export.
 

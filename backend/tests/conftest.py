@@ -19,6 +19,7 @@ real dirs are never touched.
 from __future__ import annotations
 
 import shutil
+import sys
 
 import pytest
 
@@ -56,6 +57,38 @@ def isolate_on_disk_state(tmp_path_factory):
     mp.setattr(main.config_service, "history_path", cfg / main.config_service.history_path.name)
     for worker in (main.registry, main.training_worker, main.isaac_training_worker, main.toolbox):
         mp.setattr(worker, "runs_dir", runs)
+
+    # Training/evaluation are now Isaac-only, so the agent tool and app routes
+    # spawn the Isaac subprocess. A real Isaac Sim launch in a unit test would
+    # boot Kit (~30-60s, GPU) and leave the lane active across tests. Point both
+    # Isaac singletons at a plain-python stub child that mimics the real
+    # contract: write one telemetry point, then stay alive until the STOP
+    # sentinel (bounded so a leak can't hang the suite). Bypasses the
+    # isaaclab.bat existence check the same way test_isaac_bridge does.
+    stub = tmp / "isaac_stub.py"
+    stub.write_text(
+        "import argparse, json, time\n"
+        "from pathlib import Path\n"
+        "p = argparse.ArgumentParser()\n"
+        "p.add_argument('--run-dir', required=True)\n"
+        "p.add_argument('--total-timesteps', type=int, default=100)\n"
+        "p.add_argument('--num-envs', type=int, default=1)\n"
+        "p.add_argument('--record', action='store_true')\n"
+        "a, _ = p.parse_known_args()\n"
+        "rd = Path(a.run_dir)\n"
+        "with (rd / 'telemetry.jsonl').open('a', encoding='utf-8') as h:\n"
+        "    h.write(json.dumps({'timestep': a.total_timesteps, 'reward_mean': 1.0,\n"
+        "                        'fps': 1000.0, 'episode_length_mean': 100}) + '\\n')\n"
+        "stop = rd / 'STOP'\n"
+        "deadline = time.monotonic() + 30.0\n"
+        "while not stop.exists() and time.monotonic() < deadline:\n"
+        "    time.sleep(0.05)\n",
+        encoding="utf-8",
+    )
+    mp.setattr(main.isaac_training_worker, "launcher_cmd", [sys.executable])
+    mp.setattr(main.isaac_training_worker, "train_script", stub)
+    mp.setattr(main.isaac_play_job, "launcher_cmd", [sys.executable])
+    mp.setattr(main.isaac_play_job, "play_script", stub)
 
     yield
     mp.undo()

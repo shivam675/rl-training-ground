@@ -1,0 +1,357 @@
+{
+  "project_id": "b6c4a263c5894ea580a84e939b5b2ba3",
+  "project_name": null,
+  "urdf_path": "X:\\workspace\\unitree_ros\\robots\\a1_description\\urdf\\a1.urdf",
+  "fixed_base": false,
+  "initial_base_height": 0.43000000000000005,
+  "gravity": [
+    0.0,
+    0.0,
+    -9.81
+  ],
+  "timestep": 0.004166666666666667,
+  "frame_skip": 4,
+  "observations": [
+    {
+      "key": "base_position",
+      "enabled": true
+    },
+    {
+      "key": "base_orientation",
+      "enabled": true
+    },
+    {
+      "key": "joint_positions",
+      "enabled": true
+    },
+    {
+      "key": "joint_velocities",
+      "enabled": true
+    },
+    {
+      "key": "base_linear_velocity",
+      "enabled": true
+    },
+    {
+      "key": "base_angular_velocity",
+      "enabled": true
+    }
+  ],
+  "actions": [
+    {
+      "joint_index": 2,
+      "joint_name": "FR_hip_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -0.6,
+      "scale_high": 0.6,
+      "lower_limit": -0.802851455917,
+      "upper_limit": 0.802851455917,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 4,
+      "joint_name": "FR_thigh_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -0.6,
+      "scale_high": 0.6,
+      "lower_limit": -1.0471975512,
+      "upper_limit": 4.18879020479,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 5,
+      "joint_name": "FR_calf_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -2.116297857297,
+      "scale_high": -0.9162978572969999,
+      "lower_limit": -2.69653369433,
+      "upper_limit": -0.916297857297,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 7,
+      "joint_name": "FL_hip_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -0.6,
+      "scale_high": 0.6,
+      "lower_limit": -0.802851455917,
+      "upper_limit": 0.802851455917,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 9,
+      "joint_name": "FL_thigh_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -0.6,
+      "scale_high": 0.6,
+      "lower_limit": -1.0471975512,
+      "upper_limit": 4.18879020479,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 10,
+      "joint_name": "FL_calf_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -2.116297857297,
+      "scale_high": -0.9162978572969999,
+      "lower_limit": -2.69653369433,
+      "upper_limit": -0.916297857297,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 12,
+      "joint_name": "RR_hip_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -0.6,
+      "scale_high": 0.6,
+      "lower_limit": -0.802851455917,
+      "upper_limit": 0.802851455917,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 14,
+      "joint_name": "RR_thigh_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -0.6,
+      "scale_high": 0.6,
+      "lower_limit": -1.0471975512,
+      "upper_limit": 4.18879020479,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 15,
+      "joint_name": "RR_calf_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -2.116297857297,
+      "scale_high": -0.9162978572969999,
+      "lower_limit": -2.69653369433,
+      "upper_limit": -0.916297857297,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 17,
+      "joint_name": "RL_hip_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -0.6,
+      "scale_high": 0.6,
+      "lower_limit": -0.802851455917,
+      "upper_limit": 0.802851455917,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 19,
+      "joint_name": "RL_thigh_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -0.6,
+      "scale_high": 0.6,
+      "lower_limit": -1.0471975512,
+      "upper_limit": 4.18879020479,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    },
+    {
+      "joint_index": 20,
+      "joint_name": "RL_calf_joint",
+      "enabled": true,
+      "control_mode": "position",
+      "scale_low": -2.116297857297,
+      "scale_high": -0.9162978572969999,
+      "lower_limit": -2.69653369433,
+      "upper_limit": -0.916297857297,
+      "max_force": 33.5,
+      "max_velocity": 21.0,
+      "kp": null,
+      "kd": null,
+      "torque_limit": null
+    }
+  ],
+  "rewards": [
+    {
+      "key": "stay_alive",
+      "enabled": true,
+      "weight": 0.5,
+      "params": {}
+    },
+    {
+      "key": "forward_velocity",
+      "enabled": true,
+      "weight": 1.5,
+      "params": {
+        "target_speed": 1.0,
+        "axis": 0
+      }
+    },
+    {
+      "key": "upright",
+      "enabled": true,
+      "weight": 0.5,
+      "params": {}
+    },
+    {
+      "key": "target_height",
+      "enabled": true,
+      "weight": -0.5,
+      "params": {
+        "height": 0.43000000000000005
+      }
+    },
+    {
+      "key": "target_base_position",
+      "enabled": false,
+      "weight": -1.0,
+      "params": {
+        "target": [
+          1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "key": "target_link_position",
+      "enabled": false,
+      "weight": -1.0,
+      "params": {
+        "link_index": 0,
+        "target": [
+          0,
+          0,
+          1
+        ]
+      }
+    },
+    {
+      "key": "energy",
+      "enabled": true,
+      "weight": -0.005,
+      "params": {}
+    },
+    {
+      "key": "action_magnitude",
+      "enabled": false,
+      "weight": -0.01,
+      "params": {}
+    },
+    {
+      "key": "action_smoothness",
+      "enabled": true,
+      "weight": -0.01,
+      "params": {}
+    },
+    {
+      "key": "joint_velocity",
+      "enabled": true,
+      "weight": -0.0005,
+      "params": {}
+    },
+    {
+      "key": "falling_height",
+      "enabled": false,
+      "weight": -5.0,
+      "params": {
+        "min_height": 0.2
+      }
+    },
+    {
+      "key": "forbidden_contacts",
+      "enabled": false,
+      "weight": -1.0,
+      "params": {
+        "links": []
+      }
+    },
+    {
+      "key": "custom_python",
+      "enabled": false,
+      "weight": 1.0,
+      "params": {
+        "code": ""
+      }
+    }
+  ],
+  "terminations": {
+    "max_steps": 1000,
+    "min_base_height": 0.218612
+  },
+  "domain_randomization": {
+    "enabled": false,
+    "mass_scale": [
+      1.0,
+      1.0
+    ],
+    "friction_scale": [
+      1.0,
+      1.0
+    ],
+    "initial_position_noise": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "initial_orientation_noise": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "sensor_noise_std": 0.0,
+    "action_noise_std": 0.0,
+    "action_latency_steps": 0
+  },
+  "algorithm": {
+    "name": "PPO"
+  }
+}

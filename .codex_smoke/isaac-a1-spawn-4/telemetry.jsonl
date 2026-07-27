@@ -1,0 +1,2 @@
+{"timestep": 0, "message": "isaac configuration", "initial_base_height": 0.43000000000000005, "action_dim": 12, "num_envs": 1}
+{"timestep": 0, "message": "isaac training failed: Unable to open the usd file at path: https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Environments/Grid/default_environment.usd"}

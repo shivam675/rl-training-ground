@@ -12,6 +12,8 @@ final appStateProvider = ChangeNotifierProvider<AppState>((ref) {
 });
 
 class AppState extends ChangeNotifier {
+  static const _maxTelemetryPoints = 2000;
+
   AppState(this.api) {
     _telemetryTimer = Timer.periodic(
       const Duration(seconds: 2),
@@ -21,17 +23,14 @@ class AppState extends ChangeNotifier {
     // reachable or not independently of this app's backend; poll it on a slow
     // cadence so the chat connection dot reflects the real provider, not just
     // "backend process up".
-    _healthTimer = Timer.periodic(
-      const Duration(seconds: 8),
-      (_) {
-        refreshAgentHealth();
-        // Cold start / reconnect: the one-shot refreshAll() at construction
-        // fails while the backend is still booting (~10-30s), leaving a stale
-        // "offline" header over a live 3D stream. Keep retrying the full
-        // refresh until the backend answers; once connected this stops firing.
-        if (health?['ok'] != true) refreshAll();
-      },
-    );
+    _healthTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      refreshAgentHealth();
+      // Cold start / reconnect: the one-shot refreshAll() at construction
+      // fails while the backend is still booting (~10-30s), leaving a stale
+      // "offline" header over a live 3D stream. Keep retrying the full
+      // refresh until the backend answers; once connected this stops firing.
+      if (health?['ok'] != true) refreshAll();
+    });
     refreshAgentHealth();
   }
 
@@ -39,6 +38,7 @@ class AppState extends ChangeNotifier {
   Timer? _telemetryTimer;
   Timer? _healthTimer;
   final telemetry = <Map<String, dynamic>>[];
+  int _telemetryCursor = 0;
   bool _pollingTelemetry = false;
   bool _pollingHealth = false;
 
@@ -125,6 +125,7 @@ class AppState extends ChangeNotifier {
       await api.postJson('/project/new', {});
       currentProjectPath = null;
       telemetry.clear();
+      _telemetryCursor = 0;
       await refreshAll();
       message = 'New project — load a URDF to begin.';
     });
@@ -200,13 +201,16 @@ class AppState extends ChangeNotifier {
       if (trainingActive) {
         final status = await api.getJson('/training/status');
         final res = await api.getJson(
-          '/training/telemetry?since=${telemetry.length}',
+          '/training/telemetry?since=$_telemetryCursor',
         );
         final total = (res['total'] as num?)?.toInt() ?? 0;
-        if (total < telemetry.length) telemetry.clear(); // new run started
+        if (total < _telemetryCursor) telemetry.clear(); // new run started
         telemetry.addAll(
           (res['points'] as List? ?? []).cast<Map<String, dynamic>>(),
         );
+        final excess = telemetry.length - _maxTelemetryPoints;
+        if (excess > 0) telemetry.removeRange(0, excess);
+        _telemetryCursor = total;
         trainingStatus = status;
         // A finished run should appear in the runs list right away.
         if (status['active'] != true) await loadRuns(notify: false);
@@ -451,9 +455,13 @@ class AppState extends ChangeNotifier {
   // training card so the chosen algorithm / timesteps / tuned params survive
   // navigation (previously they snapped back to PPO when leaving the page).
   String trainingAlgorithm = 'PPO';
-  String trainingBackend = 'pybullet';
-  int trainingNumEnvs = 1024;
-  int trainingTimesteps = 10000;
+  // Training is Isaac-only (GPU, massively-parallel). PyBullet is inspection /
+  // reward test / tuning only — the app never starts a PyBullet training run.
+  String trainingBackend = 'isaac';
+  int trainingNumEnvs = 2048;
+  // Isaac at 2048 envs does ~49k steps/iteration, so a few-thousand-step total
+  // would be a single iteration. Default to a watchable, meaningful run.
+  int trainingTimesteps = 1000000;
   Map<String, dynamic> trainingParams = const {
     'learning_rate': 0.0003,
     'batch_size': 64,
@@ -722,6 +730,7 @@ class AppState extends ChangeNotifier {
         'checkpoint_every': totalTimesteps >= 5000 ? totalTimesteps ~/ 5 : 0,
       });
       telemetry.clear();
+      _telemetryCursor = 0;
       trainingStatus = await api.getJson('/training/status');
       message = 'Started $algorithm training.';
     });

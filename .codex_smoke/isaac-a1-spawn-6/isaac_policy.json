@@ -1,0 +1,22 @@
+{
+  "framework": "rsl_rl",
+  "checkpoint": "model_final.pt",
+  "obs_dim": 37,
+  "action_dim": 12,
+  "action_joint_names": [
+    "FR_hip_joint",
+    "FR_thigh_joint",
+    "FR_calf_joint",
+    "FL_hip_joint",
+    "FL_thigh_joint",
+    "FL_calf_joint",
+    "RR_hip_joint",
+    "RR_thigh_joint",
+    "RR_calf_joint",
+    "RL_hip_joint",
+    "RL_thigh_joint",
+    "RL_calf_joint"
+  ],
+  "initial_base_height": 0.43000000000000005,
+  "usd_path": "X:\\workspace\\auto-rl\\sxc1742\\.codex_smoke\\isaac-a1-spawn-6\\usd\\robot_resolved\\robot_resolved.usda"
+}
