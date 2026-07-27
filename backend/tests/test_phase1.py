@@ -174,6 +174,23 @@ def test_a1_locomotion_action_ranges_stay_inside_joint_limits():
         assert patch["scale_high"] <= action["upper_limit"]
 
 
+@pytest.mark.parametrize("kind", ["walk_straight", "run_straight"])
+def test_locomotion_goal_terminates_below_seventy_percent_height(kind):
+    from backend.rl.goal_rewards import _patch_for_goal
+
+    class UnloadedSim:
+        robot_body = None
+        cid = None
+
+    patch, _ = _patch_for_goal(
+        kind,
+        UnloadedSim(),
+        [{"joint_index": 0, "joint_name": "hip"}],
+    )
+
+    assert patch["terminations"]["min_base_height"] == pytest.approx(0.42)
+
+
 def test_validate_flags_bad_action_scales(client):
     config = config_service.build_default(sim)
     if not config.actions:

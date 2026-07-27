@@ -8,6 +8,7 @@ import pybullet as p
 
 LOCOMOTION_JOINT_WORDS = ("hip", "thigh", "calf", "knee", "ankle", "leg", "waist")
 NON_LOCOMOTION_JOINT_WORDS = ("shoulder", "elbow", "wrist", "head", "camera")
+LOCOMOTION_MIN_HEIGHT_RATIO = 0.70
 
 
 def classify_goal(text: str) -> str | None:
@@ -99,7 +100,10 @@ def _patch_for_goal(kind: str, sim, actions: list[dict[str, Any]]) -> tuple[dict
                     {"key": "forbidden_contacts", "enabled": False},
                     {"key": "custom_python", "enabled": False},
                 ],
-                "terminations": {"max_steps": 1000, "min_base_height": min_height * 0.82},
+                "terminations": {
+                    "max_steps": 1000,
+                    "min_base_height": base_height * LOCOMOTION_MIN_HEIGHT_RATIO,
+                },
             },
             summary,
         )

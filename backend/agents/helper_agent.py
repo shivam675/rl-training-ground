@@ -110,7 +110,7 @@ class HelperAgent(BaseAgent):
         "REWARD EXAMPLES:\n"
         "- WALK FORWARD: forward_velocity(weight 1.5, target_speed 1.0) + upright(0.5) + "
         "stay_alive(0.5) + target_height(-0.5, height=start) + energy(-0.005) + "
-        "action_smoothness(-0.01); terminations {max_steps:1000, min_base_height: ~0.6× "
+        "action_smoothness(-0.01); terminations {max_steps:1000, min_base_height: 0.7× "
         "start height}. (apply_behavior_goal 'walk straight' sets exactly this.)\n"
         "- BALANCE/STAND: stay_alive(1.0) + upright(1.0) + target_height(-1.0) + "
         "target_base_position(-0.5, target=start xy) + energy(-0.01) + "
