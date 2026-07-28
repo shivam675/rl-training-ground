@@ -25,12 +25,6 @@ MAX_UNDO_STACK = 20
 # present so the UI and agent can see the options, but nothing is enabled. The
 # user and the assistant decide together what to observe, control and reward
 # before training unlocks — see [[easyrtg-production-flow]].
-DEFAULT_OBSERVATIONS = [
-    {"key": "base_position", "enabled": False},
-    {"key": "base_orientation", "enabled": False},
-    {"key": "joint_positions", "enabled": False},
-    {"key": "joint_velocities", "enabled": False},
-]
 SUPPORTED_TERMINATION_KEYS = {"max_steps", "min_base_height"}
 SUPPORTED_PATCH_KEYS = {
     "observations",
@@ -42,7 +36,13 @@ SUPPORTED_PATCH_KEYS = {
 
 
 def default_rewards() -> list[dict[str, Any]]:
-    """Full reward catalog, all disabled — the assistant/user enable + tune."""
+    """The reward components the backend knows how to evaluate.
+
+    NOT seeded into configs any more — this is the **validation allowlist** used
+    by `apply_patch` and `validate` to reject an unknown reward key, plus the
+    reference the agent authors against. Nothing here reaches the UI unless
+    something deliberately added it to a config.
+    """
     from backend.rl.reward_builder import default_reward_components
 
     return [
@@ -67,15 +67,32 @@ class ConfigService:
         self.history_path = config_dir / HISTORY_FILENAME
 
     def build_default(self, sim, algorithm: str = "PPO") -> EnvConfig:
-        """Build a config for the currently loaded robot."""
+        """Build a config for the currently loaded robot.
+
+        Observations and rewards start **empty**, on purpose. This used to seed
+        every new project with `DEFAULT_OBSERVATIONS` plus the entire 17-entry
+        reward catalogue (all disabled), which is what made the Obs/Action and
+        Rewards pages open as a menu of toggles for the user to pick through — a
+        catalogue that is identical for a quadruped, a humanoid and a robot arm,
+        and therefore says nothing about the robot actually loaded.
+
+        The agent authors them instead, for this robot and this task, and the
+        panels render whatever it wrote. `apply_patch` upserts unknown
+        observation/reward keys, so nothing needs to be pre-listed for the agent
+        or the UI to add a term.
+
+        Actions are different and stay enumerated: joints are physical facts
+        about the robot, not an authored list. They arrive disabled, and the
+        agent enables the ones the task needs (from `morphology.locomotion_joints`)
+        and sets each control mode — so the page shows a decision rather than a
+        blank form.
+        """
         info = sim.robot_info()
         urdf_path = info.get("path")
         actions = [
             {
                 "joint_index": item["joint_index"],
                 "joint_name": item.get("joint_name"),
-                # Joints are listed but disabled by default; the assistant/user
-                # choose which ones the policy controls for the goal.
                 "enabled": False,
                 "control_mode": item.get("control_mode", "position"),
                 "scale_low": -1.0,
@@ -90,9 +107,9 @@ class ConfigService:
         return self.ensure_spawn_height(
             EnvConfig(
                 urdf_path=urdf_path,
-                observations=DEFAULT_OBSERVATIONS,
+                observations=[],
                 actions=actions,
-                rewards=default_rewards(),
+                rewards=[],
                 terminations={"max_steps": 1000},
                 algorithm={"name": algorithm},
             ),
@@ -360,26 +377,21 @@ class ConfigService:
         info = sim.robot_info()
         return saved.urdf_path == info.get("path") and bool(saved.actions)
 
-    @staticmethod
-    def ensure_reward_catalog(config: EnvConfig) -> EnvConfig:
-        """Append any reward components missing from an older saved config so the
-        UI/agent always see the full (current) catalog. New components are added
-        disabled, so this never changes training behaviour."""
-        present = {r.key for r in config.rewards}
-        missing = [c for c in default_rewards() if c["key"] not in present]
-        if not missing:
-            return config
-        data = config.model_dump()
-        data["rewards"].extend(missing)
-        return EnvConfig.model_validate(data)
-
     def current_or_default(self, sim) -> EnvConfig:
-        """Saved config if it matches the loaded robot, else a fresh default."""
+        """Saved config if it matches the loaded robot, else a fresh default.
+
+        There used to be an `ensure_reward_catalog` step here that appended every
+        reward component missing from a saved config, "so the UI/agent always see
+        the full catalog". That is what kept the toggle menu alive regardless of
+        what the agent authored: emptying the defaults was not enough, because
+        the catalogue was re-injected on every single load. A config now contains
+        exactly the terms someone chose to put in it.
+        """
         saved = self.load()
         info = sim.robot_info()
         urdf_path = info.get("path")
         if saved is not None and saved.urdf_path == urdf_path and saved.actions:
-            return self.ensure_spawn_height(self.ensure_reward_catalog(saved), sim)
+            return self.ensure_spawn_height(saved, sim)
         return self.build_default(sim)
 
     def as_dict(self, config: EnvConfig) -> dict[str, Any]:
