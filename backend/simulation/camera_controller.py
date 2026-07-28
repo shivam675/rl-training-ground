@@ -8,7 +8,7 @@ ZOOM_FACTOR = 0.9
 
 
 class OrbitCamera:
-    """Viewport camera ported from testing/qt_bullet.py."""
+    """Viewport camera: orbit, pan, zoom, tilt with adaptive render scale."""
 
     def __init__(self) -> None:
         self.target = [0.0, 0.0, 0.3]

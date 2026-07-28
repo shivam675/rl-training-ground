@@ -1,6 +1,6 @@
 # EasyRTG Architecture
 
-EasyRTG uses Flutter for the desktop UI and FastAPI for all simulation, RL, and agent work. PyBullet runs in `DIRECT` mode in the backend. The simulation viewport follows the camera/rendering approach from `testing/qt_bullet.py`: orbit, pan, zoom, tilt, adaptive render scale, EGL when available, and TinyRenderer fallback.
+EasyRTG uses Flutter for the desktop UI and FastAPI for all simulation, RL, and agent work. PyBullet runs in `DIRECT` mode in the backend. The simulation viewport camera/rendering lives in `backend/simulation/camera_controller.py`: orbit, pan, zoom, tilt, adaptive render scale, EGL when available, and TinyRenderer fallback.
 
 ## Data Flow
 

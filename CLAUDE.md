@@ -424,8 +424,7 @@ tools bypassing confirmation, wildcard CORS). The **P0 set was fixed 2026-07-05*
 
 **The root `README.md` is stale** — it still describes SB3-on-PyBullet as *the* training lane, a
 `.venv-rtg` venv, and Linux-first setup, with no mention of Isaac. Don't cite it or follow its
-commands; use this file plus `docs/`. `testing/qt_bullet.py` is a one-off scratch script, not part
-of the test suite.
+commands; use this file plus `docs/`.
 
 `docs/superpowers/specs/` + `plans/` hold **dated per-feature design docs** (`YYYY-MM-DD-*.md`) —
 the newest and most trustworthy record of recent behaviour changes, since they postdate
