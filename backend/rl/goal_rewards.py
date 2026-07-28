@@ -5,10 +5,13 @@ from typing import Any
 
 import pybullet as p
 
+from backend.rl.morphology import Morphology, analyze
 
-LOCOMOTION_JOINT_WORDS = ("hip", "thigh", "calf", "knee", "ankle", "leg", "waist")
-NON_LOCOMOTION_JOINT_WORDS = ("shoulder", "elbow", "wrist", "head", "camera")
 LOCOMOTION_MIN_HEIGHT_RATIO = 0.70
+# Velocity window for a wheel whose URDF omits max_velocity. Wheels are commanded
+# as a rate, and a position-sized window (0.6 rad) would barely turn them.
+# ponytail: single fallback; per-robot values come from the URDF when present.
+_WHEEL_FALLBACK_RAD_S = 20.0
 # Per-joint travel allowance (rad) either side of the nominal stance for
 # position actions. Calibration knob: too small and the robot cannot swing a
 # leg, too large and exploration wastes most of its range on poses that fall.
@@ -60,7 +63,16 @@ def apply_behavior_goal(goal: str, sim, config_service) -> dict[str, Any]:
     if not actions:
         raise ValueError("Loaded robot has no controllable actions.")
 
-    patch, summary = _patch_for_goal(kind, sim, actions)
+    morph = describe_robot(config.urdf_path)
+    if kind != "reach_target" and morph is not None and not morph.ground_groups:
+        # A fixed-base arm or a hand has no limb that reaches the ground; asking
+        # it to walk would train a reward it can never satisfy.
+        raise ValueError(
+            "This robot has no ground-reaching limbs (it looks fixed-base or "
+            f"manipulator-like), so a locomotion goal does not apply.\n{morph.describe()}"
+        )
+
+    patch, summary = _patch_for_goal(kind, sim, actions, morph)
     result = config_service.patch_current(
         sim,
         patch,
@@ -81,11 +93,27 @@ def apply_behavior_goal(goal: str, sim, config_service) -> dict[str, Any]:
     }
 
 
-def _patch_for_goal(kind: str, sim, actions: list[dict[str, Any]]) -> tuple[dict[str, Any], str]:
+def describe_robot(urdf_path: str | None) -> Morphology | None:
+    """Structural morphology, or None when the URDF can't be analyzed.
+
+    Never raises: an unreadable or unusual URDF must not block configuring a
+    robot, it just means callers fall back to structure-free defaults.
+    """
+    if not urdf_path:
+        return None
+    try:
+        return analyze(urdf_path)
+    except Exception:
+        return None
+
+
+def _patch_for_goal(
+    kind: str, sim, actions: list[dict[str, Any]], morph: Morphology | None = None
+) -> tuple[dict[str, Any], str]:
     base_height = _base_height(sim)
     min_height = max(0.2, base_height * 0.62)
     action_patches = (
-        _locomotion_action_patches(actions)
+        _locomotion_action_patches(actions, morph)
         if kind != "reach_target"
         else _all_action_patches(actions)
     )
@@ -209,36 +237,47 @@ def _base_observations() -> list[dict[str, Any]]:
     ]
 
 
-def _locomotion_action_patches(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    named = [
-        (
-            action,
-            int(action["joint_index"]),
-            str(action.get("joint_name", "")).lower(),
-        )
-        for action in actions
-    ]
-    has_locomotion_names = any(
-        any(word in name for word in LOCOMOTION_JOINT_WORDS)
-        for _, _, name in named
-    )
+def _locomotion_action_patches(
+    actions: list[dict[str, Any]], morph: Morphology | None = None
+) -> list[dict[str, Any]]:
+    """Enable the joints that actually move the robot, per the kinematic tree.
+
+    ``morph`` is None only when the URDF could not be analyzed; then every joint
+    is enabled, because without structure "actuate everything" is the neutral
+    choice and guessing from names is what this replaced (it silently disabled
+    all four drive joints on GO2W/B2W, whose wheels are named ``*_foot_joint``).
+    """
+    locomotion = set(morph.locomotion_joints()) if morph else None
     patches = []
-    for action, joint_index, name in named:
-        if has_locomotion_names:
-            enabled = any(word in name for word in LOCOMOTION_JOINT_WORDS)
+    for action in actions:
+        name = str(action.get("joint_name", ""))
+        enabled = True if locomotion is None else name in locomotion
+        mode = morph.suggested_control_mode(name) if morph else "position"
+        if mode == "velocity":
+            # A continuous joint has no target angle; command a rate instead, and
+            # scale it to the joint's own limit rather than a position window.
+            limit = _coerce_float(action.get("max_velocity")) or _WHEEL_FALLBACK_RAD_S
+            scale_low, scale_high = -abs(limit), abs(limit)
         else:
-            enabled = not any(word in name for word in NON_LOCOMOTION_JOINT_WORDS)
-        scale_low, scale_high = _position_action_range(action)
+            scale_low, scale_high = _position_action_range(action)
         patches.append(
             {
-                "joint_index": joint_index,
+                "joint_index": int(action["joint_index"]),
                 "enabled": enabled,
-                "control_mode": "position",
+                "control_mode": mode,
                 "scale_low": scale_low,
                 "scale_high": scale_high,
             }
         )
     return patches
+
+
+def _coerce_float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) and number != 0.0 else None
 
 
 def _all_action_patches(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:

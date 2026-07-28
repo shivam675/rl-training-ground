@@ -87,8 +87,10 @@ cache; ignore it.
 
 CI (`.github/workflows/ci.yml`) is **ubuntu-latest with CPU-only Torch** and no `--basetemp`, so
 **nothing in the Isaac/GPU lane is covered by CI** — the Isaac-adjacent tests that do run
-(`test_isaac_env_math`, `test_isaac_bridge`) are deliberately pure app-venv logic. GPU behaviour
-is verified only by hand on this box.
+(`test_isaac_env_math`, `test_isaac_bridge`, `test_reward_expr`) are deliberately pure app-venv
+logic. GPU behaviour is verified only by hand on this box — for Isaac work, write a throwaway spike
+script and run it with `C:\IsaacLab\isaaclab.bat -p <script>`. **Have the spike write findings to a
+file, not stdout**: Isaac interleaves and drops stdout, which silently cost a whole spike run.
 
 `scripts/build_app.ps1` builds the standalone Windows app (Flutter runner +
 PyInstaller-frozen backend in `dist\<AppName>\`, no Python install needed; refuses to package
@@ -104,8 +106,10 @@ per-test tmp dirs would break the chain — don't "fix" it to function scope. Sp
 on a gitignored URDF library.
 
 `test_phase1..9` are that ordered pipeline. The rest are standalone and safe to run alone:
-`test_isaac_env_math` / `test_isaac_bridge` (pure app-venv logic, no Isaac install needed),
-`test_spawn_height` (URDF-library-gated), `test_stabilization`, `test_smoke`.
+`test_isaac_env_math` / `test_isaac_bridge` / `test_reward_expr` (pure app-venv logic, no Isaac
+install needed), `test_morphology` (half synthetic-URDF so it runs anywhere, half gated on the
+Unitree library at `X:/workspace/unitree_ros/robots`), `test_spawn_height` (URDF-library-gated),
+`test_stabilization`, `test_smoke`. Full suite is **183 passed, 1 skipped** (~2m15s).
 
 ### Key environment variables (`EASYRTG_*`)
 
@@ -168,6 +172,51 @@ import should route through this too or `package://` meshes fail to resolve. Not
 currently only advances when a frame is rendered (`render_frame` is the sole stepper) — a known
 coupling bug.
 
+### Morphology — what a robot IS, from structure not joint names (`backend/rl/morphology.py`)
+
+**This is the layer everything robot-specific should route through, and it is already wired.**
+`analyze(urdf_path) -> Morphology` parses the URDF, finds the root link (the one never a child),
+DFS's to every leaf to get one `Chain` per limb, groups chains by movable-joint signature (axes
+compared with `abs()`, so mirrored left/right limbs group), and calls the groups reaching into the
+robot's lowest band **ground-reaching**. Two structural rules clean up real-world URDF noise: a
+chain whose movable sequence is a strict *prefix* of another is a stub (A1's `*_thigh_shoulder`), and
+sibling leaves sharing a movable sequence collapse to the deepest (Go2's `*_calflower` collision
+shells, which otherwise tripled the foot count).
+
+It replaced name matching (`LOCOMOTION_JOINT_WORDS` / `NON_LOCOMOTION_JOINT_WORDS`, now deleted),
+which grepped English words out of joint names. Measured against the Unitree library, that heuristic
+**disabled all four drive joints on GO2W and B2W** — wheeled quadrupeds whose wheels are named
+`*_foot_joint`, so "foot" wasn't in the word list — making those robots untrainable, and it dropped
+H1's `torso_joint` because the list said "waist". Structure has neither failure: GO2W/B2W went
+**12 → 16 locomotion joints**, and A1/GO1 (the two robots the app was developed against) are
+unchanged at 12.
+
+API: `locomotion_joints()` (movable joints of ground-reaching limbs — includes wheels),
+`contact_links()`, `resolve_contact_bodies(available)`, `wheel_joints()`,
+`suggested_control_mode(joint)` (velocity for a `continuous`/full-turn joint, position otherwise —
+position-controlling a wheel is meaningless), and `describe()`, the compact summary the agent reads
+to decide which limbs to actuate. `test_morphology.py` is 20 tests — a synthetic URDF exercising each
+structural rule (runs in CI) plus library-gated assertions on **a1, go1, go2, b1, go2w, b2w, h1, g1,
+h1_2, z1, dex1_1**. H2, R1, laikago, aliengo, a2, as2, b2 were checked by hand and also read
+correctly; only the eleven above are pinned by tests.
+
+Consumers: `goal_rewards.describe_robot(urdf_path)` wraps `analyze` and **never raises** — `None`
+means "enable every joint", because without structure that is the neutral choice and guessing from
+names is what this replaced. A robot with **no** ground-reaching limbs (Z1, the dexterous hand) now
+makes `apply_behavior_goal` reject locomotion goals with the morphology description attached,
+instead of training a reward it can never satisfy.
+
+**Contact sensing on the Isaac lane — recipe established by spike, NOT yet wired.** Four spike
+passes found: (1) the spawn cfg needs `activate_contact_sensors=True` or *zero* bodies report
+contacts; (2) even with it only **1 of 13** rigid bodies gets a reporter (the root), so
+`PhysxContactReportAPI` has to be applied explicitly to the bodies you want — the prim_path regex
+was never the problem; (3) `merge_fixed_joints=True` in the URDF→USD conversion **deletes every
+foot** (A1's articulation is `base` + 4 hips + 4 thighs + 4 calves; `FR_foot`…`RL_foot` do not
+exist), which is what `resolve_contact_bodies()` exists for — it walks up to the nearest surviving
+body, `FR_foot → FR_calf`, where the collision geometry actually went, so no converter change is
+needed; (4) prims nest by kinematic tree under `Geometry/`. `track_air_time=True` works —
+`current_air_time` / `current_contact_time` populate as `ProxyArray` (use `.torch`).
+
 ### Robot calibration — stance, spawn height, actions, gains (spans PyBullet → Isaac)
 
 **Everything a legged robot needs to not look broken is calibration data flowing PyBullet →
@@ -210,12 +259,22 @@ over-damped, a leg can't swing) and effort 33.5 Nm (not 80).
 *measured* standing height — what stops a legged robot from farming forward-velocity reward by
 crawling. `WALK_GAIT_PENALTIES` (same file) is the companion set: `lateral_velocity`,
 `vertical_velocity`, `body_rate`, `joint_limit_violation`. Both lanes implement them
-(`reward_builder` + `isaac/env_math`) and they are deliberately **sensor-free** — no contact
-sensors, no per-morphology foot detection. Without them `forward_velocity` is indifferent between
+(`reward_builder` + `isaac/env_math`) and they are **sensor-free** — proxies chosen when there was
+no contact data and no foot detection (morphology now supplies the latter, and the contact-sensor
+recipe above supplies the former). Without them `forward_velocity` is indifferent between
 a trot and a splayed slide at the same speed, and the slide is easier to find: the 100M-step A1 run
 converged to 93.5% of its reward ceiling doing exactly that. The `HelperAgent` prompt
 (`helper_agent.py`) restates the ratio *and* these penalties in its WALK example — **change them
 together or the agent advertises a reward set the code doesn't apply.**
+
+**These same penalties are anti-gait, and that is a known limitation, not a bug to "fix" casually.**
+`vertical_velocity` and `body_rate` penalize exactly the vertical oscillation and pitch rate that
+*define* a bound or gallop, and `min_base_height` at 0.70× standing height terminates any gait with
+a compression phase (A1 runs at ~0.252 m against a 0.219 m floor — 3.3 cm of headroom). So the
+reward set can express *speed* but not *gait*: a 20M-step "gallop" run reached **2.86 m/s** — 7× the
+walk policy — as a flat, crouched trot with `|v_z|` of 0.149 m/s, because a trot is the reward
+optimum and a gallop is strictly worse. Gait is inexpressible until contact/air-time terms exist; no
+weighting of the current 11 terms produces a flight phase, and no LLM can find one.
 
 **Reward-term scale is a correctness property, not taste.** The positive ceiling is ~2.5/step
 (`stay_alive` 0.5 + `upright` 0.5 + `forward_velocity` 1.5). **Any penalty that can exceed it makes
@@ -232,8 +291,48 @@ Any change here invalidates existing policies (action semantics or stance moved)
 scratch. Specs: `docs/superpowers/specs/2026-07-27-robot-specific-spawn-height.md`,
 `2026-07-27-walk-height-termination-design.md`, `2026-07-27-offset-position-actions.md`.
 
+### Expression rewards — `backend/rl/reward_expr.py` — **PRESENT BUT NOT WIRED**
+
+Nothing in production imports it yet; only `test_reward_expr.py` does. **What actually runs is still
+`env_spec.SUPPORTED_OBS` (6 keys), `SUPPORTED_REWARDS` (11 keys), the `custom_python` rejection, and
+the two parallel 11-branch chains in `reward_builder.evaluate_reward` / `env_math.compute_reward`.**
+Don't describe expressions to a user as a feature, and don't assume a config can carry them.
+
+It exists to replace those three catalogues with one path — rewards, observations *and* terminations
+as expressions over a shared state vocabulary, so a user's request stops needing a code change.
+`compile_expr(source, allowed)` parses with `ast` and walks a node **whitelist**, compiling to
+batched torch ops; `TermSet` holds weighted named terms and reports a per-term breakdown like the
+existing `out_terms`. Because `ast.Attribute` and `ast.Subscript` are simply absent from the
+whitelist, the `().__class__.__bases__` walk that `custom_reward.py` admits to in its own docstring
+is *unparseable* rather than denylisted — and since it compiles to tensor ops it runs inside the
+vmapped GPU env, which is what made `custom_python` impossible there.
+
+`audit(spans, scaling)` makes the reward-scale rule above mechanical instead of prompt discipline. It
+flags NaN/infinite terms, a penalty exceeding the whole positive budget, a penalty dominating it
+(>50%), an all-penalty reward with no objective, and — the one a budget check alone misses —
+`sum()` over per-element state, which is DOF-dependent: `-0.01 * sum(joint_vel)` is −0.91/step on
+A1's 12 joints and would be −3.9/step on H1_2's 51. That exact term was quietly the largest in a
+20M-step run. 35 tests, including all 13 sandbox-escape attempts.
+
+**Direction of travel (agreed 2026-07-28), so you don't undo it.** The app is mid-migration from
+"catalogue of hardcoded options" to "agent authors the environment". Phase 1 (morphology) is landed
+and wired. Remaining, in order: wire contact sensing with the recipe above → a shared state
+vocabulary including **per-episode commands** (target speed/heading sampled per reset, in the
+observation, reward relative to it, so one policy is steerable instead of one-behavior-per-run) →
+move obs/rewards/terminations onto `TermSet` → a `CampaignWorker` (mirroring `TunerWorker`) running
+propose → `audit` → short probe → measure → revise, with probe length **agent-configurable** and
+revision triggered only by *mis-specification* (out-of-bounds terms, structurally absent behavior,
+collapsed episodes), never by "not converged yet" → expression editors in the Rewards/Obs/Action
+panels. Out of scope for now by decision: terrain generation, cameras/ray sensors.
+Still hardcoded and known: `classify_goal`'s 4-keyword goal enum and `_patch_for_goal`'s per-goal
+templates, both of which the above replaces.
+
 ### RL — `backend/rl/`
 
+- **Engine-agnostic (used by both lanes):** `morphology.py` (structure→limbs, wired) and
+  `reward_expr.py` (expression compiler, not wired) — see their sections above. Both are pure
+  stdlib/numpy/torch with no simulator import, so they're testable in the app venv and importable
+  under Isaac's Python.
 - **SB3 lane (CPU) — training is retired; kept for Optuna + reward test + inspection:**
   `training_worker.py`, `env_factory.py` (VecNormalize, SubprocVecEnv), `gym_env.py`,
   `evaluation.py`, `tuner.py` (Optuna), `advisor.py`, `reward_builder.py`, `goal_rewards.py`,

@@ -201,7 +201,16 @@ def test_walk_goal_includes_gait_penalties():
         assert weight < 0  # penalties, per the sign convention
 
 
-def test_a1_locomotion_goal_enables_all_twelve_leg_joints():
+def test_locomotion_actions_fall_back_to_every_joint_without_morphology():
+    """No URDF to analyze => actuate everything, rather than guessing from names.
+
+    Joint selection is now structural (backend/rl/morphology.py); which joints a
+    given robot walks with is asserted against the real URDFs in
+    test_morphology.py::test_library_morphology. This covers only the fallback
+    that applies when the URDF cannot be analyzed — the old name-matching path
+    disabled all four drive joints on GO2W/B2W, so "enable everything" is the
+    safer structure-free default.
+    """
     from backend.rl.goal_rewards import _locomotion_action_patches
 
     names = [
@@ -213,10 +222,12 @@ def test_a1_locomotion_goal_enables_all_twelve_leg_joints():
         [
             {"joint_index": index, "joint_name": name}
             for index, name in enumerate(names)
-        ]
+        ],
+        None,
     )
 
     assert sum(patch["enabled"] for patch in patches) == 12
+    assert all(patch["control_mode"] == "position" for patch in patches)
 
 
 def test_a1_locomotion_commands_stay_inside_joint_limits():
