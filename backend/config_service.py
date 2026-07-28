@@ -311,16 +311,29 @@ class ConfigService:
 
     @staticmethod
     def ensure_spawn_height(config: EnvConfig, sim) -> EnvConfig:
-        """Fill a missing height from the collision-grounded robot preview."""
-        if config.initial_base_height is not None:
-            return config
-        getter = getattr(sim, "spawn_height", None)
-        height = getter() if callable(getter) else None
-        return (
-            config.model_copy(update={"initial_base_height": float(height)})
-            if height is not None and float(height) > 0.0
-            else config
-        )
+        """Fill a missing stance and height from the collision-grounded preview.
+
+        Stance first, deliberately: the joint angles decide where the feet are,
+        so an explicitly configured crouch changes the grounded base height. If
+        the height were measured against the preview's default zero pose, a
+        legged robot would train with a height target and termination threshold
+        calibrated to a stance it never holds."""
+        updates: dict[str, Any] = {}
+        if config.initial_joint_pose:
+            applier = getattr(sim, "apply_joint_pose", None)
+            if callable(applier):
+                applier(config.initial_joint_pose)
+        else:
+            getter = getattr(sim, "joint_pose", None)
+            pose = getter() if callable(getter) else None
+            if pose:
+                updates["initial_joint_pose"] = dict(pose)
+        if config.initial_base_height is None:
+            getter = getattr(sim, "spawn_height", None)
+            height = getter() if callable(getter) else None
+            if height is not None and float(height) > 0.0:
+                updates["initial_base_height"] = float(height)
+        return config.model_copy(update=updates) if updates else config
 
     def save(self, config: EnvConfig) -> Path:
         # Anything we persist becomes "a project", so it always gets an id.

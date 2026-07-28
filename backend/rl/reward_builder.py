@@ -30,6 +30,12 @@ PENALTY_KEYS = {
     "target_height",
     "energy",
     "action_smoothness",
+    # Gait shaping: sensor-free proxies for "this looks like walking". A forward
+    # velocity reward alone is indifferent between a trot and a splayed slide.
+    "lateral_velocity",
+    "vertical_velocity",
+    "body_rate",
+    "joint_limit_violation",
 }
 # Shaped objective/penalty terms (everything except the alive bonus and the
 # free-form custom term). Used to detect custom_python ⟂ manual overlap.
@@ -48,6 +54,10 @@ def default_reward_components() -> list[dict[str, Any]]:
         {"key": "action_magnitude", "label": "Penalize action magnitude", "weight": -0.01},
         {"key": "action_smoothness", "label": "Penalize jerky action changes", "weight": -0.01},
         {"key": "joint_velocity", "label": "Penalize joint velocity", "weight": -0.001},
+        {"key": "lateral_velocity", "label": "Penalize sideways drift", "weight": -0.5, "params": {"axis": 1}},
+        {"key": "vertical_velocity", "label": "Penalize bouncing (vertical speed)", "weight": -0.2},
+        {"key": "body_rate", "label": "Penalize body roll/pitch rate", "weight": -0.05},
+        {"key": "joint_limit_violation", "label": "Penalize joints pinned at their limits", "weight": -0.5, "params": {"soft_ratio": 0.9}},
         {"key": "falling_height", "label": "Penalize falling below height", "weight": -5.0, "params": {"min_height": 0.2}},
         {"key": "forbidden_contacts", "label": "Penalize forbidden link contacts", "weight": -1.0, "params": {"links": []}},
         {"key": "custom_python", "label": "Custom Python reward", "weight": 1.0, "params": {"code": ""}},
@@ -114,6 +124,17 @@ def evaluate_reward(
         elif key == "upright":
             rot = p.getMatrixFromQuaternion(base_orn)
             raw = float(rot[8])  # world-Z component of the body's local Z axis: 1 = upright
+        elif key == "lateral_velocity":
+            axis = int(component.params.get("axis", 1))
+            raw = abs(float(lin_vel[axis])) if 0 <= axis < 3 else 0.0
+        elif key == "vertical_velocity":
+            raw = abs(float(lin_vel[2]))
+        elif key == "body_rate":
+            raw = float(np.linalg.norm(np.asarray(ang_vel[:2], dtype=np.float64)))
+        elif key == "joint_limit_violation":
+            raw = _joint_limit_violation(
+                manager, body, joint_states, float(component.params.get("soft_ratio", 0.9))
+            )
         elif key == "target_height":
             target_h = float(component.params.get("height", 0.5))
             raw = abs(float(base_pos[2]) - target_h)
@@ -185,3 +206,36 @@ def evaluate_reward(
 
     formula = " + ".join(f"{t['weight']}*{t['key']}" for t in terms) or "0.0"
     return {"reward": total, "terms": terms, "formula": formula, "warnings": warnings}
+
+
+def _joint_limit_violation(
+    manager: PyBulletManager, body: int, joint_states, soft_ratio: float
+) -> float:
+    """Mean over joints of how far each is pushed into the outer ``soft_ratio`` of
+    its range. 0 while every joint stays in its comfortable band, 1 with all of
+    them pinned at a limit.
+
+    This is the term that makes a splayed stance cost something without needing
+    contact sensors or per-morphology foot detection: sprawling a leg out means
+    pinning a hip against its abduction limit.
+
+    The MEAN (not the sum) is what keeps the weight meaningful: summed, the raw
+    scales with DOF count, so -0.5 became an effective -6/step on a 12-DOF
+    quadruped against a +2.5/step reward ceiling. Once a penalty outweighs the
+    entire positive budget, ending the episode early scores better than
+    recovering, and a stumble turns into an unrecoverable collapse."""
+    total = 0.0
+    counted = 0
+    for joint_index, state in enumerate(joint_states):
+        info = p.getJointInfo(body, joint_index, physicsClientId=manager.cid)
+        if info[2] == p.JOINT_FIXED:
+            continue
+        lower, upper = float(info[8]), float(info[9])
+        if not (math.isfinite(lower) and math.isfinite(upper)) or upper <= lower:
+            continue
+        half = (upper - lower) / 2.0
+        center = (upper + lower) / 2.0
+        used = abs(float(state[0]) - center) / half  # 0 at mid-range, 1 at a limit
+        total += min(1.0, max(0.0, used - soft_ratio) / max(1e-6, 1.0 - soft_ratio))
+        counted += 1
+    return total / counted if counted else 0.0

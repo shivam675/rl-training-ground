@@ -47,6 +47,56 @@ def test_isaac_initial_base_height_uses_config_and_legacy_fallback():
     assert isaac_train._initial_base_height({}) == 0.60
 
 
+def test_isaac_stance_comes_from_config_clamped_into_limits(tmp_path):
+    """A1's nominal crouch (thigh +0.8, calf -1.5) must survive into the reset
+    pose — zero-clamped defaults are a straight-legged splay."""
+    urdf = tmp_path / "robot.urdf"
+    urdf.write_text(
+        """<robot name="test">
+        <joint name="hip" type="revolute"><limit lower="-0.8" upper="0.8"/></joint>
+        <joint name="thigh" type="revolute"><limit lower="-1.05" upper="4.19"/></joint>
+        <joint name="calf" type="revolute"><limit lower="-2.7" upper="-0.9"/></joint>
+        </robot>""",
+        encoding="utf-8",
+    )
+    cfg = {"initial_joint_pose": {"hip": 0.1, "thigh": 0.8, "calf": -1.5, "ghost": 9.0}}
+
+    assert isaac_train._joint_positions(cfg, urdf) == {
+        "hip": 0.1,
+        "thigh": 0.8,
+        "calf": -1.5,
+    }
+    # No stance configured -> today's zero-clamped fallback, unchanged.
+    assert isaac_train._joint_positions({}, urdf) == {
+        "hip": 0.0,
+        "thigh": 0.0,
+        "calf": -0.9,
+    }
+    # Out-of-range requests get clamped, never passed through.
+    assert isaac_train._joint_positions({"initial_joint_pose": {"calf": 0.0}}, urdf)[
+        "calf"
+    ] == -0.9
+
+
+def test_isaac_joint_gains_read_from_action_list():
+    gains = isaac_train._joint_gains(
+        {
+            "actions": [
+                {"joint_name": "hip", "kp": 25.0, "kd": 0.5, "max_force": 33.5,
+                 "max_velocity": 21.0},
+                {"joint_name": "calf", "kp": None, "kd": None, "max_force": 33.5,
+                 "max_velocity": 21.0},
+                {"joint_index": 3},  # no name -> skipped
+            ]
+        }
+    )
+
+    assert gains["hip"] == {"kp": 25.0, "kd": 0.5, "max_force": 33.5, "max_velocity": 21.0}
+    # None means "fall back to the ANYmal reference", not "zero gain".
+    assert gains["calf"]["kp"] is None and gains["calf"]["max_force"] == 33.5
+    assert len(gains) == 2
+
+
 def test_isaac_learning_uses_one_runner_session_and_stops_between_iterations():
     class FakeLogger:
         def log(self, **_):

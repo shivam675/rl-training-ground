@@ -1,3 +1,0 @@
-{"timestep": 100, "reward_mean": 1.0, "fps": 1900.0, "episode_length_mean": 300}
-{"timestep": 200, "reward_mean": 2.0, "fps": 1900.0, "episode_length_mean": 300}
-{"timestep": 300, "reward_mean": 3.0, "fps": 1900.0, "episode_length_mean": 300}

@@ -30,6 +30,12 @@ SUPPORTED_REWARDS = {
     "energy",
     "action_smoothness",
     "joint_velocity",
+    # Gait shaping (see reward_builder.PENALTY_KEYS for the matching PyBullet
+    # implementations — the two lanes must agree or a goal means two things).
+    "lateral_velocity",
+    "vertical_velocity",
+    "body_rate",
+    "joint_limit_violation",
 }
 
 SUPPORTED_MODES = {"position", "velocity", "torque"}
@@ -86,12 +92,26 @@ def build_spec(env_config: dict) -> EnvSpec:
         mode = a.get("control_mode", "position")
         if mode not in SUPPORTED_MODES:
             raise ValueError(f"Unknown control_mode {mode!r} for joint {name!r}.")
+        low = float(a.get("scale_low", -1.0))
+        high = float(a.get("scale_high", 1.0))
+        if mode == "position" and not (low <= 0.0 <= high):
+            # Position commands are offsets from the nominal stance, so a window
+            # that misses zero means the joint can never hold its standing angle.
+            # In practice this is a pre-offset config (windows were absolute joint
+            # ranges then) — silently training on it wastes the whole run.
+            raise ValueError(
+                f"Position action window for {name!r} is [{low}, {high}], which does "
+                "not include 0. Position actions are offsets from the nominal stance, "
+                "so the window must straddle zero. This looks like a config saved "
+                "before the offset-action change — re-apply the behaviour goal "
+                "(or re-generate the action windows) and save again."
+            )
         actions.append(
             ActionSpec(
                 joint_name=name,
                 control_mode=mode,
-                scale_low=float(a.get("scale_low", -1.0)),
-                scale_high=float(a.get("scale_high", 1.0)),
+                scale_low=low,
+                scale_high=high,
             )
         )
     if not actions:

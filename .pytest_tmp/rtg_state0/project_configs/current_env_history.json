@@ -6,6 +6,17 @@
       "project_name": null,
       "urdf_path": "X:\\workspace\\auto-rl\\sxc1742\\.venv\\Lib\\site-packages\\pybullet_data\\r2d2.urdf",
       "fixed_base": false,
+      "initial_base_height": 0.4810023163021864,
+      "initial_joint_pose": {
+        "right_front_wheel_joint": 0.0,
+        "right_back_wheel_joint": 0.0,
+        "left_front_wheel_joint": 0.0,
+        "left_back_wheel_joint": 0.0,
+        "gripper_extension": 0.0,
+        "left_gripper_joint": 0.0,
+        "right_gripper_joint": 0.0,
+        "head_swivel": 0.0
+      },
       "gravity": [
         0.0,
         0.0,
@@ -233,6 +244,34 @@
           "params": {}
         },
         {
+          "key": "lateral_velocity",
+          "enabled": false,
+          "weight": -0.5,
+          "params": {
+            "axis": 1
+          }
+        },
+        {
+          "key": "vertical_velocity",
+          "enabled": false,
+          "weight": -0.2,
+          "params": {}
+        },
+        {
+          "key": "body_rate",
+          "enabled": false,
+          "weight": -0.05,
+          "params": {}
+        },
+        {
+          "key": "joint_limit_violation",
+          "enabled": false,
+          "weight": -0.5,
+          "params": {
+            "soft_ratio": 0.9
+          }
+        },
+        {
           "key": "falling_height",
           "enabled": false,
           "weight": -5.0,
@@ -304,6 +343,17 @@
         "project_name": null,
         "urdf_path": "X:\\workspace\\auto-rl\\sxc1742\\.venv\\Lib\\site-packages\\pybullet_data\\r2d2.urdf",
         "fixed_base": false,
+        "initial_base_height": 0.4810023163021864,
+        "initial_joint_pose": {
+          "right_front_wheel_joint": 0.0,
+          "right_back_wheel_joint": 0.0,
+          "left_front_wheel_joint": 0.0,
+          "left_back_wheel_joint": 0.0,
+          "gripper_extension": 0.0,
+          "left_gripper_joint": 0.0,
+          "right_gripper_joint": 0.0,
+          "head_swivel": 0.0
+        },
         "gravity": [
           0.0,
           0.0,
@@ -531,6 +581,34 @@
             "params": {}
           },
           {
+            "key": "lateral_velocity",
+            "enabled": false,
+            "weight": -0.5,
+            "params": {
+              "axis": 1
+            }
+          },
+          {
+            "key": "vertical_velocity",
+            "enabled": false,
+            "weight": -0.2,
+            "params": {}
+          },
+          {
+            "key": "body_rate",
+            "enabled": false,
+            "weight": -0.05,
+            "params": {}
+          },
+          {
+            "key": "joint_limit_violation",
+            "enabled": false,
+            "weight": -0.5,
+            "params": {
+              "soft_ratio": 0.9
+            }
+          },
+          {
             "key": "falling_height",
             "enabled": false,
             "weight": -5.0,
@@ -587,10 +665,21 @@
         }
       },
       "after": {
-        "project_id": "04275c8365ff4a0980b1a99f26c443e5",
+        "project_id": "9d60676061b4452db95455db7f0a793c",
         "project_name": null,
         "urdf_path": "X:\\workspace\\auto-rl\\sxc1742\\.venv\\Lib\\site-packages\\pybullet_data\\r2d2.urdf",
         "fixed_base": false,
+        "initial_base_height": 0.4810023163021864,
+        "initial_joint_pose": {
+          "right_front_wheel_joint": 0.0,
+          "right_back_wheel_joint": 0.0,
+          "left_front_wheel_joint": 0.0,
+          "left_back_wheel_joint": 0.0,
+          "gripper_extension": 0.0,
+          "left_gripper_joint": 0.0,
+          "right_gripper_joint": 0.0,
+          "head_swivel": 0.0
+        },
         "gravity": [
           0.0,
           0.0,
@@ -816,6 +905,34 @@
             "enabled": false,
             "weight": -0.001,
             "params": {}
+          },
+          {
+            "key": "lateral_velocity",
+            "enabled": false,
+            "weight": -0.5,
+            "params": {
+              "axis": 1
+            }
+          },
+          {
+            "key": "vertical_velocity",
+            "enabled": false,
+            "weight": -0.2,
+            "params": {}
+          },
+          {
+            "key": "body_rate",
+            "enabled": false,
+            "weight": -0.05,
+            "params": {}
+          },
+          {
+            "key": "joint_limit_violation",
+            "enabled": false,
+            "weight": -0.5,
+            "params": {
+              "soft_ratio": 0.9
+            }
           },
           {
             "key": "falling_height",

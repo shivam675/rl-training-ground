@@ -78,6 +78,18 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = "1"
 .\.venv\Scripts\python.exe -m pytest backend/tests/ -q --basetemp=.pytest_tmp
 ```
 
+**`.pytest_tmp/` is tracked in git (~59 files) and not gitignored**, so that required
+`--basetemp` makes every local run rewrite/delete committed run artifacts and leave dozens of
+`M`/`D` entries in `git status`. That noise is test output, not your change: **never
+`git add -A`/`git commit -a` here** — stage explicit paths. Same for `.codex_smoke/` (56 tracked
+files, the committed Isaac smoke artifacts). `ov/cache/` is an untracked Omniverse/warp kernel
+cache; ignore it.
+
+CI (`.github/workflows/ci.yml`) is **ubuntu-latest with CPU-only Torch** and no `--basetemp`, so
+**nothing in the Isaac/GPU lane is covered by CI** — the Isaac-adjacent tests that do run
+(`test_isaac_env_math`, `test_isaac_bridge`) are deliberately pure app-venv logic. GPU behaviour
+is verified only by hand on this box.
+
 `scripts/build_app.ps1` builds the standalone Windows app (Flutter runner +
 PyInstaller-frozen backend in `dist\<AppName>\`, no Python install needed; refuses to package
 a CPU-only Torch).
@@ -90,6 +102,10 @@ session-scoped, not per-test: the suite is an ordered pipeline sharing mutable s
 (phase1 saves a config phase2/3 read back; phase2 trains a model its own later test resumes), so
 per-test tmp dirs would break the chain — don't "fix" it to function scope. Spawn tests are gated
 on a gitignored URDF library.
+
+`test_phase1..9` are that ordered pipeline. The rest are standalone and safe to run alone:
+`test_isaac_env_math` / `test_isaac_bridge` (pure app-venv logic, no Isaac install needed),
+`test_spawn_height` (URDF-library-gated), `test_stabilization`, `test_smoke`.
 
 ### Key environment variables (`EASYRTG_*`)
 
@@ -110,6 +126,9 @@ on a gitignored URDF library.
 - `EASYRTG_ISAAC_WEBRTC_URL` / `EASYRTG_ISAAC_WEBRTC_HOST` — legacy override for a WebRTC
   browser-client URL. **Unused for embedding on Windows** (NVIDIA's browser client is Ubuntu/Docker
   only); `webrtc_client_url()` still exists but the app uses the desktop client, not a WebView.
+- `EASYRTG_BACKEND` — read by the **Flutter** launcher (`backend_launcher.dart`), not the backend:
+  overrides what it spawns (a `.ps1`, `.sh`, or any exe) instead of probing
+  `.venv312` → `.venv` → `.venv-rtg`.
 - Others: `EASYRTG_CORS_ORIGINS`, `EASYRTG_SB`, `EASYRTG_TRY_EGL_ON_WINDOWS`,
   `EASYRTG_TINY_RENDERER_{MIN,MAX}_WIDTH`.
 
@@ -148,6 +167,70 @@ fixes URDFs (mesh resolution, `balanceinertia`) before loading — the Isaac Sim
 import should route through this too or `package://` meshes fail to resolve. Note: physics
 currently only advances when a frame is rendered (`render_frame` is the sole stepper) — a known
 coupling bug.
+
+### Robot calibration — stance, spawn height, actions, gains (spans PyBullet → Isaac)
+
+**Everything a legged robot needs to not look broken is calibration data flowing PyBullet →
+config → Isaac.** Four coupled knobs; changing one usually means re-deriving the others.
+
+**1. Nominal stance — `EnvConfig.initial_joint_pose`** (joint name → angle). The robot's standing
+crouch. `PyBulletManager._reset_joints_within_limits(pose)` seeds it (clamping into URDF limits),
+`joint_pose()` reads back what was applied, and `apply_joint_pose()` re-seeds + re-grounds.
+`ConfigService.ensure_spawn_height` fills the field from the preview when absent and **applies it
+before measuring height when present**. Isaac reads it via `isaac_train._joint_positions()` into
+`ArticulationCfg.init_state.joint_pos`. The zero-clamped fallback is a *straight-legged splay* for
+any legged robot — A1 lands hip 0 / thigh 0 / calf −0.916 against a real stance of
+0.1 / 0.8 / −1.5 — so **set it per robot** (a1/go1 values are in the live config).
+
+**2. Position actions are OFFSETS from that stance**, not absolute targets:
+`target = initial_joint_pose[j] + interp(scale_low..scale_high)`, clamped into the joint limits.
+Same in both lanes (`rl/action_mapping.py` and `rl/isaac/env_math.map_actions`) — velocity/torque
+stay absolute. `_position_action_range` therefore returns a **symmetric window straddling zero**
+(`POSITION_ACTION_HALF_WINDOW = 0.6`, capped at the joint's half-span). This is not cosmetic: the
+old absolute windows centred 1.2 rad on **zero**, so A1's +0.8 rad standing thigh angle was
+*outside the action space* and the robot could not stand no matter how long it trained.
+`env_spec.build_spec` **hard-rejects a position window that misses zero** — that signature
+identifies a pre-offset config, which would otherwise train for 100M steps on a pose it can't hold.
+
+**3. Spawn height — `EnvConfig.initial_base_height`.** Measured base z after the stance is applied
+and `_snap_robot_above_plane` grounds the robot (1 cm clearance), exposed via `spawn_height()`,
+filled **only when absent** (explicit values stay a tuning knob), written into
+`runs/<ts>/config.json`, read back by `isaac_train._initial_base_height()` — falling back to `0.60`
+(ANYmal-derived) only for legacy runs. A1 at `0.60` free-falls into its termination height in ~17
+steps. Stance changes this number (A1: 0.3518 straight-legged → 0.3125 crouched), so
+**re-measure after changing the stance** — clear the field and re-apply the goal.
+
+**4. PD gains / actuator limits** come from the per-action `kp` / `kd` / `max_force` /
+`max_velocity`, bucketed into `ImplicitActuatorCfg` groups by `make_robot_cfg`. ANYmal's
+reference (stiffness 40 / damping 5 / effort 80 / vel 7.5) now fills **only the gaps**. Those
+defaults are actively wrong on a small quadruped: A1 wants damping 0.5 (ANYmal's 5 is 10×
+over-damped, a leg can't swing) and effort 33.5 Nm (not 80).
+
+`LOCOMOTION_MIN_HEIGHT_RATIO = 0.70` (`rl/goal_rewards.py`) terminates walk/run below 70% of the
+*measured* standing height — what stops a legged robot from farming forward-velocity reward by
+crawling. `WALK_GAIT_PENALTIES` (same file) is the companion set: `lateral_velocity`,
+`vertical_velocity`, `body_rate`, `joint_limit_violation`. Both lanes implement them
+(`reward_builder` + `isaac/env_math`) and they are deliberately **sensor-free** — no contact
+sensors, no per-morphology foot detection. Without them `forward_velocity` is indifferent between
+a trot and a splayed slide at the same speed, and the slide is easier to find: the 100M-step A1 run
+converged to 93.5% of its reward ceiling doing exactly that. The `HelperAgent` prompt
+(`helper_agent.py`) restates the ratio *and* these penalties in its WALK example — **change them
+together or the agent advertises a reward set the code doesn't apply.**
+
+**Reward-term scale is a correctness property, not taste.** The positive ceiling is ~2.5/step
+(`stay_alive` 0.5 + `upright` 0.5 + `forward_velocity` 1.5). **Any penalty that can exceed it makes
+dying strictly better than recovering**, and PPO finds that: a `joint_limit_violation` raw summed
+over 12 joints turned weight −0.5 into an effective −6/step and collapsed a healthy 7.4M-step
+walking policy to 13-step episodes it never recovered from. Per-joint penalties are therefore
+**means, not sums** — DOF-count independent, bounded by their own weight. When adding a term, bound
+its raw and check it against 2.5. Each telemetry point carries a `reward_terms` per-key breakdown
+(from `compute_reward(out_terms=...)`) because a summed curve can't say which term did it, and
+training keeps `model_best.pt` (evaluation prefers it over `model_final.pt`) so a collapse costs
+GPU time rather than the policy.
+
+Any change here invalidates existing policies (action semantics or stance moved); retrain from
+scratch. Specs: `docs/superpowers/specs/2026-07-27-robot-specific-spawn-height.md`,
+`2026-07-27-walk-height-termination-design.md`, `2026-07-27-offset-position-actions.md`.
 
 ### RL — `backend/rl/`
 
@@ -189,13 +272,39 @@ coupling bug.
 
 `HelperAgent` (`helper_agent.py`) is the live chat agent. Dual LLM providers
 (`ollama_client.py` + `openai_client.py`, OpenAI-compatible), a regex `router.py` that picks a
-provider per message, an `AgentToolbox` (`tools.py`) exposing 28 tools (11 destructive + 17
-read-only) that can drive the whole pipeline, and a proactive `notifier.py`. Default autonomy is
-`"act"`. **`DESTRUCTIVE_TOOLS`** (`tools.py`) is the confirmation gate — config-mutating tools
+provider per message, an `AgentToolbox` (`tools.py`) exposing 29 tools (11 destructive + 18
+read-only; the authoritative list is the `handlers` dict in `_dispatch`) that can drive the whole
+pipeline, and a proactive `notifier.py`. Default autonomy is `"act"`. **`DESTRUCTIVE_TOOLS`** (`tools.py`) is the confirmation gate — config-mutating tools
 like `patch_env_config` / `apply_behavior_goal` are deliberately security-sensitive (they can
 inject `custom_python` reward code that execs in-process). The legacy role agents
 (`reward_agent`, `training_monitor_agent`, `evaluation_agent`, `robot_inspector_agent`) are
 near-stubs.
+
+### Frontend — `frontend/rtg-flutter-app/lib/src/` (29 Dart files)
+
+**Riverpod `ProviderScope`, but one god-object of state:** `app_state.dart` (~865 LOC,
+`AppState extends ChangeNotifier` behind `appStateProvider`) holds essentially all app state and
+every backend call; panels `ref.watch(appStateProvider)` and rebuild wholesale. Adding UI state
+almost always means touching that one file — expect it, don't "helpfully" split it mid-task.
+`api_client.dart` is a thin `BackendApi` over `http` hardcoded to `http://127.0.0.1:8000`.
+
+`nav.dart` defines `enum AppPage` (home / robot / obsAction / rewards / training / evaluation /
+**viewer** / settings / logs), 1:1 with `panels/*.dart`; `viewer` is entered *programmatically*
+(training live-view or evaluation) and is not in the rail. Chat lives in `agent/`
+(`chat_controller.dart` + `chat_view.dart`) and streams over a chunked `POST` (`api_client.dart`
+`http.Request` streaming), **not** a WebSocket.
+
+**Of the backend's 3 WebSockets the app uses only 2:** `/ws/simulation`
+(`panels/viewer_3d_page.dart`) and `/ws/agent_events` (`notifications.dart`).
+**`/ws/training_logs` has no Flutter consumer** — `logs_panel.dart` pulls logs over REST, and
+training progress comes from `AppState`'s telemetry `Timer.periodic` poll (plus a slow 8 s health
+poll). Don't assume live training UI is push-based.
+
+`backend_launcher.dart` auto-spawns the backend with `EASYRTG_SUPERVISE=0` (so killing the child
+actually stops it) and `EASYRTG_PYBULLET_GUI=0`, probing `.venv312` → `.venv` → `.venv-rtg`
+Scripts python; `EASYRTG_BACKEND` overrides with any `.ps1`/`.sh`/exe. If a backend is already
+reachable it attaches and **never kills it on exit** — so a stale hand-started server silently
+wins over your code changes.
 
 ## Security posture
 
@@ -211,3 +320,15 @@ tools bypassing confirmation, wildcard CORS). The **P0 set was fixed 2026-07-05*
 `docs/isaac_setup.md` is the Isaac Sim GPU-lane setup + phased integration plan (progress tracker).
 `docs/redesign.md` is aspirational/stale. (The MJX/MuJoCo migration docs and the root-level
 `plan.md` / `pages.md` were removed; recover from git history if needed.)
+
+**The root `README.md` is stale** — it still describes SB3-on-PyBullet as *the* training lane, a
+`.venv-rtg` venv, and Linux-first setup, with no mention of Isaac. Don't cite it or follow its
+commands; use this file plus `docs/`. `testing/qt_bullet.py` is a one-off scratch script, not part
+of the test suite.
+
+`docs/superpowers/specs/` + `plans/` hold **dated per-feature design docs** (`YYYY-MM-DD-*.md`) —
+the newest and most trustworthy record of recent behaviour changes, since they postdate
+`APP_RECON.md`. Read the latest ones before touching spawn height or goal terminations.
+`.codex_smoke/isaac-a1-spawn*/` are **committed Isaac smoke-run artifacts** for the Unitree A1/Go1
+casestudy (config.json, telemetry, training_log, generated USD) — reference output for what a
+healthy vs. free-falling spawn looks like, not something to regenerate casually.

@@ -99,6 +99,7 @@ class PyBulletManager:
         self.plane_body: int | None = None
         self.current_request: LoadUrdfRequest | None = None
         self._spawn_height: float | None = None
+        self._joint_pose: dict[str, float] | None = None
         self.gravity = (0.0, 0.0, -9.81)
         self.urdf_report: dict[str, Any] | None = None
 
@@ -243,6 +244,7 @@ class PyBulletManager:
         p.setTimeStep(1.0 / SIM_HZ, physicsClientId=self.cid)
         self.robot_body = None
         self._spawn_height = None
+        self._joint_pose = None
         self._motor_limits.clear()
         self.plane_body = p.loadURDF(PLANE_URDF, physicsClientId=self.cid)
         self.sim_time = 0.0
@@ -349,8 +351,12 @@ class PyBulletManager:
             self.robot_body, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), physicsClientId=self.cid
         )
 
-    def _reset_joints_within_limits(self) -> None:
+    def _reset_joints_within_limits(self, pose: dict[str, float] | None = None) -> None:
+        """Seed every movable joint from ``pose`` (by joint name), defaulting to
+        zero, clamped into the URDF limits. Records the applied pose so it can be
+        read back as the robot's nominal stance."""
         assert self.cid is not None and self.robot_body is not None
+        applied: dict[str, float] = {}
         for joint_index in range(
             p.getNumJoints(self.robot_body, physicsClientId=self.cid)
         ):
@@ -359,8 +365,11 @@ class PyBulletManager:
             )
             if info[2] == p.JOINT_FIXED:
                 continue
+            name = info[1].decode() if isinstance(info[1], bytes) else str(info[1])
+            wanted = float((pose or {}).get(name, 0.0))
             lower, upper = float(info[8]), float(info[9])
-            position = min(max(0.0, lower), upper) if lower <= upper else 0.0
+            position = min(max(wanted, lower), upper) if lower <= upper else wanted
+            applied[name] = position
             p.resetJointState(
                 self.robot_body,
                 joint_index,
@@ -368,6 +377,28 @@ class PyBulletManager:
                 targetVelocity=0.0,
                 physicsClientId=self.cid,
             )
+        self._joint_pose = applied
+
+    def apply_joint_pose(self, pose: dict[str, float]) -> float | None:
+        """Re-seed the joints from ``pose``, re-ground the base, and return the
+        resulting spawn height.
+
+        The stance decides where the feet are, so the spawn height is only
+        meaningful when measured with the stance the policy will actually train
+        from — that is why this re-runs the grounding snap rather than just
+        writing joint angles."""
+        with self.lock:
+            if self.robot_body is None or self.cid is None:
+                return None
+            req = self.current_request
+            self._reset_joints_within_limits(pose)
+            if req is not None and req.auto_spawn_height and not req.fixed_base:
+                self._snap_robot_above_plane(req.spawn_clearance)
+            pos, _ = p.getBasePositionAndOrientation(
+                self.robot_body, physicsClientId=self.cid
+            )
+            self._spawn_height = float(pos[2])
+            return self._spawn_height
 
     def reset_robot_state(self, req: LoadUrdfRequest) -> bool:
         """In-place episode reset: teleport the base and zero all joint state
@@ -399,7 +430,9 @@ class PyBulletManager:
                 (0.0, 0.0, 0.0),
                 physicsClientId=self.cid,
             )
-            self._reset_joints_within_limits()
+            # Re-seed from the *recorded* stance, not zeros — otherwise every
+            # episode reset silently discards the configured nominal pose.
+            self._reset_joints_within_limits(self._joint_pose)
             if req.auto_spawn_height and not req.fixed_base:
                 self._snap_robot_above_plane(req.spawn_clearance)
             pos, _ = p.getBasePositionAndOrientation(
@@ -762,6 +795,12 @@ class PyBulletManager:
         with self.lock:
             return self._spawn_height
 
+    def joint_pose(self) -> dict[str, float] | None:
+        """The joint angles the robot is currently seeded with, by joint name —
+        the measurement source for EnvConfig.initial_joint_pose."""
+        with self.lock:
+            return dict(self._joint_pose) if self._joint_pose else None
+
     def observation_vector(self, keys: list[str]) -> list[float]:
         with self.lock:
             if self.robot_body is None:
@@ -874,7 +913,7 @@ class PyBulletManager:
         actions: list[ActionSelection],
         normalized_values: list[float],
     ) -> dict[str, Any]:
-        commands = map_normalized_actions(actions, normalized_values)
+        commands = map_normalized_actions(actions, normalized_values, self._joint_pose)
         with self.lock:
             if self.robot_body is None:
                 raise RuntimeError("No robot loaded.")

@@ -250,3 +250,7 @@ urdf_files/
 *.tar
 *.tar.gz
 *.db
+# Generated model / media artifacts (scoped; gitignored)
+.pytest_tmp/*
+
+

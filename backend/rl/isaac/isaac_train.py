@@ -91,22 +91,56 @@ def resolve_agent_cfg_deprecations(agent_cfg):
     return handle_deprecated_rsl_rl_cfg(agent_cfg, metadata.version("rsl-rl-lib"))
 
 
-def _default_joint_positions(urdf_path: Path) -> dict[str, float]:
+def _joint_limits(urdf_path: Path) -> dict[str, tuple[float, float]]:
+    """Movable joint name -> (lower, upper), +-inf when the URDF omits a limit."""
     root = ET.parse(urdf_path).getroot()
-    positions = {}
+    limits: dict[str, tuple[float, float]] = {}
     for joint in root.findall("joint"):
         name = joint.get("name")
         if not name or joint.get("type") not in ("revolute", "continuous", "prismatic"):
             continue
-        position = 0.0
+        lower, upper = float("-inf"), float("inf")
         limit = joint.find("limit")
         if limit is not None:
             if limit.get("lower") is not None:
-                position = max(position, float(limit.get("lower")))
+                lower = float(limit.get("lower"))
             if limit.get("upper") is not None:
-                position = min(position, float(limit.get("upper")))
-        positions[name] = position
+                upper = float(limit.get("upper"))
+        limits[name] = (lower, upper)
+    return limits
+
+
+def _default_joint_positions(urdf_path: Path) -> dict[str, float]:
+    return {
+        name: min(max(0.0, lower), upper) if lower <= upper else 0.0
+        for name, (lower, upper) in _joint_limits(urdf_path).items()
+    }
+
+
+def _joint_positions(env_config: dict, urdf_path: Path) -> dict[str, float]:
+    """The robot's nominal stance: EnvConfig.initial_joint_pose clamped into the
+    URDF limits, falling back to zero-clamped-into-limits per joint.
+
+    That fallback is a straight-legged splay for any legged robot, which is both
+    a bad reset pose and (since position actions are offsets from it) a bad centre
+    for the action window — hence initial_joint_pose."""
+    limits = _joint_limits(urdf_path)
+    configured = env_config.get("initial_joint_pose") or {}
+    positions = {}
+    for name, (lower, upper) in limits.items():
+        wanted = float(configured.get(name, 0.0))
+        positions[name] = min(max(wanted, lower), upper) if lower <= upper else wanted
     return positions
+
+
+def _joint_gains(env_config: dict) -> dict[str, dict[str, float | None]]:
+    """Per-joint actuator settings from the action list, by joint name."""
+    gains = {}
+    for a in env_config.get("actions", []) or []:
+        name = a.get("joint_name")
+        if name:
+            gains[name] = {k: a.get(k) for k in ("kp", "kd", "max_force", "max_velocity")}
+    return gains
 
 
 def _initial_base_height(env_config: dict) -> float:
@@ -153,7 +187,7 @@ def build_env_cfg(run_dir: Path, num_envs: int):
     ).usd_path
 
     # Dimensions: obs from enabled keys (joint_* -> #movable DOFs), actions from spec.
-    joint_pos = _default_joint_positions(urdf_path)
+    joint_pos = _joint_positions(env_config, urdf_path)
     n_dofs = len(joint_pos)
     obs_dim = sum((n_dofs if SUPPORTED_OBS[k] is None else SUPPORTED_OBS[k]) for k in spec.obs_keys)
     step_dt = _SIM_DT * _DECIMATION
@@ -167,6 +201,7 @@ def build_env_cfg(run_dir: Path, num_envs: int):
         usd_path,
         joint_pos,
         _initial_base_height(env_config),
+        _joint_gains(env_config),
     )
     cfg.spec = spec
     cfg.action_joint_names = [a.joint_name for a in spec.actions]
@@ -316,6 +351,10 @@ def main() -> int:
                 "initial_base_height": initial_base_height,
                 "action_dim": action_dim,
                 "num_envs": int(args.num_envs),
+                # Recorded because a wrong stance is invisible in the reward curve
+                # (it converges happily) but obvious in the replay.
+                "stance_configured": bool(env_config.get("initial_joint_pose")),
+                "initial_joint_pose": cfg.robot_cfg.init_state.joint_pos,
             },
         )
 
@@ -350,6 +389,8 @@ def main() -> int:
         log_dir = run_dir / "rsl_rl"
         runner = OnPolicyRunner(wrapped, agent_cfg.to_dict(), log_dir=str(log_dir), device=str(env.device))
 
+        best_reward = float("-inf")  # assigned before _save_final closes over it
+
         # Persist a usable checkpoint even if the run is killed ungracefully.
         # eval/play loads model_final.pt, so save it (+ its manifest) PERIODICALLY
         # and again at the end — not just on clean completion. A STOP or a crash
@@ -361,6 +402,10 @@ def main() -> int:
                     {
                         "framework": "rsl_rl",
                         "checkpoint": "model_final.pt",
+                        # Eval prefers this when present; the final iteration is
+                        # not necessarily the best policy the run ever had.
+                        "best_checkpoint": "model_best.pt",
+                        "best_reward": best_reward if best_reward > float("-inf") else None,
                         "obs_dim": obs_dim,
                         "action_dim": action_dim,
                         "action_joint_names": [a.joint_name for a in spec.actions],
@@ -377,6 +422,7 @@ def main() -> int:
         steps_per_iter = num_steps_per_env * int(args.num_envs)
 
         def _after_iteration(it: int) -> None:
+            nonlocal best_reward
             # Completed-episode stats live on the runner's logger (deque, maxlen=100).
             logger = getattr(runner, "logger", None)
             rew = _mean(getattr(logger, "rewbuffer", None))
@@ -393,10 +439,21 @@ def main() -> int:
                     "time": round(elapsed, 2),
                     "num_envs": int(args.num_envs),
                     "device": str(env.device),
+                    # Per-term breakdown: a summed reward curve cannot tell you
+                    # WHICH term collapsed a run, and that is the first question.
+                    "reward_terms": dict(getattr(env.unwrapped, "reward_terms", {})),
                 },
             )
             if (it + 1) % save_every == 0:
                 _save_final()
+            # PPO can lose a good policy in one bad update — a 21M-step A1 run
+            # peaked at reward 1832/eplen 956, collapsed to eplen 13 two
+            # iterations later, and every periodic save after that overwrote the
+            # good weights. Keep the best separately so a collapse costs GPU time,
+            # not the policy.
+            if rew is not None and rew > best_reward:
+                best_reward = rew
+                runner.save(str(run_dir / "model_best.pt"))
 
         # One learn() call keeps one TensorBoard writer. Re-entering learn(1)
         # created an unclosed writer thread and event file every PPO iteration.

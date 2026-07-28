@@ -127,6 +127,80 @@ def test_config_fills_missing_spawn_height_and_keeps_explicit_override(tmp_path)
     assert explicit.initial_base_height == pytest.approx(0.52)
 
 
+def test_config_measures_spawn_height_with_the_configured_stance_applied(tmp_path):
+    """An explicit crouch moves the feet, so the height must be re-measured with
+    it applied — otherwise the height reward and termination are calibrated to a
+    stance the robot never holds."""
+    class FakeSim:
+        def __init__(self):
+            self.applied = None
+            self.height = 0.43
+
+        def joint_pose(self):
+            return {"hip": 0.0, "thigh": 0.0, "calf": -0.9}
+
+        def apply_joint_pose(self, pose):
+            self.applied = pose
+            self.height = 0.30  # crouching lowers the grounded base
+            return self.height
+
+        def spawn_height(self):
+            return self.height
+
+    service = ConfigService(tmp_path)
+
+    sim = FakeSim()
+    filled = service.ensure_spawn_height(EnvConfig(), sim)
+    assert sim.applied is None  # nothing configured -> nothing applied
+    assert filled.initial_joint_pose == {"hip": 0.0, "thigh": 0.0, "calf": -0.9}
+    assert filled.initial_base_height == pytest.approx(0.43)
+
+    sim = FakeSim()
+    stance = {"hip": 0.1, "thigh": 0.8, "calf": -1.5}
+    crouched = service.ensure_spawn_height(EnvConfig(initial_joint_pose=stance), sim)
+    assert sim.applied == stance
+    assert crouched.initial_joint_pose == stance
+    assert crouched.initial_base_height == pytest.approx(0.30)
+
+
+def test_position_action_windows_straddle_zero_so_the_stance_is_reachable():
+    """Regression for the defect that made 100M steps unlearnable: position actions
+    are offsets from the stance, so a window that misses zero (or excludes the
+    standing angle) means the robot can never hold its own stance."""
+    from backend.rl.goal_rewards import _position_action_range
+
+    # Wide limits: full travel allowance, centred on the stance.
+    assert _position_action_range(
+        {"lower_limit": -1.047, "upper_limit": 4.189}
+    ) == pytest.approx((-0.6, 0.6))
+    # Narrow negative-only limits (A1 calf) used to yield [-2.116, -0.916].
+    assert _position_action_range(
+        {"lower_limit": -2.697, "upper_limit": -0.916}
+    ) == pytest.approx((-0.6, 0.6))
+    # Short-travel joint: allowance capped at its own half-span.
+    assert _position_action_range(
+        {"lower_limit": -0.05, "upper_limit": 0.05}
+    ) == pytest.approx((-0.05, 0.05))
+    # Missing/infinite limits fall back to the default window.
+    assert _position_action_range({}) == pytest.approx((-0.6, 0.6))
+
+
+def test_walk_goal_includes_gait_penalties():
+    """forward_velocity alone is indifferent between a trot and a splayed slide."""
+    from backend.rl.goal_rewards import WALK_GAIT_PENALTIES, _patch_for_goal
+
+    class FakeSim:
+        robot_body = None
+        cid = None
+
+    patch, summary = _patch_for_goal("walk_straight", FakeSim(), [])
+    enabled = {r["key"]: r["weight"] for r in patch["rewards"] if r["enabled"]}
+
+    for key, weight in WALK_GAIT_PENALTIES.items():
+        assert enabled[key] == weight
+        assert weight < 0  # penalties, per the sign convention
+
+
 def test_a1_locomotion_goal_enables_all_twelve_leg_joints():
     from backend.rl.goal_rewards import _locomotion_action_patches
 
@@ -145,7 +219,14 @@ def test_a1_locomotion_goal_enables_all_twelve_leg_joints():
     assert sum(patch["enabled"] for patch in patches) == 12
 
 
-def test_a1_locomotion_action_ranges_stay_inside_joint_limits():
+def test_a1_locomotion_commands_stay_inside_joint_limits():
+    """Position windows are travel allowances around the stance, so the window
+    itself need not sit inside the joint limits — the resulting COMMAND must. This
+    replaces an earlier check on the window, which under offset actions forced A1's
+    calf window to [-2.116, -0.916] and its thigh window to exclude the +0.8 rad
+    standing angle."""
+    from backend.models import ActionSelection
+    from backend.rl.action_mapping import map_normalized_actions
     from backend.rl.goal_rewards import _locomotion_action_patches
 
     actions = [
@@ -168,10 +249,21 @@ def test_a1_locomotion_action_ranges_stay_inside_joint_limits():
             "upper_limit": -0.916,
         },
     ]
+    stance = {"FR_hip_joint": 0.1, "FR_thigh_joint": 0.8, "FR_calf_joint": -1.5}
 
+    selections = []
     for action, patch in zip(actions, _locomotion_action_patches(actions)):
-        assert action["lower_limit"] <= patch["scale_low"] < patch["scale_high"]
-        assert patch["scale_high"] <= action["upper_limit"]
+        # Every window straddles zero, so a zero action holds the stance.
+        assert patch["scale_low"] < 0.0 < patch["scale_high"]
+        selections.append(ActionSelection(**{**action, **patch}))
+
+    for extreme in (-1.0, 0.0, 1.0):
+        commands = map_normalized_actions(selections, [extreme] * 3, stance)
+        for action, command in zip(actions, commands):
+            assert action["lower_limit"] <= command["value"] <= action["upper_limit"]
+
+    held = map_normalized_actions(selections, [0.0] * 3, stance)
+    assert [c["value"] for c in held] == pytest.approx([0.1, 0.8, -1.5])
 
 
 @pytest.mark.parametrize("kind", ["walk_straight", "run_straight"])

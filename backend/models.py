@@ -106,6 +106,12 @@ class EnvConfig(BaseModel):
     urdf_path: str | None = None
     fixed_base: bool = False
     initial_base_height: float | None = Field(default=None, gt=0.0)
+    # Nominal standing joint angles, by joint name. Position actions are
+    # OFFSETS from this pose (rl/action_mapping.py) and initial_base_height is
+    # measured with it applied, so a robot whose stance is a crouch (any legged
+    # robot) must set it — zero joint angles are a straight-legged splay the
+    # policy then has to fight. Filled from the preview when absent.
+    initial_joint_pose: dict[str, float] | None = None
     gravity: Vec3 = (0.0, 0.0, -9.81)
     timestep: float = 1.0 / 240.0
     frame_skip: int = 4

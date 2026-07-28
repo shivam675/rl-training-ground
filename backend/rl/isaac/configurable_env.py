@@ -4,9 +4,10 @@ Runs ONLY under Isaac Lab's Python (imports isaaclab). Builds obs/actions/
 rewards/terminations from the app's EnvConfig via env_spec + env_math, so a goal
 means the same thing on the Isaac lane as on the PyBullet lane.
 
-Physics the EnvConfig doesn't specify falls back to Isaac Lab's ANYmal reference
-(PD stiffness 40 / damping 5, base height 0.6, ANYDrive default stance) — a
-deliberate Phase 2 simplification; see docs/isaac_setup.md.
+Physics the EnvConfig DOES specify is honoured per joint (kp/kd/max_force/
+max_velocity from the action list, initial_joint_pose for the stance,
+initial_base_height for spawn z). Only the gaps fall back to Isaac Lab's ANYmal
+reference (PD stiffness 40 / damping 5, effort 80) — see docs/isaac_setup.md.
 
 Verify-on-first-run notes (beta API): the joint-state write kwargs in _reset_idx
 and the ImplicitActuatorCfg limit field names are the spots most likely to need
@@ -61,7 +62,47 @@ def make_robot_cfg(
     usd_path: str,
     joint_pos: dict[str, float],
     base_height: float,
+    joint_gains: dict[str, dict[str, float | None]] | None = None,
 ) -> ArticulationCfg:
+    """``joint_gains`` maps joint name -> {kp, kd, max_force, max_velocity} from
+    the EnvConfig actions; ANYmal reference values fill in whatever is absent.
+
+    Applying ANYmal's numbers to every robot is not a harmless default: on A1
+    they mean damping 5 instead of 0.5 (10x over-damped, so a leg can't swing)
+    and an 80 Nm effort limit against real 33.5 Nm motors. max_force and
+    max_velocity are already populated from the URDF, so honouring them costs
+    nothing.
+    """
+    # Group joints by identical gains: Isaac Lab errors if two actuator groups
+    # claim the same joint, so bucket exact names rather than overlapping regexes.
+    buckets: dict[tuple[float, float, float, float], list[str]] = {}
+    for name in joint_pos:
+        g = (joint_gains or {}).get(name) or {}
+
+        def pick(key: str, fallback: float) -> float:
+            value = g.get(key)
+            return float(value) if value is not None else fallback
+
+        buckets.setdefault(
+            (
+                pick("kp", ANYMAL_STIFFNESS),
+                pick("kd", ANYMAL_DAMPING),
+                pick("max_force", ANYMAL_EFFORT_LIMIT),
+                pick("max_velocity", ANYMAL_VELOCITY_LIMIT),
+            ),
+            [],
+        ).append(name)
+
+    actuators = {
+        f"group{i}": ImplicitActuatorCfg(
+            joint_names_expr=names,
+            stiffness=stiffness,
+            damping=damping,
+            effort_limit=effort,
+            velocity_limit=velocity,
+        )
+        for i, ((stiffness, damping, effort, velocity), names) in enumerate(buckets.items())
+    }
     # fix_base is handled at URDF->USD conversion time, not here.
     return ArticulationCfg(
         prim_path="/World/envs/env_.*/Robot",
@@ -70,7 +111,8 @@ def make_robot_cfg(
             pos=(0.0, 0.0, base_height),
             joint_pos=joint_pos,
         ),
-        actuators={
+        actuators=actuators
+        or {
             "all": ImplicitActuatorCfg(
                 joint_names_expr=[".*"],
                 stiffness=ANYMAL_STIFFNESS,
@@ -98,6 +140,26 @@ class ConfigurableEnv(DirectRLEnv):
         self._lows = torch.tensor(lows, device=self.device)
         self._highs = torch.tensor(highs, device=self.device)
 
+        # Position commands are offsets from the robot's nominal stance (which is
+        # exactly default_joint_pos, set from EnvConfig.initial_joint_pose) and
+        # get clamped into the joint's limits. Non-position columns carry a zero
+        # offset and infinite limits so they stay absolute.
+        limits = self.robot.data.joint_pos_limits.torch  # (N,D,2)
+        self._joint_limits = limits[0]  # (D,2) — identical across envs
+        nominal = torch.zeros(len(self.spec.actions), device=self.device)
+        lim_low = torch.full_like(nominal, float("-inf"))
+        lim_high = torch.full_like(nominal, float("inf"))
+        for col, a in enumerate(self.spec.actions):
+            if a.control_mode != "position":
+                continue
+            jid = self._act_ids[col]
+            nominal[col] = self.robot.data.default_joint_pos.torch[0, jid]
+            lim_low[col] = self._joint_limits[jid, 0]
+            lim_high[col] = self._joint_limits[jid, 1]
+        self._nominal = nominal
+        self._limit_low = lim_low
+        self._limit_high = lim_high
+
         # Group action columns by control mode so each gets the right setter.
         self._groups: dict[str, tuple[list[int], list[int]]] = {}  # mode -> (cols, joint_ids)
         for col, a in enumerate(self.spec.actions):
@@ -106,6 +168,10 @@ class ConfigurableEnv(DirectRLEnv):
             jids.append(self._act_ids[col])
 
         n_actions = len(self.spec.actions)
+        # Per-term reward means from the last step, read by isaac_train for
+        # telemetry (batch means over thousands of envs, so a single step is a
+        # representative sample).
+        self.reward_terms: dict[str, float] = {}
         self._raw_actions = torch.zeros((self.num_envs, n_actions), device=self.device)
         self._physical = torch.zeros((self.num_envs, n_actions), device=self.device)
         self._prev_action = torch.zeros((self.num_envs, n_actions), device=self.device)
@@ -122,7 +188,14 @@ class ConfigurableEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._raw_actions = actions.clone()
-        self._physical = env_math.map_actions(actions, self._lows, self._highs)
+        self._physical = env_math.map_actions(
+            actions,
+            self._lows,
+            self._highs,
+            self._nominal,
+            self._limit_low,
+            self._limit_high,
+        )
 
     def _apply_action(self) -> None:
         for mode, (cols, jids) in self._groups.items():
@@ -150,6 +223,7 @@ class ConfigurableEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         d = self.robot.data
+        self.reward_terms = {}
         reward = env_math.compute_reward(
             self.spec.rewards,
             lin_vel=d.root_lin_vel_w.torch,
@@ -158,6 +232,10 @@ class ConfigurableEnv(DirectRLEnv):
             joint_vel=d.joint_vel.torch,
             action=self._raw_actions,
             prev_action=self._prev_action,
+            ang_vel=d.root_ang_vel_w.torch,
+            joint_pos=d.joint_pos.torch,
+            joint_limits=self._joint_limits,
+            out_terms=self.reward_terms,
         )
         self._prev_action = self._raw_actions.clone()
         return reward

@@ -9,6 +9,20 @@ import pybullet as p
 LOCOMOTION_JOINT_WORDS = ("hip", "thigh", "calf", "knee", "ankle", "leg", "waist")
 NON_LOCOMOTION_JOINT_WORDS = ("shoulder", "elbow", "wrist", "head", "camera")
 LOCOMOTION_MIN_HEIGHT_RATIO = 0.70
+# Per-joint travel allowance (rad) either side of the nominal stance for
+# position actions. Calibration knob: too small and the robot cannot swing a
+# leg, too large and exploration wastes most of its range on poses that fall.
+POSITION_ACTION_HALF_WINDOW = 0.6
+# Gait-shaping penalties for walk/run, weight by reward key. Without these the
+# reward is indifferent between a trot and a splayed slide at the same forward
+# speed — and a slide is easier to find, so that is what 100M steps converge on.
+# Sensor-free by design (no contact sensors, no per-morphology foot detection).
+WALK_GAIT_PENALTIES = {
+    "lateral_velocity": -0.5,
+    "vertical_velocity": -0.2,
+    "body_rate": -0.05,
+    "joint_limit_violation": -0.5,
+}
 
 
 def classify_goal(text: str) -> str | None:
@@ -33,6 +47,15 @@ def apply_behavior_goal(goal: str, sim, config_service) -> dict[str, Any]:
     config = config_service.current_or_default(sim)
     if not config.urdf_path:
         raise ValueError("Load a robot before setting a behavior reward.")
+    # Measure against the stance the robot will actually train from. The height
+    # target and the min_base_height termination are both derived from the
+    # preview's base z below, and a configured crouch sits lower than the
+    # preview's default zero pose — calibrating either against the wrong stance is
+    # how a walk goal ends up rewarding a crawl.
+    if config.initial_joint_pose:
+        applier = getattr(sim, "apply_joint_pose", None)
+        if callable(applier):
+            applier(config.initial_joint_pose)
     actions = sim.actions().get("actions", [])
     if not actions:
         raise ValueError("Loaded robot has no controllable actions.")
@@ -76,7 +99,10 @@ def _patch_for_goal(kind: str, sim, actions: list[dict[str, Any]]) -> tuple[dict
         summary = (
             f"Reward set for straight locomotion (target ~{target_speed} m/s along +X): "
             "reward forward speed and staying upright; penalize height error, effort, "
-            "jerky actions and joint jitter. Falling below height ends the episode."
+            "jerky actions and joint jitter, plus sideways/bouncing motion, body "
+            "roll-pitch rate and joints pinned against their limits (these are what "
+            "make a splayed slide score worse than a gait). Falling below "
+            f"{LOCOMOTION_MIN_HEIGHT_RATIO:.0%} of standing height ends the episode."
         )
         return (
             {
@@ -94,6 +120,12 @@ def _patch_for_goal(kind: str, sim, actions: list[dict[str, Any]]) -> tuple[dict
                     {"key": "energy", "enabled": True, "weight": -0.005},
                     {"key": "action_smoothness", "enabled": True, "weight": -0.01},
                     {"key": "joint_velocity", "enabled": True, "weight": -0.0005},
+                ]
+                + [
+                    {"key": key, "enabled": True, "weight": weight}
+                    for key, weight in WALK_GAIT_PENALTIES.items()
+                ]
+                + [
                     {"key": "target_base_position", "enabled": False},
                     {"key": "target_link_position", "enabled": False},
                     {"key": "falling_height", "enabled": False},
@@ -226,17 +258,27 @@ def _all_action_patches(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _position_action_range(action: dict[str, Any]) -> tuple[float, float]:
-    """Keep the default 1.2 rad window inside finite URDF joint limits."""
+    """Symmetric OFFSET window around the robot's nominal stance.
+
+    Position commands are nominal + offset (see rl/action_mapping.py), so this
+    is a travel allowance, not an absolute target range — and it must straddle
+    zero or the joint can never hold its own standing angle. The old version
+    centred an absolute 1.2 rad window on zero, which put A1's +0.8 rad standing
+    thigh angle outside the action space entirely.
+
+    Half-width is capped at the joint's own half-span so a short-travel joint
+    (gripper, wrist) does not get an allowance wider than it can move.
+    """
+    half = POSITION_ACTION_HALF_WINDOW
     try:
         low = float(action.get("lower_limit"))
         high = float(action.get("upper_limit"))
     except (TypeError, ValueError):
-        return -0.6, 0.6
+        return -half, half
     if not math.isfinite(low) or not math.isfinite(high) or low >= high:
-        return -0.6, 0.6
-    width = min(1.2, high - low)
-    center = min(max(0.0, low + width / 2.0), high - width / 2.0)
-    return center - width / 2.0, center + width / 2.0
+        return -half, half
+    half = min(half, (high - low) / 2.0)
+    return -half, half
 
 
 def _base_height(sim) -> float:

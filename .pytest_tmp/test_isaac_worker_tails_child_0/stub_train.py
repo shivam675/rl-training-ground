@@ -11,3 +11,4 @@ for i in (1, 2, 3):
         h.write(json.dumps({'timestep': i * 100, 'reward_mean': float(i),
                             'fps': 1900.0, 'episode_length_mean': 300}) + '\n')
     time.sleep(0.05)
+Path(a.run_dir, 'model_final.pt').write_bytes(b'checkpoint')

@@ -115,9 +115,19 @@ def main() -> int:
             resolve_agent_cfg_deprecations,
         )
 
-        checkpoint = run_dir / "model_final.pt"
-        if not checkpoint.exists():
-            raise FileNotFoundError(f"No Isaac checkpoint at {checkpoint}")
+        # Prefer the best-reward checkpoint over the last one: PPO can lose a good
+        # policy in a single bad update, and "evaluate my robot" means the policy
+        # that worked, not whatever the final iteration happened to leave behind.
+        checkpoint = next(
+            (
+                path
+                for path in (run_dir / "model_best.pt", run_dir / "model_final.pt")
+                if path.exists()
+            ),
+            None,
+        )
+        if checkpoint is None:
+            raise FileNotFoundError(f"No Isaac checkpoint in {run_dir}")
 
         cfg, spec, request = build_env_cfg(run_dir, int(args.num_envs))
 

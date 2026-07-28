@@ -1,5 +1,0 @@
-{"timestep": 562, "reward_mean": null, "episode_length_mean": null, "fps": 4989.2, "time": 1784782957.77, "device": "cpu"}
-{"timestep": 612, "reward_mean": null, "episode_length_mean": null, "fps": 306.1, "time": 1784782957.93, "device": "cpu"}
-{"timestep": 662, "reward_mean": null, "episode_length_mean": null, "fps": 286.6, "time": 1784782958.1, "device": "cpu", "loss": 0.280032, "value_loss": 0.735934, "policy_gradient_loss": 0.000614, "entropy_loss": -1.415247, "approx_kl": 0.000863, "clip_fraction": 0.0, "explained_variance": -4.683026}
-{"timestep": 712, "reward_mean": null, "episode_length_mean": null, "fps": 292.3, "time": 1784782958.28, "device": "cpu", "loss": 0.141355, "value_loss": 0.459715, "policy_gradient_loss": 9.1e-05, "entropy_loss": -1.415266, "approx_kl": 4.9e-05, "clip_fraction": 0.0, "explained_variance": -5.793223}
-{"timestep": 762, "reward_mean": null, "episode_length_mean": null, "fps": 445.2, "time": 1784782958.39, "device": "cpu", "loss": 0.141355, "value_loss": 0.459715, "policy_gradient_loss": 9.1e-05, "entropy_loss": -1.415266, "approx_kl": 4.9e-05, "clip_fraction": 0.0, "explained_variance": -5.793223}
