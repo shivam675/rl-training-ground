@@ -30,6 +30,17 @@ class ObservationActionPanel extends ConsumerWidget {
       return entry == null ? false : entry['enabled'] == true;
     }
 
+    // Catalogue metadata (label, vector size, placeholder flag) for the terms
+    // that are actually in the config, in config order. Terms the backend does
+    // not describe still render, so an agent-authored key is never invisible.
+    final configuredObsSources = [
+      for (final entry in configObs)
+        sources.firstWhere(
+          (item) => item['key'] == entry['key'],
+          orElse: () => {'key': entry['key'], 'label': '${entry['key']}', 'size': '?'},
+        ),
+    ];
+
     Map<String, dynamic>? liveAction(int jointIndex) {
       for (final item in liveActions) {
         if (item['joint_index'] == jointIndex) {
@@ -103,16 +114,30 @@ class ObservationActionPanel extends ConsumerWidget {
           ),
         ),
         Text(
-          'Toggle which signals the policy observes. Changes persist to the '
-          'environment config used for training.',
+          'The signals the agent chose for this robot and task. Edit any of '
+          'them — changes persist to the environment config used for training.',
           style: TextStyle(
             fontSize: 12,
             color: scheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
         const SizedBox(height: 6),
-        for (final item in sources)
-          SwitchListTile(
+        // Rows come from the CONFIG, not from the backend's OBSERVATION_CATALOG.
+        // Iterating the catalogue is what made every project open as the same
+        // 13-row menu regardless of the robot loaded; `sources` is now only a
+        // lookup for a term's label and vector size.
+        if (configuredObsSources.isEmpty)
+          const EmptyState(
+            icon: Icons.visibility_outlined,
+            title: 'No observations yet',
+            subtitle:
+                'Tell the agent in chat what you want this robot to do. It '
+                'picks the observations that suit this robot and goal, and '
+                'they appear here — fully editable.',
+          )
+        else
+          for (final item in configuredObsSources)
+            SwitchListTile(
             dense: true,
             title: Text('${item['label']}'),
             subtitle: Text(

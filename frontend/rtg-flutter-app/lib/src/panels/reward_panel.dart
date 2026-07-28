@@ -38,8 +38,9 @@ class RewardPanel extends ConsumerWidget {
           ),
         ),
         Text(
-          'Enable components and tune weights — changes persist into the '
-          'training config. Test against the current robot pose any time.',
+          'The reward function the agent wrote for this robot and goal. Tune '
+          'any weight — changes persist into the training config. Test against '
+          'the current robot pose any time.',
           style: TextStyle(
             fontSize: 12,
             color: scheme.onSurface.withValues(alpha: 0.6),
@@ -53,10 +54,11 @@ class RewardPanel extends ConsumerWidget {
         if (configured.isEmpty)
           const EmptyState(
             icon: Icons.functions,
-            title: 'No reward components',
+            title: 'No reward function yet',
             subtitle:
-                'Load a robot first — reward components are part of the '
-                'environment config.',
+                'Tell the agent in chat what you want this robot to do. It '
+                'writes a reward function for that goal and this robot, and it '
+                'appears here — fully editable.',
           )
         else
           for (final component in configured)
