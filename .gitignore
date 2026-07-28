@@ -238,6 +238,24 @@ frontend/rtg-flutter-app/build/
 # Local URDF asset library (large; gitignored)
 urdf_files/
 
+# Pytest temp dir. On Windows --basetemp=.pytest_tmp is REQUIRED (the default
+# temp dir was created by an admin-elevated Isaac build and is access-denied to
+# a normal-user pytest), so every local run rewrites this. It was tracked, which
+# meant each run left dozens of M/D entries in git status and invited a stray
+# `git add -A` to commit test output.
+.pytest_tmp/
+
+# Omniverse / warp GPU kernel cache. Machine-specific compiled kernels (sm75
+# PTX for this exact GPU) regenerated on demand -- never useful in git.
+ov/
+warp-cache/
+*.ptx
+
+# Generated USD from URDF->USD conversion. Deterministic output of
+# UrdfConverter given robot_resolved.urdf (which IS kept), so it is rebuildable
+# and was 4.3 MB of binary in the smoke fixtures.
+.codex_smoke/**/usd/
+
 # Generated model / media artifacts
 *.pt
 *.pth

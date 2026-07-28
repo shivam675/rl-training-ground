@@ -1,1 +1,0 @@
-{"algorithm": "PPO", "total_timesteps": 1000, "config": {"urdf_path": "r2d2.urdf", "project_id": "aaa", "project_name": "proj-aaa"}}

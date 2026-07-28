@@ -78,12 +78,14 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = "1"
 .\.venv\Scripts\python.exe -m pytest backend/tests/ -q --basetemp=.pytest_tmp
 ```
 
-**`.pytest_tmp/` is tracked in git (~59 files) and not gitignored**, so that required
-`--basetemp` makes every local run rewrite/delete committed run artifacts and leave dozens of
-`M`/`D` entries in `git status`. That noise is test output, not your change: **never
-`git add -A`/`git commit -a` here** — stage explicit paths. Same for `.codex_smoke/` (56 tracked
-files, the committed Isaac smoke artifacts). `ov/cache/` is an untracked Omniverse/warp kernel
-cache; ignore it.
+`.pytest_tmp/` is now **gitignored** (it was tracked, so every run left dozens of `M`/`D` entries in
+`git status` and invited a stray `git add -A` to commit test output). `ov/`, `warp-cache/`, `*.ptx`
+and generated `.codex_smoke/**/usd/` are gitignored too — machine-specific compiled GPU kernels and
+rebuildable USD, ~6.5 MB that used to be in git. Tracked repo is ~4.2 MB.
+
+Still: **stage explicit paths, never `git add -A`/`git commit -a`** — a local run writes into
+`.pytest_tmp/`, `runs/`, `app_settings/` and `project_configs/`, and only the first is ignored by
+name (the others are ignored as whole directories).
 
 CI (`.github/workflows/ci.yml`) is **ubuntu-latest with CPU-only Torch** and no `--basetemp`, so
 **nothing in the Isaac/GPU lane is covered by CI** — the Isaac-adjacent tests that do run
@@ -429,5 +431,7 @@ of the test suite.
 the newest and most trustworthy record of recent behaviour changes, since they postdate
 `APP_RECON.md`. Read the latest ones before touching spawn height or goal terminations.
 `.codex_smoke/isaac-a1-spawn*/` are **committed Isaac smoke-run artifacts** for the Unitree A1/Go1
-casestudy (config.json, telemetry, training_log, generated USD) — reference output for what a
-healthy vs. free-falling spawn looks like, not something to regenerate casually.
+casestudy (config.json, telemetry.jsonl, training_log.txt, robot_resolved.urdf, isaac_policy.json)
+— reference output for what a healthy vs. free-falling spawn looks like, not something to
+regenerate casually. The generated `usd/` trees that used to sit beside them are gitignored now:
+`UrdfConverter` rebuilds them deterministically from the tracked `robot_resolved.urdf`.
