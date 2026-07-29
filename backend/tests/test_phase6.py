@@ -138,7 +138,7 @@ def test_routed_complex_tools_require_confirmation(client):
     result = asyncio.run(
         routed.execute(
             "patch_env_config",
-            {"patch": {"rewards": [{"key": "stay_alive", "enabled": True}]}},
+            {"patch": {"rewards": [{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}]}},
         )
     )
     assert result.get("requires_confirmation") is True
@@ -156,34 +156,42 @@ def test_execute_tool_endpoint(client):
     assert res.json()["result"]["ok"] is True
 
 
-def test_execute_tool_requires_prior_proposal_for_code_injection(client):
-    # A custom_python patch is ALWAYS gated (it injects code that later execs
-    # in-process). Confirming one that was never proposed must be rejected.
+def test_execute_tool_requires_prior_proposal_for_a_gated_tool(client):
+    """/agents/execute_tool always passes confirmed=True, so without this a caller
+    could run any gated mutation by POSTing it directly, with no agent proposal and
+    no user in the loop.
+
+    This used to be tested with a custom_python patch, which was gated
+    unconditionally because the injected code later exec'd in-process during
+    training. That exec is gone (rewards are sandboxed expressions), so the gate now
+    comes from 'ask' autonomy — but the proposal requirement is unchanged.
+    """
     from backend.agents.tools import record_pending_proposal
 
     inject = {
         "name": "patch_env_config",
-        "args": {
-            "patch": {
-                "rewards": [
-                    {"key": "custom_python", "enabled": True, "params": {"code": "def reward(o,a,c):\n return 0.0"}}
-                ]
-            }
-        },
+        "args": {"patch": {"rewards": [{"key": "sneaky", "enabled": True, "params": {"expr": "base_z"}}]}},
     }
-    cold = client.post("/agents/execute_tool", json=inject)
-    assert cold.status_code == 200
-    assert "error" in cold.json()["result"], "un-proposed code injection must be rejected"
+    prefs = {"stream_resolution_scale": 1.0, "agent_autonomy": "ask"}
+    client.post("/app/preferences", json=prefs)
+    try:
+        cold = client.post("/agents/execute_tool", json=inject)
+        assert cold.status_code == 200
+        assert "error" in cold.json()["result"], "un-proposed gated tool must be rejected"
 
-    # After the agent proposes it (records a pending confirmation), the same
-    # tool+args may be confirmed exactly once.
-    record_pending_proposal(inject["name"], inject["args"])
-    ok = client.post("/agents/execute_tool", json=inject)
-    assert ok.status_code == 200
-    assert "error" not in ok.json()["result"], ok.json()
-    # The proposal is consumed — a replay is rejected again.
-    replay = client.post("/agents/execute_tool", json=inject)
-    assert "error" in replay.json()["result"]
+        # After the agent proposes it (records a pending confirmation), the same
+        # tool+args may be confirmed exactly once.
+        record_pending_proposal(inject["name"], inject["args"])
+        ok = client.post("/agents/execute_tool", json=inject)
+        assert ok.status_code == 200
+        assert "error" not in ok.json()["result"], ok.json()
+        # The proposal is consumed — a replay is rejected again.
+        replay = client.post("/agents/execute_tool", json=inject)
+        assert "error" in replay.json()["result"]
+    finally:
+        client.post(
+            "/app/preferences", json={"stream_resolution_scale": 1.0, "agent_autonomy": "act"}
+        )
 
 
 def test_autonomy_preference_roundtrip(client):

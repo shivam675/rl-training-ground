@@ -100,7 +100,7 @@ def test_config_roundtrip_with_robot(client, tmp_path):
         {
             "observations": [{"key": "base_position", "enabled": True}],
             "actions": [{"joint_index": config.actions[0].joint_index, "enabled": True}],
-            "rewards": [{"key": "stay_alive", "enabled": True}],
+            "rewards": [{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
         },
     )
     assert service.validate(config, sim) == []
@@ -361,7 +361,7 @@ def test_save_config_endpoint_uses_server_defaults(client):
         json={
             "observations": [{"key": "base_position", "enabled": True}],
             "actions": [{"joint_index": actions[0]["joint_index"], "enabled": True}],
-            "rewards": [{"key": "stay_alive", "enabled": True}],
+            "rewards": [{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
         },
     )
     res = client.post("/env/save_config", json=None)
@@ -429,7 +429,7 @@ def test_toolbox_start_training_end_to_end(client):
         json={
             "observations": [{"key": "base_position", "enabled": True}],
             "actions": [{"joint_index": actions[0]["joint_index"], "enabled": True}],
-            "rewards": [{"key": "stay_alive", "enabled": True}],
+            "rewards": [{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
         },
     )
     result = asyncio.run(

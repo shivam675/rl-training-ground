@@ -26,8 +26,7 @@ from backend.rl.goal_rewards import apply_behavior_goal
 
 # Tools that mutate state; in "ask" autonomy mode these require an explicit
 # user confirmation before they run. patch_env_config and apply_behavior_goal
-# are included because they rewrite the training config (and patch_env_config
-# can inject custom_python reward code — see execute()).
+# are included because they rewrite the training config.
 DESTRUCTIVE_TOOLS = {
     "load_urdf",
     "reset_simulation",
@@ -54,7 +53,6 @@ READ_TOOLS = {
     "get_training_telemetry",
     "test_reward",
     "get_env_config",
-    "validate_reward_code",
     "list_runs",
     "get_run_details",
     "compare_runs",
@@ -69,8 +67,8 @@ READ_TOOLS = {
 # different object from the global toolbox that /agents/execute_tool runs it on.
 # A gated tool can only be executed with confirmed=True if it was actually
 # proposed here first — closing the hole where any caller could POST
-# /agents/execute_tool and run an arbitrary gated tool (e.g. a custom_python
-# reward injection) with no prior proposal. Keyed by (name, args) fingerprint.
+# /agents/execute_tool and run an arbitrary gated tool with no prior proposal.
+# Keyed by (name, args) fingerprint.
 _PENDING_PROPOSALS: dict[str, float] = {}
 _PROPOSAL_TTL_SECONDS = 300.0
 
@@ -101,24 +99,6 @@ def consume_pending_proposal(name: str, args: dict[str, Any] | None) -> bool:
     now = time.time()
     _prune_proposals(now)
     return _PENDING_PROPOSALS.pop(_proposal_key(name, args), None) is not None
-
-
-def _patch_injects_code(name: str, args: dict[str, Any] | None) -> bool:
-    """True if a patch_env_config call carries a non-empty custom_python reward."""
-    if name != "patch_env_config" or not isinstance(args, dict):
-        return False
-    patch = args.get("patch")
-    rewards = patch.get("rewards") if isinstance(patch, dict) else None
-    if not isinstance(rewards, list):
-        return False
-    for reward in rewards:
-        if not isinstance(reward, dict) or reward.get("key") != "custom_python":
-            continue
-        params = reward.get("params")
-        code = params.get("code") if isinstance(params, dict) else None
-        if isinstance(code, str) and code.strip():
-            return True
-    return False
 
 
 # Per-agent tool scopes; None means every tool.
@@ -297,15 +277,6 @@ class AgentToolbox:
                 ["patch"],
             ),
             tool(
-                "validate_reward_code",
-                "Sandbox-run custom Python reward code with dummy inputs before you "
-                "save it (catches syntax errors, bad ctx keys, crashes, infinite "
-                "loops). Returns {ok, value} or {ok: false, error}. Always validate "
-                "before writing custom_python via patch_env_config.",
-                {"code": {"type": "string", "description": "def reward(obs, action, ctx): ..."}},
-                ["code"],
-            ),
-            tool(
                 "apply_behavior_goal",
                 "CALIBRATE the environment for a goal, then author the reward yourself. "
                 "Works for ANY goal — it sets only what is measured from the robot, not "
@@ -471,16 +442,14 @@ class AgentToolbox:
     def _needs_gate(self, name: str, args: dict[str, Any]) -> bool:
         """Whether a tool must be confirmed before it runs.
 
-        Config patches carrying custom_python code are ALWAYS gated, regardless
-        of autonomy mode, because they inject code that later execs in-process
-        during training."""
+        There used to be an extra always-on gate for patches carrying
+        custom_python code, because that code later exec'd in-process during
+        training. The exec is gone: a reward is an expression, compiled against an
+        AST node whitelist with no attribute access, so there is nothing left to
+        gate beyond the normal destructive-tool rule."""
         if name in self.confirm_tools:
             return True
-        if name in DESTRUCTIVE_TOOLS and self._autonomy() == "ask":
-            return True
-        if _patch_injects_code(name, args):
-            return True
-        return False
+        return name in DESTRUCTIVE_TOOLS and self._autonomy() == "ask"
 
     def _autonomy(self) -> str:
         try:
@@ -503,7 +472,6 @@ class AgentToolbox:
             "set_gravity": self._set_gravity,
             "apply_test_action": self._apply_test_action,
             "test_reward": self._test_reward,
-            "validate_reward_code": self._validate_reward_code,
             "get_env_config": self._get_env_config,
             "patch_env_config": self._patch_env_config,
             "apply_behavior_goal": self._apply_behavior_goal,
@@ -616,18 +584,13 @@ class AgentToolbox:
             components = [
                 RewardComponent(
                     key=item["key"],
-                    enabled=item["key"] != "custom_python",
+                    enabled=True,
                     weight=item.get("weight", 1.0),
                     params=item.get("params", {}),
                 )
                 for item in default_reward_components()
             ]
         return evaluate_reward(self.sim, components, standing_height=standing_height)
-
-    def _validate_reward_code(self, code: str) -> dict[str, Any]:
-        from backend.rl.custom_reward import validate_custom_reward
-
-        return validate_custom_reward(str(code))
 
     def _get_env_config(self) -> dict[str, Any]:
         if self.config_service is None:

@@ -46,7 +46,7 @@ def test_config_patch_revision_diff_and_undo(client):
             "patch": {
                 "observations": [{"key": "base_position", "enabled": True}],
                 "actions": [{"joint_index": joint, "enabled": True}],
-                "rewards": [{"key": "stay_alive", "enabled": True}],
+                "rewards": [{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
                 "domain_randomization": {"enabled": False},
             },
         },
@@ -74,7 +74,7 @@ def test_reward_test_returns_structured_terms(client):
         "/reward/test",
         json={
             "components": [
-                {"key": "stay_alive", "enabled": True, "weight": 0.5, "params": {}}
+                {"key": "stay_alive", "enabled": True, "weight": 0.5, "params": {"expr": "1.0"}}
             ]
         },
     )
@@ -119,7 +119,7 @@ def test_validation_warnings_are_non_blocking():
                 "upper_limit": 1.0,
             }
         ],
-        rewards=[{"key": "stay_alive", "enabled": True}],
+        rewards=[{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
     )
     service = ConfigService(Path("unused"))
     assert service.validate(config, FakeSim()) == []
@@ -134,7 +134,10 @@ def test_patch_rejects_unsupported_termination_keys():
         service.apply_patch(config, {"terminations": {"max_base_height": 1.0}})
 
 
-def test_validation_blocks_unknown_enabled_reward_components():
+def test_validation_blocks_a_reward_with_no_expression():
+    """An unknown key is no longer the failure mode — the key is a free-form
+    telemetry label now. What must block is a reward with nothing to evaluate, which
+    is exactly what a config saved against the deleted catalogue looks like."""
     class FakeSim:
         def actions(self):
             return {"actions": []}
@@ -147,11 +150,14 @@ def test_validation_blocks_unknown_enabled_reward_components():
         rewards=[{"key": "not_real", "enabled": True}],
         terminations={"max_steps": 1000},
     )
+    problems = service.validate(config, FakeSim())
+    assert any("not_real" in p and "params.expr" in p for p in problems), problems
 
-    assert any(
-        "Unknown reward component: not_real" in problem
-        for problem in service.validate(config, FakeSim())
+    # The same key WITH an expression is fine: any name is legal as a label.
+    authored = config.model_copy(
+        update={"rewards": [RewardComponent(key="not_real", enabled=True, params={"expr": "base_z"})]}
     )
+    assert not any("not_real" in p for p in service.validate(authored, FakeSim()))
 
 
 def test_action_mapping_and_policy_space_are_normalized():
@@ -186,7 +192,7 @@ def test_action_mapping_and_policy_space_are_normalized():
         urdf_path="r2d2.urdf",
         observations=[{"key": "base_position", "enabled": True}],
         actions=[action],
-        rewards=[{"key": "stay_alive", "enabled": True}],
+        rewards=[{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
     )
     with patch("backend.rl.gym_env.PyBulletManager", FakeManager):
         env = RtgGymEnv(config)
@@ -212,7 +218,7 @@ def test_env_rejects_empty_observations_without_fallback():
         urdf_path="r2d2.urdf",
         observations=[],
         actions=[{"joint_index": 1, "enabled": True}],
-        rewards=[{"key": "stay_alive", "enabled": True}],
+        rewards=[{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
     )
     with patch("backend.rl.gym_env.PyBulletManager", FakeManager):
         with pytest.raises(ValueError, match="no enabled observations"):
@@ -225,7 +231,7 @@ def test_old_project_payload_defaults_new_fields():
             "urdf_path": "r2d2.urdf",
             "observations": [{"key": "base_position", "enabled": True}],
             "actions": [{"joint_index": 1, "enabled": True}],
-            "rewards": [{"key": "stay_alive", "enabled": True}],
+            "rewards": [{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
         }
     )
     assert config.domain_randomization.enabled is False
@@ -283,7 +289,7 @@ def test_run_export_includes_action_and_observation_contracts(tmp_path):
                 "scale_high": 0.5,
             }
         ],
-        rewards=[RewardComponent(key="stay_alive", enabled=True)],
+        rewards=[RewardComponent(key="stay_alive", enabled=True, params={"expr": "1.0"})],
     )
     (run_dir / "config.json").write_text(
         TrainingStartRequest(config=config).model_dump_json(indent=2),
@@ -312,7 +318,7 @@ def test_agent_patch_tool_returns_final_changes(client):
                     "actions": [
                         {"joint_index": actions[0]["joint_index"], "enabled": True}
                     ],
-                    "rewards": [{"key": "stay_alive", "enabled": True}],
+                    "rewards": [{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
                 }
             },
         )

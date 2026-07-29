@@ -154,7 +154,7 @@ def test_min_base_height_termination_uses_true_height():
         urdf_path="r2d2.urdf",
         observations=[{"key": "base_orientation", "enabled": True}],
         actions=[{"joint_index": 1, "enabled": True}],
-        rewards=[{"key": "stay_alive", "enabled": True}],
+        rewards=[{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
         terminations={"max_steps": 100, "min_base_height": 0.2},
     )
     with patch("backend.rl.gym_env.PyBulletManager", FakeManager):

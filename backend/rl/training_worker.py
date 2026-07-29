@@ -77,25 +77,6 @@ def _harvest_metrics(latest: dict[str, float]) -> dict[str, float]:
     return out
 
 
-def _validate_custom_rewards(config: Any) -> None:
-    """Fail the run if an enabled custom_python reward doesn't pass sandbox
-    validation. This is the pre-flight that guarantees code is checked before
-    compiled_reward execs it in-process during training (config_service.validate
-    only checks reward keys, not code)."""
-    rewards = getattr(config, "rewards", None) or []
-    for reward in rewards:
-        if not getattr(reward, "enabled", False) or getattr(reward, "key", "") != "custom_python":
-            continue
-        code = str((getattr(reward, "params", None) or {}).get("code", "")).strip()
-        if not code:
-            continue
-        from backend.rl.custom_reward import validate_custom_reward
-
-        result = validate_custom_reward(code)
-        if not result.get("ok"):
-            raise ValueError(f"Custom reward rejected: {result.get('error', 'invalid code')}")
-
-
 def _py_scalar(value: Any) -> Any:
     """Convert numpy scalars (float32, int64, …) to plain Python types so
     telemetry points stay JSON- and Pydantic-serializable."""
@@ -318,8 +299,6 @@ class TrainingWorker:
             # Reject unsafe/broken custom reward code BEFORE the env builds it,
             # since compiled_reward execs it in-process every step. The check
             # runs in this worker thread (not the event loop) and only fires
-            # when a custom_python reward is actually enabled with code.
-            _validate_custom_rewards(req.config)
 
             from stable_baselines3 import A2C, PPO, SAC, TD3
             from stable_baselines3.common.callbacks import BaseCallback, CallbackList

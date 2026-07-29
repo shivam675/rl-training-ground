@@ -380,6 +380,39 @@ Tests naming reward keys get rewritten to expressions: `test_isaac_env_math`, `t
 
 Goes **immediately** after P2 — two live reward paths is the thing that rots.
 
+### Status: LANDED 2026-07-29
+
+Suite **231 passed, 1 skipped**. Also deleted, beyond the list above: `RewardSpec`,
+`env_math.compute_reward`, `reward_builder._joint_limit_violation`, `SHAPED_KEYS` and the
+custom-vs-manual double-counting warning, the `/reward/validate_custom` endpoint, the
+`validate_reward_code` tool, `training_worker._validate_custom_rewards`, and
+`tools._patch_injects_code`.
+
+That last one is a security note worth stating plainly: the always-on confirmation gate on
+code-carrying config patches is gone **because the `exec` it protected is gone**, not because the gate
+was wrong. A reward compiles against an AST whitelist with no `ast.Attribute`/`ast.Subscript`, so
+there is nothing left to gate beyond the normal destructive-tool rule. `test_phase6` still pins the
+proposal requirement (a gated tool cannot run via `/agents/execute_tool` without a prior proposal); it
+just switches the gate from code-injection to `ask` autonomy.
+
+`reward_builder` keeps `LEGACY_ONLY_KEYS` — exactly five: `target_base_position`,
+`target_link_position`, `action_magnitude`, `falling_height`, `forbidden_contacts`. They reference
+link positions, target vectors and PyBullet link indices the vocabulary does not expose, all five are
+PyBullet-only, and `warnings()` says so at patch time. `config_service.bare_reward_keys()` is the only
+survivor of the allowlist.
+
+The **test fallout was wider than this plan estimated** (it said "2–3 references each" in four
+files). `stay_alive` was the minimal valid reward in `test_phase1/2/5/6`, `test_stabilization` and
+`test_spawn_height` too, so a bare-key rejection broke the whole ordered pipeline at once — 14 failed,
+5 errored. Mechanical fix (`params: {"expr": "1.0"}`), but worth knowing before starting.
+`test_expr_parity.py` is renamed `test_expr_state.py`: its parity half had nothing left to be at parity
+with, and the surviving half (every vocabulary name has a provider; both lanes agree from the same
+physical state) is what it is now about.
+
+Verified on GPU both ways: the untouched 2026-07-28 A1 config now fails with
+*"Reward 'stay_alive' has no params.expr … Re-apply the behaviour goal"*, and the same goal authored
+from `REWARD_PRIORS["gallop"]` trains, reporting a live `flight_phase` term.
+
 ---
 
 # P4 — expression editors in the panels

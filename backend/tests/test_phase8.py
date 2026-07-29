@@ -30,9 +30,18 @@ def client():
 # ------------------------------------------------------- reward sign convention
 
 
-def test_energy_is_a_penalty_not_a_bonus(client):
+def test_effort_is_a_penalty_not_a_bonus(client):
+    """The convention survives the move to expressions: an expression yields a
+    POSITIVE-meaning raw and the weight's sign decides reward vs penalty. Writing a
+    pre-negated expression AND a negative weight is the double-negation bug that once
+    made effort and falling into rewards."""
     res = evaluate_reward(
-        sim, [RewardComponent(key="energy", enabled=True, weight=-0.01)],
+        sim,
+        [
+            RewardComponent(
+                key="effort", enabled=True, weight=-0.01, params={"expr": "sum(action * action)"}
+            )
+        ],
         last_action=[1.0, -2.0, 0.5],
     )
     term = res["terms"][0]
@@ -54,49 +63,45 @@ def test_falling_below_height_is_penalized_not_rewarded(client):
 def test_action_smoothness_measures_change(client):
     res = evaluate_reward(
         sim,
-        [RewardComponent(key="action_smoothness", enabled=True, weight=-0.1)],
+        [
+            RewardComponent(
+                key="action_smoothness",
+                enabled=True,
+                weight=-0.1,
+                params={"expr": "norm(action - prev_action)"},
+            )
+        ],
         last_action=[1.0, 0.0],
         prev_action=[0.0, 0.0],
     )
     assert res["terms"][0]["raw"] == pytest.approx(1.0)
 
 
-def test_upright_in_range(client):
-    res = evaluate_reward(sim, [RewardComponent(key="upright", enabled=True, weight=1.0)])
-    assert -1.0001 <= res["terms"][0]["raw"] <= 1.0001
+# ------------------------------------------------------- expression reward wiring
 
 
-# --------------------------------------------------------- custom reward wiring
-
-
-def test_custom_reward_receives_real_obs(client):
-    code = "def reward(obs, action, ctx):\n    return float(len(obs))"
+def test_expression_reward_uses_the_live_state(client):
+    """The reward preview evaluates authored terms against real PyBullet state, at
+    N=1 through the same compiler the GPU lane uses."""
     res = evaluate_reward(
         sim,
-        [RewardComponent(key="custom_python", enabled=True, weight=1.0, params={"code": code})],
-        obs=[0.0] * 9,
+        [
+            RewardComponent(
+                key="uprightness", enabled=True, weight=2.0, params={"expr": "upright"}
+            )
+        ],
     )
-    assert res["terms"][0]["raw"] == 9.0
+    term = res["terms"][0]
+    assert -1.0001 <= term["raw"] <= 1.0001
+    assert term["value"] == pytest.approx(term["raw"] * 2.0)
 
 
-def test_overlap_warning_when_custom_plus_manual(client):
-    comps = [
-        RewardComponent(key="energy", enabled=True, weight=-0.01),
-        RewardComponent(
-            key="custom_python", enabled=True, weight=1.0,
-            params={"code": "def reward(obs, action, ctx):\n    return 0.0"},
-        ),
-    ]
-    res = evaluate_reward(sim, comps, last_action=[0.1])
-    assert any("double-count" in w for w in res["warnings"])
-
-
-def test_no_overlap_warning_for_manual_only(client):
-    res = evaluate_reward(
-        sim,
-        [RewardComponent(key="forward_velocity", enabled=True, weight=1.0)],
-    )
-    assert not any("double-count" in w for w in res["warnings"])
+def test_a_bare_reward_key_is_reported_not_silently_scored():
+    """Named components are gone. A config still carrying one must say so, because a
+    term silently worth 0 costs a whole training run to notice."""
+    res = evaluate_reward(sim, [RewardComponent(key="energy", enabled=True, weight=-0.01)])
+    assert res["terms"] == []
+    assert any("params.expr" in w for w in res["warnings"])
 
 
 # ------------------------------------------------------------- URDF dynamics

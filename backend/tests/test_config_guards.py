@@ -62,21 +62,32 @@ def test_observation_the_training_lane_cannot_use_blocks_training(client):
     assert any("contact_points" in p and "cannot be used for training" in p for p in problems)
 
 
-def test_custom_python_warns_that_it_cannot_train_on_isaac(client):
+def test_a_bare_reward_key_is_blocked_with_the_fix_attached(client):
+    """`custom_python` used to be accepted here and warned about. It is now rejected
+    at patch time along with every other bare key: named reward components are gone,
+    so a reward without params.expr is a config written against the deleted
+    catalogue, and the error has to say that the fix is re-applying the goal."""
     config = config_service.current_or_default(sim)
-    config = config.model_copy(
-        update={
-            "rewards": [
-                RewardComponent(
-                    key="custom_python",
-                    enabled=True,
-                    weight=1.0,
-                    params={"code": "def reward(obs, action, ctx):\n    return 1.0\n"},
-                )
-            ]
-        }
+    with pytest.raises(ValueError, match="params.expr"):
+        config_service.apply_patch(
+            config, {"rewards": [{"key": "custom_python", "enabled": True, "params": {"code": "x"}}]}
+        )
+    # And a config that already carries one blocks training rather than training on a
+    # term worth silently nothing.
+    stale = config.model_copy(
+        update={"rewards": [RewardComponent(key="custom_python", enabled=True, weight=1.0)]}
     )
-    warnings = config_service.warnings(config, sim)
-    assert any("params.expr" in w for w in warnings), warnings
-    # A warning, not a problem — the SB3 lane still evaluates it.
-    assert not any("custom_python" in p for p in config_service.validate(config, sim))
+    assert any("params.expr" in p for p in config_service.validate(stale, sim))
+
+
+def test_the_five_pybullet_only_keys_warn_instead_of_blocking(client):
+    """They reference link/target state the vocabulary cannot express, so they are
+    still legal — but they cannot train on the only training lane, and that is worth
+    saying at patch time rather than at launch."""
+    config = config_service.current_or_default(sim)
+    updated = config_service.apply_patch(
+        config,
+        {"rewards": [{"key": "target_link_position", "enabled": True, "weight": -1.0}]},
+    )
+    assert any("target_link_position" in w for w in config_service.warnings(updated, sim))
+    assert not any("target_link_position" in p for p in config_service.validate(updated, sim))

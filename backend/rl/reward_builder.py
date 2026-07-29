@@ -20,49 +20,38 @@ from backend.simulation.pybullet_manager import PyBulletManager
 # the UI's "Penalize X" labels honest and avoids the double-negation bug where a
 # pre-negated raw times a negative weight ended up *rewarding* falling/effort.
 
-# Components that are penalties by nature — surfaced so the UI/agent default them
-# to negative weights and so we can warn about double-counting.
-PENALTY_KEYS = {
+# The five components that are NOT expressions, because they reference state the
+# vocabulary does not expose: link and target positions, and PyBullet link indices.
+# Everything else the catalogue used to carry is authored as params.expr now, and
+# every one of these is PyBullet-only — the Isaac lane (the only training lane)
+# rejects a bare key outright. They survive for the reward preview, Optuna's SB3
+# trials, and the ordered pytest pipeline.
+# ponytail: five keys, not a plugin system. They go when the vocabulary grows link
+# positions and per-episode targets, which is the same change that lets a reaching
+# goal be authored like every other goal.
+LEGACY_ONLY_KEYS = {
     "action_magnitude",
-    "joint_velocity",
     "falling_height",
     "target_base_position",
     "target_link_position",
     "forbidden_contacts",
-    "target_height",
-    "energy",
-    "action_smoothness",
-    # Gait shaping: sensor-free proxies for "this looks like walking". A forward
-    # velocity reward alone is indifferent between a trot and a splayed slide.
-    "lateral_velocity",
-    "vertical_velocity",
-    "body_rate",
-    "joint_limit_violation",
 }
-# Shaped objective/penalty terms (everything except the alive bonus and the
-# free-form custom term). Used to detect custom_python ⟂ manual overlap.
-SHAPED_KEYS = PENALTY_KEYS | {"forward_velocity", "upright"}
+#: All of them are penalties, so the UI/agent default them to negative weights.
+PENALTY_KEYS = set(LEGACY_ONLY_KEYS)
 
 
 def default_reward_components() -> list[dict[str, Any]]:
+    """The remaining non-expression components, for the UI and the reward preview.
+
+    This is no longer a catalogue to pick a reward from — it is the short list of
+    things that cannot yet BE an expression. A reward is authored as params.expr.
+    """
     return [
-        {"key": "stay_alive", "label": "Stay-alive bonus", "weight": 1.0},
-        {"key": "forward_velocity", "label": "Reward forward speed (toward target_speed)", "weight": 1.0, "params": {"target_speed": 1.0, "axis": 0}},
-        {"key": "upright", "label": "Reward staying upright", "weight": 0.5},
-        {"key": "target_height", "label": "Penalize base-height error", "weight": -1.0, "params": {"height": 0.5}},
         {"key": "target_base_position", "label": "Penalize distance to target position", "weight": -1.0, "params": {"target": [1, 0, 0]}},
         {"key": "target_link_position", "label": "Penalize distance from link to target", "weight": -1.0, "params": {"link_index": 0, "target": [0, 0, 1]}},
-        {"key": "energy", "label": "Penalize effort (sum action^2)", "weight": -0.01},
         {"key": "action_magnitude", "label": "Penalize action magnitude", "weight": -0.01},
-        {"key": "action_smoothness", "label": "Penalize jerky action changes", "weight": -0.01},
-        {"key": "joint_velocity", "label": "Penalize joint velocity", "weight": -0.001},
-        {"key": "lateral_velocity", "label": "Penalize sideways drift", "weight": -0.5, "params": {"axis": 1}},
-        {"key": "vertical_velocity", "label": "Penalize bouncing (vertical speed)", "weight": -0.2},
-        {"key": "body_rate", "label": "Penalize body roll/pitch rate", "weight": -0.05},
-        {"key": "joint_limit_violation", "label": "Penalize joints pinned at their limits", "weight": -0.5, "params": {"soft_ratio": 0.9}},
         {"key": "falling_height", "label": "Penalize falling below height", "weight": -5.0, "params": {"min_height": 0.2}},
         {"key": "forbidden_contacts", "label": "Penalize forbidden link contacts", "weight": -1.0, "params": {"links": []}},
-        {"key": "custom_python", "label": "Custom Python reward", "weight": 1.0, "params": {"code": ""}},
     ]
 
 
@@ -221,17 +210,6 @@ def evaluate_reward(
     joint_states = p.getJointStates(body, list(range(joint_count)), physicsClientId=manager.cid) if joint_count else []
 
     enabled = [c for c in components if c.enabled]
-    custom_active = any(
-        c.key == "custom_python" and str(c.params.get("code", "")).strip() for c in enabled
-    )
-    manual_shaped = [c.key for c in enabled if c.key in SHAPED_KEYS]
-    if custom_active and manual_shaped:
-        warnings.append(
-            "custom_python is enabled together with manual reward terms "
-            f"({', '.join(manual_shaped)}). Both are SUMMED — make sure you are not "
-            "double-counting the same objective (e.g. effort or falling in both)."
-        )
-
     # Built on first use: only configs with authored terms pay for it.
     expr_state: dict[str, Any] | None = None
 
@@ -264,43 +242,8 @@ def evaluate_reward(
             except ExprError as exc:
                 warnings.append(f"Reward expression {key!r} rejected: {exc}")
                 continue
-        elif key == "stay_alive":
-            raw = 1.0
         elif key == "action_magnitude":
             raw = float(np.linalg.norm(action)) if action.size else 0.0
-        elif key == "energy":
-            raw = float(np.sum(np.square(action))) if action.size else 0.0
-        elif key == "action_smoothness":
-            if action.size and prev.size == action.size:
-                raw = float(np.linalg.norm(action - prev))
-            else:
-                raw = 0.0
-        elif key == "joint_velocity":
-            raw = float(sum(abs(st[1]) for st in joint_states))
-        elif key == "forward_velocity":
-            axis = int(component.params.get("axis", 0))
-            target_speed = float(component.params.get("target_speed", 1.0))
-            v = float(lin_vel[axis]) if 0 <= axis < 3 else 0.0
-            # Reward speed up to the target (no bonus for overshooting / diverging);
-            # backward motion is penalised because raw goes negative.
-            raw = min(v, target_speed) if target_speed >= 0 else max(v, target_speed)
-        elif key == "upright":
-            rot = p.getMatrixFromQuaternion(base_orn)
-            raw = float(rot[8])  # world-Z component of the body's local Z axis: 1 = upright
-        elif key == "lateral_velocity":
-            axis = int(component.params.get("axis", 1))
-            raw = abs(float(lin_vel[axis])) if 0 <= axis < 3 else 0.0
-        elif key == "vertical_velocity":
-            raw = abs(float(lin_vel[2]))
-        elif key == "body_rate":
-            raw = float(np.linalg.norm(np.asarray(ang_vel[:2], dtype=np.float64)))
-        elif key == "joint_limit_violation":
-            raw = _joint_limit_violation(
-                manager, body, joint_states, float(component.params.get("soft_ratio", 0.9))
-            )
-        elif key == "target_height":
-            target_h = float(component.params.get("height", 0.5))
-            raw = abs(float(base_pos[2]) - target_h)
         elif key == "falling_height":
             threshold = float(component.params.get("min_height", 0.2))
             raw = 1.0 if base_pos[2] < threshold else 0.0
@@ -319,39 +262,12 @@ def evaluate_reward(
             forbidden = {int(v) for v in component.params.get("links", [])}
             contacts = p.getContactPoints(bodyA=body, physicsClientId=manager.cid)
             raw = float(sum(1 for c in contacts if c[3] in forbidden or c[4] in forbidden))
-        elif key == "custom_python":
-            code = str(component.params.get("code", "")).strip()
-            if not code:
-                warnings.append("Custom Python reward has no code — define reward(obs, action, ctx).")
-                raw = 0.0
-            else:
-                from backend.rl.custom_reward import compiled_reward
-
-                ctx = {
-                    "base_position": list(base_pos),
-                    "base_orientation": list(base_orn),
-                    "base_linear_velocity": list(lin_vel),
-                    "base_angular_velocity": list(ang_vel),
-                    "joint_positions": [float(st[0]) for st in joint_states],
-                    "joint_velocities": [float(st[1]) for st in joint_states],
-                    "prev_action": prev.tolist(),
-                    "sim_time": manager.sim_time,
-                }
-                # `obs` is the SAME vector the policy receives (the enabled
-                # observation sources, in order). Falls back to a basic vector
-                # when called outside the training loop (e.g. Test reward).
-                obs_vec = (
-                    list(obs)
-                    if obs is not None
-                    else list(base_pos) + ctx["joint_positions"] + ctx["joint_velocities"]
-                )
-                try:
-                    raw = float(compiled_reward(code)(obs_vec, action.tolist(), ctx))
-                except Exception as exc:
-                    warnings.append(f"Custom reward failed: {type(exc).__name__}: {exc}")
-                    raw = 0.0
         else:
-            warnings.append(f"Unknown reward component: {key}")
+            warnings.append(
+                f"Reward {key!r} has no params.expr and is not one of the remaining "
+                f"PyBullet-only components ({', '.join(sorted(LEGACY_ONLY_KEYS))}). "
+                "Every other reward is an expression now — see params.expr."
+            )
             continue
 
         value = raw * component.weight
@@ -369,36 +285,3 @@ def evaluate_reward(
 
     formula = " + ".join(f"{t['weight']}*{t['key']}" for t in terms) or "0.0"
     return {"reward": total, "terms": terms, "formula": formula, "warnings": warnings}
-
-
-def _joint_limit_violation(
-    manager: PyBulletManager, body: int, joint_states, soft_ratio: float
-) -> float:
-    """Mean over joints of how far each is pushed into the outer ``soft_ratio`` of
-    its range. 0 while every joint stays in its comfortable band, 1 with all of
-    them pinned at a limit.
-
-    This is the term that makes a splayed stance cost something without needing
-    contact sensors or per-morphology foot detection: sprawling a leg out means
-    pinning a hip against its abduction limit.
-
-    The MEAN (not the sum) is what keeps the weight meaningful: summed, the raw
-    scales with DOF count, so -0.5 became an effective -6/step on a 12-DOF
-    quadruped against a +2.5/step reward ceiling. Once a penalty outweighs the
-    entire positive budget, ending the episode early scores better than
-    recovering, and a stumble turns into an unrecoverable collapse."""
-    total = 0.0
-    counted = 0
-    for joint_index, state in enumerate(joint_states):
-        info = p.getJointInfo(body, joint_index, physicsClientId=manager.cid)
-        if info[2] == p.JOINT_FIXED:
-            continue
-        lower, upper = float(info[8]), float(info[9])
-        if not (math.isfinite(lower) and math.isfinite(upper)) or upper <= lower:
-            continue
-        half = (upper - lower) / 2.0
-        center = (upper + lower) / 2.0
-        used = abs(float(state[0]) - center) / half  # 0 at mid-range, 1 at a limit
-        total += min(1.0, max(0.0, used - soft_ratio) / max(1e-6, 1.0 - soft_ratio))
-        counted += 1
-    return total / counted if counted else 0.0

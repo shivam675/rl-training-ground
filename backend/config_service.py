@@ -37,29 +37,18 @@ SUPPORTED_PATCH_KEYS = {
 }
 
 
-def default_rewards() -> list[dict[str, Any]]:
-    """The reward components the backend knows how to evaluate.
+def bare_reward_keys() -> set[str]:
+    """Reward keys that are allowed to carry no ``params.expr``.
 
-    NOT seeded into configs any more — this is the **validation allowlist** used
-    by `apply_patch` and `validate` to reject an unknown reward key, plus the
-    reference the agent authors against. Nothing here reaches the UI unless
-    something deliberately added it to a config.
+    Only the five PyBullet-only components the state vocabulary cannot express
+    (link/target positions and PyBullet link indices) — see
+    `reward_builder.LEGACY_ONLY_KEYS`. Everything else is an authored expression, so
+    a bare key is a config written against the deleted catalogue. None of these five
+    can train on the Isaac lane at all, which `validate` reports separately.
     """
-    from backend.rl.reward_builder import default_reward_components
+    from backend.rl.reward_builder import LEGACY_ONLY_KEYS
 
-    return [
-        {
-            "key": item["key"],
-            "enabled": False,
-            "weight": item.get("weight", 1.0),
-            "params": item.get("params", {}),
-        }
-        for item in default_reward_components()
-    ]
-
-
-def default_reward_keys() -> set[str]:
-    return {item["key"] for item in default_rewards()}
+    return set(LEGACY_ONLY_KEYS)
 
 
 def observation_keys() -> set[str]:
@@ -168,7 +157,7 @@ class ConfigService:
                 + ", ".join(sorted(str(key) for key in unknown_patch_keys))
             )
         data = config.model_dump()
-        reward_keys = default_reward_keys()
+        reward_keys = bare_reward_keys()
 
         known_obs = observation_keys()
         for obs_patch in patch.get("observations", []) or []:
@@ -215,9 +204,11 @@ class ConfigService:
             authored = _expr_of(reward_patch) or (existing and _expr_of(existing))
             if key not in reward_keys and not authored:
                 raise ValueError(
-                    f"Unsupported reward key: {key}. Either use a built-in reward "
-                    f"({', '.join(sorted(reward_keys))}) or supply params.expr with an "
-                    "expression over the robot state."
+                    f"Reward {key!r} needs params.expr — an expression over the robot "
+                    "state. Named reward components were removed; the key is now just a "
+                    "telemetry label, so any name is fine as long as it carries an "
+                    f"expression. (The only exceptions, which cannot train on the GPU "
+                    f"lane anyway, are: {', '.join(sorted(reward_keys))}.)"
                 )
             entry = existing
             if entry is None:
@@ -282,10 +273,16 @@ class ConfigService:
             problems.append("No actions enabled — the policy cannot control anything.")
         if not any(reward.enabled for reward in config.rewards):
             problems.append("No reward components enabled — nothing to learn.")
-        reward_keys = default_reward_keys()
+        reward_keys = bare_reward_keys()
         for reward in config.rewards:
             if reward.enabled and reward.key not in reward_keys and not _expr_of(reward):
-                problems.append(f"Unknown reward component: {reward.key}")
+                # A saved config from before the cutover. Blocking here rather than
+                # letting build_spec raise mid-launch keeps the fix one turn away.
+                problems.append(
+                    f"Reward {reward.key!r} has no params.expr. Named reward components "
+                    "were removed — re-apply the behaviour goal so the terms get "
+                    "authored as expressions."
+                )
         problems.extend(self._expression_report(config)[0])
         for key in sorted(set(config.terminations) - SUPPORTED_TERMINATION_KEYS):
             problems.append(f"Unsupported termination key: {key}")
@@ -340,11 +337,9 @@ class ConfigService:
         (it hard-blocks training, main.py raises on any problem), while
         ``reward_expr.audit`` output is a *warning* — it says a weight is probably
         wrong, which is advice, not a broken config. Putting audit in problems
-        would have made every pre-existing config untrainable, since the
-        historical ``energy``/``joint_velocity`` sums are legitimately flagged as
-        DOF-dependent.
+        would make a config with a legitimately DOF-dependent ``sum()`` untrainable
+        rather than merely flagged, and the agent already reads warnings back.
         """
-        from backend.rl.isaac.env_spec import LEGACY_EXPR
         from backend.rl.reward_expr import ExprError, Term, TermSet, audit
         from backend.rl.state_vocab import allowed_names, sample_states
 
@@ -362,14 +357,11 @@ class ConfigService:
                 continue
             expr = _expr_of(reward)
             if expr is None:
-                translate = LEGACY_EXPR.get(reward.key)
-                if translate is None:
-                    # A catalogue key the vocabulary cannot express (PyBullet-only
-                    # link/target terms). Skip the audit rather than compute a
-                    # partial reward budget and raise false alarms about it.
-                    untranslatable = True
-                    continue
-                expr = translate(reward.params or {})
+                # One of the five PyBullet-only components (validate reports a bare
+                # key separately). Skip the audit rather than compute a partial
+                # reward budget and raise false alarms about it.
+                untranslatable = True
+                continue
             terms.append(Term(name=reward.key, expr=expr, weight=float(reward.weight)))
 
         term_expr = config.terminations.get("expr")
@@ -403,14 +395,17 @@ class ConfigService:
     def warnings(self, config: EnvConfig, sim) -> list[str]:
         """Non-blocking warnings: valid-but-risky settings worth reviewing."""
         warnings: list[str] = list(self._expression_report(config)[1])
-        if any(r.enabled and r.key == "custom_python" for r in config.rewards):
-            # Warning, not a problem: the SB3 lane still runs it and the pytest
-            # pipeline exercises that. But it can never train on Isaac, so say so
-            # at patch time rather than letting the launch discover it.
+        bare = sorted(
+            r.key for r in config.rewards if r.enabled and r.key in bare_reward_keys()
+        )
+        if bare:
+            # Warning, not a problem: the reward preview and Optuna's SB3 trials both
+            # evaluate these. But none of them can train on Isaac, so say so at patch
+            # time rather than letting the launch discover it.
             warnings.append(
-                "custom_python cannot train on the Isaac lane (arbitrary Python can't run "
-                "inside a vmapped GPU env). Express the same reward as params.expr instead, "
-                "which compiles to tensor ops and does run there."
+                f"{', '.join(bare)} cannot train on the Isaac lane — it references link "
+                "or target state the expression vocabulary does not expose yet. It still "
+                "works in the reward preview and in Optuna tuning."
             )
         live = {
             int(item.get("joint_index")): item

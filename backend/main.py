@@ -604,14 +604,6 @@ async def project_open(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@app.post("/reward/validate_custom")
-async def reward_validate_custom(payload: dict[str, Any]) -> dict[str, Any]:
-    """Sandbox-run user reward code with dummy inputs before accepting it."""
-    from backend.rl.custom_reward import validate_custom_reward
-
-    return await asyncio.to_thread(validate_custom_reward, str(payload.get("code", "")))
-
-
 @app.post("/reward/test")
 async def reward_test(req: RewardTestRequest) -> dict[str, Any]:
     config = config_service.current_or_default(sim)

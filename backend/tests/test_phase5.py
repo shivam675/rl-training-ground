@@ -27,7 +27,7 @@ def client():
                     "actions": [
                         {"joint_index": actions[0]["joint_index"], "enabled": True}
                     ],
-                    "rewards": [{"key": "stay_alive", "enabled": True}],
+                    "rewards": [{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
                 },
             )
         yield test_client

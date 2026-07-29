@@ -79,7 +79,7 @@ def test_eval_during_training_records_eval_reward_and_saves_best(client):
             "actions": (
                 [{"joint_index": actions[0]["joint_index"], "enabled": True}] if actions else []
             ),
-            "rewards": [{"key": "stay_alive", "enabled": True}],
+            "rewards": [{"key": "stay_alive", "enabled": True, "params": {"expr": "1.0"}}],
         },
     )
     res = client.post(

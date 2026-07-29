@@ -6,7 +6,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app, config_service, sim
-from backend.rl.custom_reward import validate_custom_reward
 
 
 @pytest.fixture(scope="module")
@@ -86,52 +85,29 @@ def test_patch_invalid_is_structured(client):
     assert res.json()["detail"]["code"] == "invalid_config_patch"
 
 
-def test_custom_reward_sandbox_accepts_good_code():
-    result = validate_custom_reward(
-        "def reward(obs, action, ctx):\n    return ctx['base_position'][2] * 2\n"
-    )
-    assert result["ok"] is True
-    assert result["value"] == 1.0
-
-
-def test_custom_reward_sandbox_rejects_bad_code():
-    assert validate_custom_reward("not python !!").get("ok") is False
-    assert validate_custom_reward("x = 1\n").get("ok") is False  # no reward()
-    loop = validate_custom_reward(
-        "def reward(obs, action, ctx):\n    \n    while True:\n        pass\n",
-        timeout=4.0,
-    )
-    assert loop["ok"] is False
-
-
-def test_validate_custom_endpoint(client):
-    res = client.post(
-        "/reward/validate_custom",
-        json={"code": "def reward(obs, action, ctx):\n    return 1.5\n"},
-    )
-    assert res.status_code == 200
-    assert res.json() == {"ok": True, "value": 1.5}
-
-
-def test_configured_custom_reward_executes(client):
+def test_configured_expression_reward_evaluates(client):
+    """An authored term goes through the same compiler the GPU lane runs, so "Test
+    reward" checks the reward that will actually train rather than an approximation."""
     client.post(
         "/env/config/patch",
         json={
             "rewards": [
                 {
-                    "key": "custom_python",
+                    "key": "stay_low",
                     "enabled": True,
                     "weight": 2.0,
-                    "params": {"code": "def reward(obs, action, ctx):\n    return 3.0\n"},
+                    # Reads real state, but deterministic: the robot is standing, so
+                    # height_ratio is ~1 and comfortably above 0.5.
+                    "params": {"expr": "3.0 * step(height_ratio - 0.5)"},
                 }
             ]
         },
     )
-    # Empty components => use configured rewards, including the custom one.
+    # Empty components => use the configured rewards.
     res = client.post("/reward/test", json={"components": []})
     assert res.status_code == 200
     body = res.json()
-    term = next(t for t in body["terms"] if t["key"] == "custom_python")
+    term = next(t for t in body["terms"] if t["key"] == "stay_low")
     assert term["raw"] == 3.0
     assert term["value"] == 6.0
-    assert not any("placeholder" in w for w in body["warnings"])
+    assert not any("rejected" in w for w in body["warnings"])

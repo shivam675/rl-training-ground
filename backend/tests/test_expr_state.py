@@ -1,11 +1,13 @@
-"""Every legacy reward key must mean the same thing as its expression.
+"""What `build_state` provides, and that both lanes agree on it.
 
-This is the gate on deleting the catalogue: the Isaac lane now evaluates only
-expressions (`EnvSpec.reward_terms`), and configs written against the 11 named
-keys keep working because `env_spec.LEGACY_EXPR` translates them. If a
-translation drifts, a saved config silently trains on a different reward — which
-is invisible in a summed reward curve. So each key is pinned against the old
-branch chain on the same tensors.
+This file used to be the parity gate on deleting the reward catalogue: every one of
+the 11 named keys was pinned against its translated expression on the same tensors.
+That job is done — the catalogue and its `LEGACY_EXPR` translations are deleted, so
+there is nothing left to be at parity with. What survives is the part that still has
+teeth: every vocabulary name must have a provider (otherwise an expression compiles
+and then KeyErrors thousands of envs deep), and the PyBullet lane must produce the
+same numbers as the Isaac lane from the same physical state (otherwise "Test reward"
+lies about what will train).
 
 Pure app-venv logic (torch only, no isaaclab), so it runs in CI.
 """
@@ -15,10 +17,9 @@ import pytest
 import torch
 
 from backend.rl.isaac import env_math
-from backend.rl.isaac.env_spec import LEGACY_EXPR, RewardSpec, build_spec
-from backend.rl.reward_expr import Term, TermSet
+from backend.rl.isaac.env_spec import build_spec
+from backend.rl.reward_expr import Term, TermSet, audit
 from backend.rl.state_vocab import allowed_names, sample_states
-from backend.rl.reward_expr import audit
 
 N, D, A = 4, 12, 12
 STANDING_HEIGHT = 0.3125  # A1, measured
@@ -54,63 +55,6 @@ def _tensors(seed: int = 0):
         "prev_action": rand(N, A),
         "joint_limits": limits,
     }
-
-
-#: params that exercise the non-default branch of each translation.
-PARAMS: dict[str, dict] = {
-    "forward_velocity": {"target_speed": 1.5, "axis": 0},
-    "target_height": {"height": STANDING_HEIGHT},
-    "lateral_velocity": {"axis": 1},
-    "joint_limit_violation": {"soft_ratio": 0.9},
-}
-
-
-def test_every_legacy_key_matches_its_expression():
-    t = _tensors()
-    state = env_math.build_state(**t, standing_height=STANDING_HEIGHT)
-    allowed = allowed_names(contacts=False, commands=False)
-
-    for key, translate in LEGACY_EXPR.items():
-        params = PARAMS.get(key, {})
-        weight = -0.37  # a weight that is neither 1 nor 0, so it cannot cancel a bug
-        legacy = env_math.compute_reward(
-            [RewardSpec(key=key, weight=weight, params=params)],
-            lin_vel=t["lin_vel"],
-            quat_xyzw=t["root_quat_xyzw"],
-            root_z=t["root_pos"][:, 2],
-            joint_vel=t["joint_vel"],
-            action=t["action"],
-            prev_action=t["prev_action"],
-            ang_vel=t["ang_vel"],
-            joint_pos=t["joint_pos"],
-            joint_limits=t["joint_limits"],
-        )
-        expr = translate(params)
-        via_expr = TermSet([Term(name=key, expr=expr, weight=weight)], allowed).evaluate(state, N)
-        assert torch.allclose(legacy, via_expr, atol=1e-6), (
-            f"{key}: {expr!r} gives {via_expr.tolist()} but the catalogue gives {legacy.tolist()}"
-        )
-
-
-def test_negative_target_speed_uses_max():
-    t = _tensors(seed=1)
-    state = env_math.build_state(**t, standing_height=STANDING_HEIGHT)
-    params = {"target_speed": -1.0, "axis": 0}
-    legacy = env_math.compute_reward(
-        [RewardSpec(key="forward_velocity", weight=1.0, params=params)],
-        lin_vel=t["lin_vel"],
-        quat_xyzw=t["root_quat_xyzw"],
-        root_z=t["root_pos"][:, 2],
-        joint_vel=t["joint_vel"],
-        action=t["action"],
-        prev_action=t["prev_action"],
-    )
-    expr = LEGACY_EXPR["forward_velocity"](params)
-    assert "max(" in expr
-    via_expr = TermSet(
-        [Term(name="fv", expr=expr, weight=1.0)], allowed_names(contacts=False, commands=False)
-    ).evaluate(state, N)
-    assert torch.allclose(legacy, via_expr, atol=1e-6)
 
 
 def test_build_state_covers_the_non_contact_vocabulary():
@@ -155,35 +99,18 @@ def test_authored_expression_survives_build_spec():
         "rewards": [
             {"key": "airborne", "enabled": True, "weight": 0.4,
              "params": {"expr": "1.0 - clamp(abs(base_vz), 0, 1)"}},
-            {"key": "stay_alive", "enabled": True, "weight": 0.5},
+            {"key": "alive", "enabled": True, "weight": 0.5, "params": {"expr": "1.0"}},
         ],
         "terminations": {"max_steps": 500, "expr": "height_ratio < 0.5"},
     }
     spec = build_spec(config)
-    names = [t.name for t in spec.reward_terms]
-    assert names == ["airborne", "stay_alive"]
-    assert spec.reward_terms[0].expr == "1.0 - clamp(abs(base_vz), 0, 1)"
-    assert spec.reward_terms[1].expr == "1.0"  # translated
+    # The key is a free-form telemetry label — `airborne` is not, and never has to
+    # be, a component the backend knows about.
+    assert [(t.name, t.expr, t.weight) for t in spec.reward_terms] == [
+        ("airborne", "1.0 - clamp(abs(base_vz), 0, 1)", 0.4),
+        ("alive", "1.0", 0.5),
+    ]
     assert spec.termination_expr == "height_ratio < 0.5"
-    # Only the legacy key lands in the catalogue-shaped list.
-    assert [r.key for r in spec.rewards] == ["stay_alive"]
-
-
-def test_custom_python_still_rejected_and_points_at_expressions():
-    config = {
-        "observations": [{"key": "base_position", "enabled": True}],
-        "actions": [
-            {"joint_name": "j", "enabled": True, "control_mode": "position",
-             "scale_low": -0.6, "scale_high": 0.6}
-        ],
-        "rewards": [{"key": "custom_python", "enabled": True, "params": {"code": "return 1"}}],
-    }
-    try:
-        build_spec(config)
-    except ValueError as exc:
-        assert "params.expr" in str(exc)
-    else:
-        raise AssertionError("custom_python must be rejected on the Isaac lane")
 
 
 def test_pybullet_lane_evaluates_the_same_expression(client):
