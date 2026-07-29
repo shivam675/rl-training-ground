@@ -343,9 +343,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>> validateCustomReward(String code) {
-    return api.postJson('/reward/validate_custom', {'code': code});
-  }
+  /// Config problems and audit warnings that name [key], for showing a verdict
+  /// next to the term it is about rather than in one undifferentiated list.
+  /// Substring matching because the backend phrases them around the reward key,
+  /// which is also the term's telemetry label.
+  List<String> feedbackForReward(String key) => [
+    for (final item in [...configProblems, ...configWarnings])
+      if (item.contains(key)) item,
+  ];
 
   Future<void> loadRuns({bool notify = true}) async {
     try {

@@ -38,9 +38,10 @@ class RewardPanel extends ConsumerWidget {
           ),
         ),
         Text(
-          'The reward function the agent wrote for this robot and goal. Tune '
-          'any weight — changes persist into the training config. Test against '
-          'the current robot pose any time.',
+          'The reward the agent wrote for this robot and goal. Every term is an '
+          'expression over the robot state — edit the expression or the weight '
+          'and it persists into the training config. Test against the current '
+          'robot pose any time.',
           style: TextStyle(
             fontSize: 12,
             color: scheme.onSurface.withValues(alpha: 0.6),
@@ -205,10 +206,13 @@ class _RewardEditorState extends State<_RewardEditor> {
     final scheme = Theme.of(context).colorScheme;
     final enabled = widget.component['enabled'] == true;
     final weight = (widget.component['weight'] as num?)?.toDouble() ?? 1.0;
-    final isCustom = keyName == 'custom_python';
+    final expr = '${params['expr'] ?? ''}';
+    // Only the handful of PyBullet-only components carry other params; an
+    // authored term carries `expr` and nothing else.
     final editableParams = params.entries
-        .where((entry) => entry.key != 'code')
+        .where((entry) => entry.key != 'expr')
         .toList();
+    final feedback = widget.state.feedbackForReward(keyName);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -242,7 +246,12 @@ class _RewardEditorState extends State<_RewardEditor> {
                       ),
                     ),
                     Text(
-                      keyName,
+                      // The expression IS the term, so show it collapsed rather
+                      // than making the key stand in for a meaning it no longer
+                      // carries (the key is only a telemetry label now).
+                      expr.isEmpty ? keyName : expr,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: monoStyle(
                         context,
                         fontSize: 10.5,
@@ -269,29 +278,44 @@ class _RewardEditorState extends State<_RewardEditor> {
                   },
                 ),
               ),
-              if (isCustom || editableParams.isNotEmpty)
-                IconButton(
-                  tooltip: expanded ? 'Hide parameters' : 'Edit parameters',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => setState(() => expanded = !expanded),
-                  icon: Icon(
-                    expanded ? Icons.expand_less : Icons.tune,
-                    size: 18,
-                  ),
+              IconButton(
+                tooltip: expanded ? 'Hide expression' : 'Edit expression',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => expanded = !expanded),
+                icon: Icon(
+                  expanded ? Icons.expand_less : Icons.tune,
+                  size: 18,
                 ),
+              ),
             ],
           ),
+          if (feedback.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 60, bottom: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final item in feedback)
+                    Text(
+                      item,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: context.colors.warning,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           if (expanded) ...[
             const Divider(),
-            if (isCustom)
-              _CustomCodeEditor(
-                initialCode: '${params['code'] ?? ''}',
-                state: widget.state,
-                onSave: (code) => patch({
-                  'params': {'code': code},
-                }),
-              )
-            else
+            _ExpressionEditor(
+              initialExpr: expr,
+              enabled: enabled,
+              onSave: (text) => patch({
+                'params': {'expr': text},
+              }),
+            ),
+            if (editableParams.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Wrap(
@@ -364,36 +388,23 @@ class _ParamField extends StatelessWidget {
   }
 }
 
-class _CustomCodeEditor extends StatefulWidget {
-  const _CustomCodeEditor({
-    required this.initialCode,
-    required this.state,
+class _ExpressionEditor extends StatefulWidget {
+  const _ExpressionEditor({
+    required this.initialExpr,
+    required this.enabled,
     required this.onSave,
   });
 
-  final String initialCode;
-  final AppState state;
+  final String initialExpr;
+  final bool enabled;
   final ValueChanged<String> onSave;
 
   @override
-  State<_CustomCodeEditor> createState() => _CustomCodeEditorState();
+  State<_ExpressionEditor> createState() => _ExpressionEditorState();
 }
 
-class _CustomCodeEditorState extends State<_CustomCodeEditor> {
-  late final controller = TextEditingController(
-    text: widget.initialCode.isEmpty
-        ? 'def reward(obs, action, ctx):\n'
-              '    # obs: same vector the policy sees (enabled observations)\n'
-              '    # ctx: base_position[x,y,z], base_orientation[x,y,z,w],\n'
-              '    #      base_linear_velocity, base_angular_velocity,\n'
-              '    #      joint_positions[], joint_velocities[], prev_action[], sim_time\n'
-              '    # Tip: prefer the built-in toggles; only use this for goals\n'
-              '    #      they cannot express, and avoid double-counting them.\n'
-              '    return ctx["base_linear_velocity"][0]  # e.g. reward forward speed\n'
-        : widget.initialCode,
-  );
-  String? validation;
-  bool validating = false;
+class _ExpressionEditorState extends State<_ExpressionEditor> {
+  late final controller = TextEditingController(text: widget.initialExpr);
 
   @override
   void dispose() {
@@ -401,29 +412,9 @@ class _CustomCodeEditorState extends State<_CustomCodeEditor> {
     super.dispose();
   }
 
-  Future<void> validate() async {
-    setState(() {
-      validating = true;
-      validation = null;
-    });
-    try {
-      final result = await widget.state.validateCustomReward(controller.text);
-      setState(() {
-        validation = result['ok'] == true
-            ? '✓ Valid — sample value: ${result['value']}'
-            : '✗ ${result['error']}';
-      });
-    } catch (e) {
-      setState(() => validation = '✗ $e');
-    } finally {
-      if (mounted) setState(() => validating = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final valid = validation?.startsWith('✓') ?? false;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -431,56 +422,39 @@ class _CustomCodeEditorState extends State<_CustomCodeEditor> {
         children: [
           TextField(
             controller: controller,
-            minLines: 4,
-            maxLines: 12,
+            enabled: widget.enabled,
+            minLines: 2,
+            maxLines: 6,
             style: monoStyle(context, fontSize: 12.5),
             decoration: const InputDecoration(
-              labelText: 'def reward(obs, action, ctx) — runs every step',
+              labelText: 'expression — evaluated every step, times the weight',
               alignLabelWithHint: true,
             ),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              OutlinedButton.icon(
-                onPressed: validating ? null : validate,
-                icon: validating
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.rule, size: 16),
-                label: const Text('Validate (sandboxed)'),
-              ),
-              const SizedBox(width: 8),
               FilledButton.icon(
-                onPressed: () => widget.onSave(controller.text),
+                onPressed: widget.enabled
+                    ? () => widget.onSave(controller.text.trim())
+                    : null,
                 icon: const Icon(Icons.save_outlined, size: 16),
-                label: const Text('Save code'),
+                label: const Text('Save expression'),
               ),
-              const SizedBox(width: 12),
-              if (validation != null)
-                Expanded(
-                  child: Text(
-                    validation!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: valid
-                          ? context.colors.success
-                          : context.colors.danger,
-                    ),
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: 4),
           Text(
-            'Code is sandbox-tested before use (CPU/memory limits catch '
-            'infinite loops). During training it runs in-process; failures '
-            'score 0 and warn instead of crashing.',
+            'State: base_x/y/z, base_vx/vy/vz, speed, roll_rate, pitch_rate, '
+            'yaw_rate, upright, height_ratio, episode_progress, joint_pos, '
+            'joint_vel, joint_limit_use, action, prev_action, and on a robot '
+            'with feet contact, contact_force, air_time, contact_time, '
+            'foot_speed. Functions: abs min max clamp mean sum norm sqrt exp '
+            'log tanh sign step where. Reduce per-joint and per-limb values '
+            'with mean(), not sum() — sum scales with how many DOFs the robot '
+            'has, so the same weight means something else on another robot. '
+            'Saving re-checks the expression and audits the weights; anything '
+            'wrong appears next to the term.',
             style: TextStyle(
               fontSize: 11,
               color: scheme.onSurface.withValues(alpha: 0.5),

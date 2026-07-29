@@ -105,4 +105,68 @@ void main() {
     expect(find.text('stay_alive'), findsOneWidget);
     expect(find.textContaining('Check reward scale.'), findsOneWidget);
   });
+
+  testWidgets('RewardPanel edits the expression and shows the audit verdict', (
+    tester,
+  ) async {
+    final api = RecordingApi();
+    final state = AppState(api)
+      ..observations = {'reward_components': const []}
+      ..envConfig = {
+        'rewards': const [
+          {
+            'key': 'flight_phase',
+            'enabled': true,
+            'weight': 0.5,
+            'params': {'expr': '1 - max(contact)'},
+          },
+        ],
+      }
+      // Audit output from the last patch, keyed by the term it is about.
+      ..configWarnings = ['flight_phase: penalty dominates the reward budget.'];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: const MaterialApp(home: Scaffold(body: RewardPanel())),
+      ),
+    );
+
+    // The expression IS the term, so it is visible without expanding, and the
+    // audit verdict sits next to the term it concerns rather than in a list.
+    expect(find.text('1 - max(contact)'), findsOneWidget);
+    expect(
+      find.text('flight_phase: penalty dominates the reward budget.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byTooltip('Edit expression'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, '1 - max(contact)'),
+      'mean(air_time)',
+    );
+    await tester.tap(find.text('Save expression'));
+    await tester.pumpAndSettle();
+
+    expect(api.patches, hasLength(1));
+    final rewards = (api.patches.single['patch'] as Map)['rewards'] as List;
+    expect((rewards.single as Map)['key'], 'flight_phase');
+    expect(((rewards.single as Map)['params'] as Map)['expr'], 'mean(air_time)');
+  });
+}
+
+/// Captures config patches so an edit can be asserted on what it SENDS, not on
+/// what the widget happens to redraw.
+class RecordingApi extends EmptyApi {
+  final patches = <Map<String, dynamic>>[];
+
+  @override
+  Future<Map<String, dynamic>> postJson(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    if (path == '/env/config/patch') patches.add(body);
+    return {'ok': true};
+  }
 }

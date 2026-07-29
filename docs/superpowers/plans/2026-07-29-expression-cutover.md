@@ -421,6 +421,27 @@ Rows are already config-driven (commit `062e3bd`), so this is a text field bound
 `params.expr` plus the inline `audit` verdict. Flutter only:
 `panels/reward_panel.dart`, `panels/observation_action_panel.dart`, `app_state.dart`.
 
+### Status: LANDED 2026-07-29
+
+**12 Flutter tests pass, `flutter analyze` clean.** `_CustomCodeEditor` (a Python `def reward(...)`
+box with a "Validate (sandboxed)" button) is replaced by `_ExpressionEditor`, and
+`AppState.validateCustomReward` is deleted along with the endpoint it called.
+
+Two decisions worth recording:
+
+- **The expression is shown collapsed, where the key used to be.** The key is only a telemetry
+  label now, so making it the row's subtitle would have it stand in for a meaning it no longer
+  carries. The row reads `flight_phase` / `1 - max(contact)`.
+- **The audit verdict needed no new plumbing.** `configProblems` / `configWarnings` are already
+  refreshed on every `patchConfig`, and the backend phrases both around the reward key — so
+  `AppState.feedbackForReward(key)` filters them by substring and the panel prints them next to the
+  term they are about instead of in one undifferentiated list.
+
+**`observation_action_panel.dart` was NOT touched, deliberately.** This plan listed it, but D2 defers
+observation expressions until after per-episode commands (they change the policy's input width, so
+they share one retrain). There is no `params.expr` on an observation to bind a field to, and adding a
+field for a config key the backend rejects would be worse than nothing.
+
 ---
 
 ---
