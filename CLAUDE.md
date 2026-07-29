@@ -289,18 +289,25 @@ crawling. `WALK_GAIT_PENALTIES` (same file) is the companion set: `lateral_veloc
 no contact data and no foot detection (morphology now supplies the latter, and the contact-sensor
 recipe above supplies the former). Without them `forward_velocity` is indifferent between
 a trot and a splayed slide at the same speed, and the slide is easier to find: the 100M-step A1 run
-converged to 93.5% of its reward ceiling doing exactly that. The `HelperAgent` prompt
-(`helper_agent.py`) restates the ratio *and* these penalties in its WALK example — **change them
-together or the agent advertises a reward set the code doesn't apply.**
+converged to 93.5% of its reward ceiling doing exactly that. They now live as expressions in
+`goal_rewards.REWARD_PRIORS["walk"]`, which `test_phase1` compiles and `audit`s — so they are checked
+data rather than prompt prose, and the old "change the prompt and the code together" hazard is gone
+along with the code that applied them.
 
-**These same penalties are anti-gait, and that is a known limitation, not a bug to "fix" casually.**
-`vertical_velocity` and `body_rate` penalize exactly the vertical oscillation and pitch rate that
-*define* a bound or gallop, and `min_base_height` at 0.70× standing height terminates any gait with
-a compression phase (A1 runs at ~0.252 m against a 0.219 m floor — 3.3 cm of headroom). So the
-reward set can express *speed* but not *gait*: a 20M-step "gallop" run reached **2.86 m/s** — 7× the
-walk policy — as a flat, crouched trot with `|v_z|` of 0.149 m/s, because a trot is the reward
-optimum and a gallop is strictly worse. Gait is inexpressible until contact/air-time terms exist; no
-weighting of the current 11 terms produces a flight phase, and no LLM can find one.
+**Those four penalties are ANTI-gait, so a gait goal must not inherit them.** `vertical_velocity` and
+`body_rate` penalize exactly the vertical oscillation and pitch rate that *define* a bound or gallop,
+and `min_base_height` at 0.70× standing height terminates any gait with a compression phase (A1 runs
+at ~0.252 m against a 0.219 m floor — 3.3 cm of headroom). Before contacts existed this made gait
+**inexpressible**, not merely unimplemented: a 20M-step "gallop" run reached 2.86 m/s as a flat,
+crouched trot with `|v_z|` of 0.149 m/s, because a trot was the reward optimum and no weighting of
+the 11 catalogue terms could describe a flight phase.
+
+**That is fixed (P1+P2, 2026-07-29) and is the whole payoff of the cutover.** `REWARD_PRIORS["gallop"]`
+drops those two penalties and pays for `1 - max(contact)` — 1 only when every limb is off the ground.
+An 8M-step A1 run on it reached a **25% airborne fraction at 1.31 m/s over 411-step episodes**, up
+from 7.8% untrained: the policy actively seeks the flight phase. So a gait reward is now a matter of
+authoring the right terms, not of a missing capability — but the walk penalties and a gait goal remain
+mutually exclusive, and mixing them is how you get a fast trot back.
 
 **Reward-term scale is a correctness property, not taste.** The positive ceiling is ~2.5/step
 (`stay_alive` 0.5 + `upright` 0.5 + `forward_velocity` 1.5). **Any penalty that can exceed it makes

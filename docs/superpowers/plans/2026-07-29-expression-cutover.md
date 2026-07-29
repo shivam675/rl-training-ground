@@ -444,6 +444,31 @@ field for a config key the backend rejects would be worse than nothing.
 
 ---
 
+# The acceptance check the whole plan was for
+
+P2's "done when" was: *a gallop request yields a reward that references a flight phase, and a
+5–10M-step A1 run shows a non-zero airborne fraction in telemetry.*
+
+An 8M-step A1 run at 4096 envs on `REWARD_PRIORS["gallop"]` (`backend/runs/p3gallop`, ~5 min at
+27k steps/s):
+
+| | untrained (step 1.5k) | 6.5M | 8M |
+|---|---|---|---|
+| `flight_phase` raw (`1 - max(contact)`) | 0.078 | 0.244 | **0.254** |
+| forward velocity | −0.07 | 1.01 | **1.31 m/s** |
+| episode length | 14 | 322 | **411** |
+| reward_mean | −8.7 | 550 | 808 |
+
+The airborne fraction **triples** while speed and episode length climb together, so the policy is
+seeking the flight phase rather than merely tolerating it. Compare the pre-cutover 20M-step "gallop":
+2.86 m/s as a flat crouched trot with `|v_z|` 0.149, because a flight phase was inexpressible with
+the 11 catalogue terms at any weighting.
+
+That closes P0→P4. What remains is the deferred work, unchanged: observation expressions +
+per-episode commands together (one retrain), then `CampaignWorker`.
+
+---
+
 ---
 
 # P0.5 — landed 2026-07-29, from a real failed session
