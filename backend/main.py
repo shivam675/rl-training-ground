@@ -614,11 +614,12 @@ async def reward_validate_custom(payload: dict[str, Any]) -> dict[str, Any]:
 
 @app.post("/reward/test")
 async def reward_test(req: RewardTestRequest) -> dict[str, Any]:
+    config = config_service.current_or_default(sim)
     components = req.components
     if not components:
         # No explicit components: test what is actually configured.
-        components = config_service.current_or_default(sim).rewards
-    return evaluate_reward(sim, components)
+        components = config.rewards
+    return evaluate_reward(sim, components, standing_height=config.initial_base_height)
 
 
 @app.post("/reward/apply_goal")

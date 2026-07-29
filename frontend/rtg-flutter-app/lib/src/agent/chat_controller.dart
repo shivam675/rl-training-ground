@@ -20,6 +20,7 @@ class ChatMessage {
     this.toolResult,
     this.toolOk,
     this.providerLabel = '',
+    this.diagnoseError,
     DateTime? time,
   }) : time = time ?? DateTime.now();
 
@@ -36,6 +37,11 @@ class ChatMessage {
   bool? toolOk; // null while running
   bool needsConfirmation = false;
   String providerLabel;
+
+  /// The training error this notice is about. Non-null makes the bubble render a
+  /// **Diagnose** button, so a failed run is one click from being investigated
+  /// and fixed instead of the user having to retype the error into the chat.
+  final String? diagnoseError;
 
   /// While true the bubble renders cheap plain text; markdown parsing and
   /// text selection only switch on once the message stops growing.
@@ -60,6 +66,7 @@ class ChatMessage {
     'text': text,
     if (thinking.isNotEmpty) 'thinking': thinking,
     if (providerLabel.isNotEmpty) 'providerLabel': providerLabel,
+    if (diagnoseError != null) 'diagnoseError': diagnoseError,
     'time': time.toIso8601String(),
   };
 
@@ -81,6 +88,7 @@ class ChatMessage {
       text: text,
       thinking: thinking,
       providerLabel: data['providerLabel']?.toString() ?? '',
+      diagnoseError: data['diagnoseError']?.toString(),
       time: DateTime.tryParse(data['time']?.toString() ?? ''),
     );
   }
@@ -117,6 +125,10 @@ class ChatController extends ChangeNotifier {
   bool sending = false;
   bool _historyLoaded = false;
   int _seenRobotLoadRevision = 0;
+
+  /// The failure message already announced, so a status poll every few seconds
+  /// does not add the same notice over and over.
+  String? _seenTrainingFailure;
 
   // Streamed tokens are buffered here and flushed at most every
   // [_flushInterval]: rebuilding per token starves the event loop and freezes
@@ -160,6 +172,43 @@ class ChatController extends ChangeNotifier {
       final path = _state.lastLoadedRobotPath;
       if (path != null && path.isNotEmpty) _addRobotLoadedPrompt(path);
     }
+    _checkTrainingFailure();
+  }
+
+  /// A run that failed to start gets one notice in the chat carrying a Diagnose
+  /// button. Deliberately not automatic: diagnosis re-patches the config and can
+  /// relaunch training, so it stays one deliberate click rather than something
+  /// that happens while nobody is watching.
+  void _checkTrainingFailure() {
+    final status = _state.trainingStatus;
+    if (status == null || status['active'] == true) return;
+    final message = status['message']?.toString() ?? '';
+    if (!message.startsWith('failed')) return;
+    if (message == _seenTrainingFailure) return;
+    _seenTrainingFailure = message;
+    messages.add(
+      ChatMessage(
+        kind: ChatKind.notice,
+        text: 'Training did not start — $message',
+        diagnoseError: message,
+      ),
+    );
+    notifyListeners();
+    _persistChat();
+    _requestForceScroll();
+  }
+
+  /// Hand the failure to the agent and let it fix the config. Goes through the
+  /// normal chat path, so the model has its whole toolbox (read the config,
+  /// inspect the robot, patch) and every step stays visible in the transcript.
+  Future<void> diagnoseTrainingFailure(String error) {
+    return sendChat(
+      'Training failed to start with this error:\n\n$error\n\n'
+      'Diagnose the cause, then fix the environment config so training can '
+      'start. Check the observations, rewards and terminations against what the '
+      'training lane actually supports before proposing a patch, and tell me '
+      'what you changed and why.',
+    );
   }
 
   void _requestForceScroll() => forceScrollTick++;

@@ -50,6 +50,7 @@ def build_obs(
     ang_vel: torch.Tensor,         # (N,3) world
     joint_pos: torch.Tensor,       # (N,D)
     joint_vel: torch.Tensor,       # (N,D)
+    episode_progress: torch.Tensor | None = None,  # (N,) 0->1
 ) -> torch.Tensor:
     """Concatenate obs components in the fixed order the PyBullet lane uses."""
     lookup = {
@@ -60,7 +61,11 @@ def build_obs(
         "joint_positions": joint_pos,
         "joint_velocities": joint_vel,
     }
+    if episode_progress is not None:
+        lookup["episode_progress"] = episode_progress.reshape(-1, 1)
     # Fixed assembly order (pybullet_manager.observation_vector), filtered to enabled.
+    # episode_progress goes LAST, matching that function, so enabling it appends to
+    # the observation instead of shifting every existing column.
     order = [
         "base_position",
         "base_orientation",
@@ -68,9 +73,67 @@ def build_obs(
         "base_angular_velocity",
         "joint_positions",
         "joint_velocities",
+        "episode_progress",
     ]
-    parts = [lookup[k] for k in order if k in obs_keys]
+    parts = [lookup[k] for k in order if k in obs_keys and k in lookup]
     return torch.cat(parts, dim=-1)
+
+
+def build_state(
+    *,
+    root_pos: torch.Tensor,        # (N,3) world
+    root_quat_xyzw: torch.Tensor,  # (N,4)
+    lin_vel: torch.Tensor,         # (N,3) world
+    ang_vel: torch.Tensor,         # (N,3) world
+    joint_pos: torch.Tensor,       # (N,D)
+    joint_vel: torch.Tensor,       # (N,D)
+    action: torch.Tensor,          # (N,A) normalized
+    prev_action: torch.Tensor,     # (N,A) normalized
+    joint_limits: torch.Tensor,    # (D,2) lower/upper
+    standing_height: float,
+    episode_progress: torch.Tensor | None = None,  # (N,) 0 at reset -> 1 at the limit
+) -> dict[str, torch.Tensor]:
+    """Physics tensors -> the state vocabulary an expression may reference.
+
+    Names and semantics come from `rl/state_vocab.py`, which the PyBullet lane and
+    the agent prompt read from the same declaration — so an expression cannot mean
+    two things on two backends. Contact entries are added by the caller when a
+    contact sensor exists; they are *absent* rather than zero otherwise, so a
+    contact term on a robot without feet is an error, not a silent no-op.
+    """
+    lower, upper = joint_limits[:, 0], joint_limits[:, 1]
+    half = (upper - lower) * 0.5
+    center = (upper + lower) * 0.5
+    finite = torch.isfinite(half) & (half > 0)
+    used = (joint_pos - center).abs() / half.clamp(min=1e-6)
+    vx, vy = lin_vel[:, 0], lin_vel[:, 1]
+    x, y = root_quat_xyzw[:, 0], root_quat_xyzw[:, 1]
+    progress = (
+        torch.zeros_like(vx) if episode_progress is None else episode_progress.reshape(-1)
+    )
+    return {
+        "episode_progress": progress,
+        "base_x": root_pos[:, 0],
+        "base_y": root_pos[:, 1],
+        "base_z": root_pos[:, 2],
+        "base_vx": vx,
+        "base_vy": vy,
+        "base_vz": lin_vel[:, 2],
+        "speed": torch.linalg.vector_norm(lin_vel[:, :2], dim=-1),
+        "roll_rate": ang_vel[:, 0],
+        "pitch_rate": ang_vel[:, 1],
+        "yaw_rate": ang_vel[:, 2],
+        # R[2][2] = 1 - 2*(x^2 + y^2): world-Z component of the body's local Z.
+        "upright": 1.0 - 2.0 * (x * x + y * y),
+        "height_ratio": root_pos[:, 2] / max(1e-6, float(standing_height)),
+        "joint_pos": joint_pos,
+        "joint_vel": joint_vel,
+        # 0 mid-range, 1 pinned. A joint with no finite limit reads 0 rather than
+        # inf, so one unlimited joint cannot poison a mean() over all of them.
+        "joint_limit_use": torch.where(finite, used.clamp(max=1.0), torch.zeros_like(used)),
+        "action": action,
+        "prev_action": prev_action,
+    }
 
 
 def compute_reward(

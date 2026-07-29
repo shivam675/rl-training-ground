@@ -25,7 +25,9 @@ MAX_UNDO_STACK = 20
 # present so the UI and agent can see the options, but nothing is enabled. The
 # user and the assistant decide together what to observe, control and reward
 # before training unlocks — see [[easyrtg-production-flow]].
-SUPPORTED_TERMINATION_KEYS = {"max_steps", "min_base_height"}
+# `expr` is a boolean expression ORed with the height floor — see
+# docs/superpowers/plans/2026-07-29-expression-cutover.md (D3).
+SUPPORTED_TERMINATION_KEYS = {"max_steps", "min_base_height", "expr"}
 SUPPORTED_PATCH_KEYS = {
     "observations",
     "actions",
@@ -58,6 +60,30 @@ def default_rewards() -> list[dict[str, Any]]:
 
 def default_reward_keys() -> set[str]:
     return {item["key"] for item in default_rewards()}
+
+
+def observation_keys() -> set[str]:
+    """Observation sources the simulator can actually produce.
+
+    Unlike rewards, observations have **no** authored/expression escape hatch (the
+    policy's input width is fixed at build time — see the cutover plan D2), so an
+    unknown observation key is always a mistake and never a new feature.
+    """
+    from backend.simulation.pybullet_manager import OBSERVATION_CATALOG
+
+    return {item["key"] for item in OBSERVATION_CATALOG}
+
+
+def _expr_of(item: Any) -> str | None:
+    """The expression a reward entry carries, if it is an authored term.
+
+    An entry with a non-empty ``params.expr`` is authored rather than a catalogue
+    key, so its key is free-form (it is only a telemetry label) and the reward
+    allowlist does not apply to it.
+    """
+    params = item.get("params") if isinstance(item, dict) else getattr(item, "params", None)
+    expr = (params or {}).get("expr")
+    return expr.strip() if isinstance(expr, str) and expr.strip() else None
 
 
 class ConfigService:
@@ -131,8 +157,18 @@ class ConfigService:
         data = config.model_dump()
         reward_keys = default_reward_keys()
 
+        known_obs = observation_keys()
         for obs_patch in patch.get("observations", []) or []:
             key = obs_patch.get("key")
+            if key not in known_obs:
+                # Fail the tool call, not the training run 40 minutes later. An
+                # agent that invents `contact_forces` gets the real list back and
+                # can correct itself inside the same turn.
+                raise ValueError(
+                    f"Unknown observation source: {key}. Available observations: "
+                    + ", ".join(sorted(known_obs))
+                    + "."
+                )
             entry = next((o for o in data["observations"] if o["key"] == key), None)
             if entry is None:
                 data["observations"].append(
@@ -162,12 +198,15 @@ class ConfigService:
 
         for reward_patch in patch.get("rewards", []) or []:
             key = reward_patch.get("key")
-            if key not in reward_keys:
+            existing = next((r for r in data["rewards"] if r["key"] == key), None)
+            authored = _expr_of(reward_patch) or (existing and _expr_of(existing))
+            if key not in reward_keys and not authored:
                 raise ValueError(
-                    f"Unsupported reward key: {key}. "
-                    f"Supported rewards: {', '.join(sorted(reward_keys))}."
+                    f"Unsupported reward key: {key}. Either use a built-in reward "
+                    f"({', '.join(sorted(reward_keys))}) or supply params.expr with an "
+                    "expression over the robot state."
                 )
-            entry = next((r for r in data["rewards"] if r["key"] == key), None)
+            entry = existing
             if entry is None:
                 entry = {"key": key, "enabled": True, "weight": 1.0, "params": {}}
                 data["rewards"].append(entry)
@@ -209,14 +248,32 @@ class ConfigService:
             problems.append(f"URDF file not found: {config.urdf_path}")
         if not any(obs.enabled for obs in config.observations):
             problems.append("No observation sources enabled.")
+        # A key can be real and still untrainable: PyBullet's catalogue offers
+        # inspection-only sources (link states, contacts, reaction forces) that the
+        # Isaac lane — the only training lane — cannot consume. Catching it here
+        # blocks the run with a readable reason instead of killing the subprocess.
+        from backend.rl.isaac.env_spec import SUPPORTED_OBS
+
+        untrainable = sorted(
+            {obs.key for obs in config.observations if obs.enabled and obs.key not in SUPPORTED_OBS}
+        )
+        if untrainable:
+            problems.append(
+                "Observation(s) "
+                + ", ".join(untrainable)
+                + " cannot be used for training — the Isaac lane supports "
+                + ", ".join(sorted(SUPPORTED_OBS))
+                + ". Disable them or pick a supported source."
+            )
         if not any(action.enabled for action in config.actions):
             problems.append("No actions enabled — the policy cannot control anything.")
         if not any(reward.enabled for reward in config.rewards):
             problems.append("No reward components enabled — nothing to learn.")
         reward_keys = default_reward_keys()
         for reward in config.rewards:
-            if reward.enabled and reward.key not in reward_keys:
+            if reward.enabled and reward.key not in reward_keys and not _expr_of(reward):
                 problems.append(f"Unknown reward component: {reward.key}")
+        problems.extend(self._expression_report(config)[0])
         for key in sorted(set(config.terminations) - SUPPORTED_TERMINATION_KEYS):
             problems.append(f"Unsupported termination key: {key}")
         max_steps = config.terminations.get("max_steps")
@@ -263,9 +320,80 @@ class ConfigService:
                 problems.append("Domain randomization action latency cannot be negative.")
         return problems
 
+    def _expression_report(self, config: EnvConfig) -> tuple[list[str], list[str]]:
+        """(problems, warnings) for the config's expressions.
+
+        Split deliberately: an expression that will not compile is a *problem*
+        (it hard-blocks training, main.py raises on any problem), while
+        ``reward_expr.audit`` output is a *warning* — it says a weight is probably
+        wrong, which is advice, not a broken config. Putting audit in problems
+        would have made every pre-existing config untrainable, since the
+        historical ``energy``/``joint_velocity`` sums are legitimately flagged as
+        DOF-dependent.
+        """
+        from backend.rl.isaac.env_spec import LEGACY_EXPR
+        from backend.rl.reward_expr import ExprError, Term, TermSet, audit
+        from backend.rl.state_vocab import allowed_names, sample_states
+
+        # Contacts/commands are not provided by either lane yet (P1 / deferred),
+        # so referencing them is a compile error rather than a silent zero.
+        allowed = allowed_names(contacts=False, commands=False)
+        problems: list[str] = []
+        terms: list[Term] = []
+        untranslatable = False
+        for reward in config.rewards:
+            if not reward.enabled:
+                continue
+            expr = _expr_of(reward)
+            if expr is None:
+                translate = LEGACY_EXPR.get(reward.key)
+                if translate is None:
+                    # A catalogue key the vocabulary cannot express (PyBullet-only
+                    # link/target terms). Skip the audit rather than compute a
+                    # partial reward budget and raise false alarms about it.
+                    untranslatable = True
+                    continue
+                expr = translate(reward.params or {})
+            terms.append(Term(name=reward.key, expr=expr, weight=float(reward.weight)))
+
+        term_expr = config.terminations.get("expr")
+        if isinstance(term_expr, str) and term_expr.strip():
+            try:
+                TermSet([Term(name="terminations.expr", expr=term_expr.strip())], allowed)
+            except ExprError as exc:
+                problems.append(f"terminations.expr: {exc}")
+
+        if not terms:
+            return problems, []
+        try:
+            term_set = TermSet(terms, allowed)
+        except ExprError as exc:
+            problems.append(f"Reward expression rejected — {exc}")
+            return problems, []
+        if untranslatable:
+            return problems, []
+        states = sample_states(
+            n_joints=max(1, len(config.actions)),
+            n_actions=max(1, sum(1 for a in config.actions if a.enabled)),
+            standing_height=float(config.initial_base_height or 0.35),
+        )
+        audit_warnings = audit(
+            term_set.bounds(states, num_envs=1), term_set.scaling_terms(states[0])
+        )
+        return problems, audit_warnings
+
     def warnings(self, config: EnvConfig, sim) -> list[str]:
         """Non-blocking warnings: valid-but-risky settings worth reviewing."""
-        warnings: list[str] = []
+        warnings: list[str] = list(self._expression_report(config)[1])
+        if any(r.enabled and r.key == "custom_python" for r in config.rewards):
+            # Warning, not a problem: the SB3 lane still runs it and the pytest
+            # pipeline exercises that. But it can never train on Isaac, so say so
+            # at patch time rather than letting the launch discover it.
+            warnings.append(
+                "custom_python cannot train on the Isaac lane (arbitrary Python can't run "
+                "inside a vmapped GPU env). Express the same reward as params.expr instead, "
+                "which compiles to tensor ops and does run there."
+            )
         live = {
             int(item.get("joint_index")): item
             for item in sim.actions().get("actions", [])

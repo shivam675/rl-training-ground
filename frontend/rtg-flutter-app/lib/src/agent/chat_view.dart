@@ -216,7 +216,14 @@ class _AssistantChatState extends ConsumerState<AssistantChat> {
                   onConfirm: () => controller.confirmTool(message),
                   onUndo: () => controller.undoConfigChange(message),
                 ),
-                ChatKind.notice => _NoticeRow(text: message.text),
+                ChatKind.notice => _NoticeRow(
+                  text: message.text,
+                  onDiagnose: message.diagnoseError == null
+                      ? null
+                      : () => controller.diagnoseTrainingFailure(
+                          message.diagnoseError!,
+                        ),
+                ),
                 _ => _MessageBubble(message: message),
               };
             },
@@ -560,24 +567,52 @@ class _ToolDetailLine extends StatelessWidget {
 }
 
 class _NoticeRow extends StatelessWidget {
-  const _NoticeRow({required this.text});
+  const _NoticeRow({required this.text, this.onDiagnose});
 
   final String text;
+
+  /// Set for a training-failure notice: renders a Diagnose button that hands the
+  /// error to the agent instead of making the user retype it.
+  final VoidCallback? onDiagnose;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final label = Text(
+      text,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 11.5,
+        fontStyle: FontStyle.italic,
+        color: onDiagnose == null
+            ? scheme.onSurface.withValues(alpha: 0.55)
+            : scheme.error,
+      ),
+    );
+    if (onDiagnose == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Center(child: label),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Center(
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontStyle: FontStyle.italic,
-            color: scheme.onSurface.withValues(alpha: 0.55),
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            label,
+            const SizedBox(height: 6),
+            FilledButton.tonalIcon(
+              onPressed: onDiagnose,
+              icon: const Icon(Icons.healing_outlined, size: 16),
+              label: const Text('Diagnose'),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                textStyle: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -330,4 +330,63 @@ void main() {
     expect(find.textContaining('natural language'), findsOneWidget);
     expect(find.textContaining('sit Japanese-style'), findsNothing);
   });
+
+  testWidgets('a failed training run offers a Diagnose button', (tester) async {
+    // Regression: an agent-authored config with a nonexistent observation key
+    // only failed at launch, and the user had to retype the error into the chat
+    // to get help. One click should hand it to the agent instead.
+    final state = AppState(RoutedApi());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: const MaterialApp(home: Scaffold(body: AssistantChat())),
+      ),
+    );
+
+    expect(find.text('Diagnose'), findsNothing);
+
+    state.trainingStatus = {
+      'active': false,
+      'message':
+          "failed: Isaac lane does not support observation(s) ['contact_forces']",
+    };
+    state.notifyListeners();
+    await tester.pump(const Duration(milliseconds: 20));
+
+    expect(find.textContaining('contact_forces'), findsOneWidget);
+    expect(find.text('Diagnose'), findsOneWidget);
+
+    // A repeated status poll must not stack up duplicate notices.
+    state.notifyListeners();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(find.text('Diagnose'), findsOneWidget);
+
+    await tester.tap(find.text('Diagnose'));
+    await tester.pump(const Duration(milliseconds: 80));
+
+    // The error reaches the agent through the normal chat path.
+    expect(find.textContaining('Training failed to start'), findsOneWidget);
+  });
+
+  testWidgets('an idle or running trainer shows no Diagnose button', (
+    tester,
+  ) async {
+    final state = AppState(RoutedApi());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: const MaterialApp(home: Scaffold(body: AssistantChat())),
+      ),
+    );
+
+    state.trainingStatus = {'active': true, 'message': 'running'};
+    state.notifyListeners();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(find.text('Diagnose'), findsNothing);
+
+    state.trainingStatus = {'active': false, 'message': 'idle'};
+    state.notifyListeners();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(find.text('Diagnose'), findsNothing);
+  });
 }

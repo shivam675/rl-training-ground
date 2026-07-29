@@ -77,6 +77,7 @@ class RtgGymEnv(gym.Env if gym else object):
             self.manager.reset_scene(load_default=False)
         self._randomize_dynamics()
         self.steps = 0
+        self.manager.episode_progress = 0.0
         self.last_action = []
         self.prev_action = []
         self.action_delay.clear()
@@ -95,6 +96,10 @@ class RtgGymEnv(gym.Env if gym else object):
         self.prev_action = self.last_action
         self.last_action = normalized
         self.steps += 1
+        # Published on the manager so the observation vector and the reward's
+        # state both read the same phase — the policy must be able to see what it
+        # is graded on. Mirrors ConfigurableEnv._episode_progress on the GPU lane.
+        self.manager.episode_progress = min(1.0, self.steps / max(1, self.max_steps))
         obs = self._obs()
         # Reward sees the post-step observation the policy will see, plus the
         # action just applied and the one before it (for smoothness terms).
@@ -104,6 +109,9 @@ class RtgGymEnv(gym.Env if gym else object):
             self.last_action,
             obs=obs.tolist(),
             prev_action=self.prev_action,
+            # Reference for the dimensionless height_ratio: the stance this robot
+            # was calibrated at, not whatever height it happens to be at now.
+            standing_height=self.config.initial_base_height,
         )
         terminated = False
         min_height = self.config.terminations.get("min_base_height")

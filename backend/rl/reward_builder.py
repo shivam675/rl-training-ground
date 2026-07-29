@@ -64,12 +64,88 @@ def default_reward_components() -> list[dict[str, Any]]:
     ]
 
 
+def build_state(
+    manager: PyBulletManager,
+    body: int,
+    base_pos,
+    base_orn,
+    lin_vel,
+    ang_vel,
+    joint_states,
+    action: np.ndarray,
+    prev: np.ndarray,
+    standing_height: float | None = None,
+) -> dict[str, Any]:
+    """The state vocabulary as N=1 torch tensors, mirroring `env_math.build_state`.
+
+    Same names, same semantics, same compiler — which is what stops an expression
+    meaning one thing here and another on the GPU lane. Per-joint entries cover
+    MOVABLE joints only, because that is what Isaac's articulation exposes; a
+    fixed joint included here would silently change every `mean(joint_*)`.
+    """
+    import torch
+
+    positions, velocities, limit_use = [], [], []
+    for joint_index, state in enumerate(joint_states):
+        info = p.getJointInfo(body, joint_index, physicsClientId=manager.cid)
+        if info[2] == p.JOINT_FIXED:
+            continue
+        positions.append(float(state[0]))
+        velocities.append(float(state[1]))
+        lower, upper = float(info[8]), float(info[9])
+        if math.isfinite(lower) and math.isfinite(upper) and upper > lower:
+            half = (upper - lower) / 2.0
+            center = (upper + lower) / 2.0
+            limit_use.append(min(1.0, abs(float(state[0]) - center) / half))
+        else:
+            limit_use.append(0.0)
+
+    def scalar(value: float):
+        """Shape (1,) — one value per env, matching env_math's `root_pos[:, 0]`."""
+        return torch.tensor([float(value)], dtype=torch.float32)
+
+    def row(values: list[float]):
+        """Shape (1, K) — per-element state the expression must reduce itself."""
+        return torch.tensor([values or [0.0]], dtype=torch.float32)
+
+    base_z = float(base_pos[2])
+    # Decreasing quality: the caller's configured height, the measured spawn
+    # height, then the current height (ratio 1.0 — neutral, but uninformative).
+    reference = standing_height or manager.spawn_height() or base_z or 1.0
+    vx, vy = float(lin_vel[0]), float(lin_vel[1])
+    return {
+        "base_x": scalar(base_pos[0]),
+        "base_y": scalar(base_pos[1]),
+        "base_z": scalar(base_z),
+        "base_vx": scalar(vx),
+        "base_vy": scalar(vy),
+        "base_vz": scalar(lin_vel[2]),
+        "speed": scalar(math.hypot(vx, vy)),
+        "roll_rate": scalar(ang_vel[0]),
+        "pitch_rate": scalar(ang_vel[1]),
+        "yaw_rate": scalar(ang_vel[2]),
+        # rot[8] = world-Z component of the body's local Z axis, same as the
+        # `upright` term and as env_math's 1 - 2(x^2 + y^2).
+        "upright": scalar(p.getMatrixFromQuaternion(base_orn)[8]),
+        "height_ratio": scalar(base_z / max(1e-6, float(reference))),
+        # Set by the training env each step; 0 in the inspection world, which has
+        # no episode. Same source as the episode_progress observation.
+        "episode_progress": scalar(getattr(manager, "episode_progress", 0.0)),
+        "joint_pos": row(positions),
+        "joint_vel": row(velocities),
+        "joint_limit_use": row(limit_use),
+        "action": row([float(v) for v in action.tolist()]),
+        "prev_action": row([float(v) for v in prev.tolist()]),
+    }
+
+
 def evaluate_reward(
     manager: PyBulletManager,
     components: list[RewardComponent],
     last_action: list[float] | None = None,
     obs: list[float] | None = None,
     prev_action: list[float] | None = None,
+    standing_height: float | None = None,
 ) -> dict[str, Any]:
     body = manager.robot_body
     if body is None or manager.cid is None:
@@ -98,10 +174,32 @@ def evaluate_reward(
             "double-counting the same objective (e.g. effort or falling in both)."
         )
 
+    # Built on first use: only configs with authored terms pay for it.
+    expr_state: dict[str, Any] | None = None
+
     for component in enabled:
         key = component.key
         raw = 0.0
-        if key == "stay_alive":
+        expr = str((component.params or {}).get("expr", "") or "").strip()
+        if expr:
+            # The same compiler the Isaac lane runs, at N=1 — so "Test reward"
+            # checks the expression that will actually train, not an approximation
+            # of it.
+            from backend.rl.reward_expr import ExprError, compile_expr
+            from backend.rl.state_vocab import allowed_names
+
+            if expr_state is None:
+                expr_state = build_state(
+                    manager, body, base_pos, base_orn, lin_vel, ang_vel,
+                    joint_states, action, prev, standing_height,
+                )
+            try:
+                compiled = compile_expr(expr, allowed_names(contacts=False, commands=False))
+                raw = float(compiled(expr_state, 1)[0])
+            except ExprError as exc:
+                warnings.append(f"Reward expression {key!r} rejected: {exc}")
+                continue
+        elif key == "stay_alive":
             raw = 1.0
         elif key == "action_magnitude":
             raw = float(np.linalg.norm(action)) if action.size else 0.0

@@ -89,8 +89,11 @@ name (the others are ignored as whole directories).
 
 CI (`.github/workflows/ci.yml`) is **ubuntu-latest with CPU-only Torch** and no `--basetemp`, so
 **nothing in the Isaac/GPU lane is covered by CI** — the Isaac-adjacent tests that do run
-(`test_isaac_env_math`, `test_isaac_bridge`, `test_reward_expr`) are deliberately pure app-venv
-logic. GPU behaviour is verified only by hand on this box — for Isaac work, write a throwaway spike
+(`test_isaac_env_math`, `test_isaac_bridge`, `test_reward_expr`, `test_expr_parity`,
+`test_episode_clock`) are deliberately pure app-venv logic, importing `env_spec`/`env_math`/
+`reward_expr` without isaaclab. That is what keeps the expression layer covered: `configurable_env`
+is the *only* part of the reward path CI cannot reach. GPU behaviour is verified only by hand on
+this box — for Isaac work, write a throwaway spike
 script and run it with `C:\IsaacLab\isaaclab.bat -p <script>`. **Have the spike write findings to a
 file, not stdout**: Isaac interleaves and drops stdout, which silently cost a whole spike run.
 
@@ -111,7 +114,10 @@ on a gitignored URDF library.
 `test_isaac_env_math` / `test_isaac_bridge` / `test_reward_expr` (pure app-venv logic, no Isaac
 install needed), `test_morphology` (half synthetic-URDF so it runs anywhere, half gated on the
 Unitree library at `X:/workspace/unitree_ros/robots`), `test_spawn_height` (URDF-library-gated),
-`test_stabilization`, `test_smoke`. Full suite is **183 passed, 1 skipped** (~2m15s).
+`test_stabilization`, `test_smoke`, `test_expr_parity` (legacy-key↔expression parity — the gate on
+deleting the catalogue), `test_config_guards`, `test_episode_clock`.
+Full suite is **217 passed, 1 skipped** (~2m30s). **Never run two pytest invocations concurrently** —
+they share `--basetemp=.pytest_tmp` and collide into hundreds of PermissionError collection errors.
 
 ### Key environment variables (`EASYRTG_*`)
 
@@ -293,15 +299,52 @@ Any change here invalidates existing policies (action semantics or stance moved)
 scratch. Specs: `docs/superpowers/specs/2026-07-27-robot-specific-spawn-height.md`,
 `2026-07-27-walk-height-termination-design.md`, `2026-07-27-offset-position-actions.md`.
 
-### Expression rewards — `backend/rl/reward_expr.py` — **PRESENT BUT NOT WIRED**
+### Expression rewards — `reward_expr.py` + `state_vocab.py` — **WIRED (rewards + terminations)**
 
-Nothing in production imports it yet; only `test_reward_expr.py` does. **What actually runs is still
-`env_spec.SUPPORTED_OBS` (6 keys), `SUPPORTED_REWARDS` (11 keys), the `custom_python` rejection, and
-the two parallel 11-branch chains in `reward_builder.evaluate_reward` / `env_math.compute_reward`.**
-Don't describe expressions to a user as a feature, and don't assume a config can carry them.
+**P0 landed 2026-07-29.** The Isaac lane evaluates **only expressions**: `env_spec.build_spec`
+returns `reward_terms` (`ExprTerm`) and `termination_expr`, `configurable_env` compiles a `TermSet`
+and evaluates it in `_get_rewards`, and the 11 legacy keys keep working because
+`env_spec.LEGACY_EXPR` translates each one to an expression string. `env_math.compute_reward`'s
+branch chain is **no longer called in production** — it survives only as the reference
+`test_expr_parity.py` pins the translations against, and dies with `LEGACY_EXPR` in P3.
+`reward_builder` (PyBullet) evaluates expressions at N=1 through the same compiler so
+`test_reward` checks what Isaac will actually train, and keeps its legacy chain for the six
+components the vocabulary can't express (link/target positions, `custom_python`).
+**Observations are still a fixed catalogue** (`SUPPORTED_OBS`, now **7** keys) — deliberately:
+`isaac_train.py` computes `obs_dim` statically from it and feeds rsl_rl's `observation_space`, so
+expression observations mean a retrain for no gait benefit. Config carries expressions as
+`rewards[].params.expr` and `terminations.expr` — no schema change, `params` already existed.
+`config_service` compiles them at patch time; **`audit` output goes to `warnings()`, never
+`validate()`**, because `main.py:99` raises on any problem and the historical `energy` /
+`joint_velocity` sums are legitimately flagged as DOF-dependent — auditing into problems would
+make every pre-existing config untrainable.
 
-It exists to replace those three catalogues with one path — rewards, observations *and* terminations
+It exists to replace those catalogues with one path — rewards, observations *and* terminations
 as expressions over a shared state vocabulary, so a user's request stops needing a code change.
+`state_vocab.py` is that vocabulary: one declaration consumed by both lanes and the agent prompt,
+where every entry is a scalar or a per-element vector whose **width comes from the robot**
+(`PER_JOINT` / `PER_CONTACT` / `PER_ACTION`, the contact width from `Morphology.contact_links()`),
+so `mean(contact)` ports from quadruped to biped and `(c0+c1+c2+c3)/4` never gets written.
+`height_ratio` and `upright` are deliberately dimensionless — `base_z > 0.25` is an A1 constant,
+`height_ratio > 0.8` is not. Per-episode commands are **not** in it yet.
+
+**`episode_progress` (added 2026-07-29) is what makes a SEQUENTIAL task possible at all.** It is
+both a vocabulary entry and the 7th observation (0 at reset → 1 at the step limit, assembled
+**last** so enabling it appends instead of shifting existing columns; `ConfigurableEnv.
+_episode_progress` on GPU, `manager.episode_progress` published by `gym_env.step` on PyBullet).
+A request like *"sit, stand, then sit again"* is otherwise **unlearnable, not merely unimplemented**:
+the policy is a memoryless function of its observation, so the first sit and the second sit are the
+same state and no reward can distinguish them. The reward references `episode_progress` *and* the
+observation must be enabled — grading a phase the policy cannot see is the same bug in a new place.
+
+**Bad config now fails at patch time, not at launch** (same date, same session that motivated the
+clock). `apply_patch` rejects unknown *observation* keys with the real list attached — observations
+have no expression escape hatch, so an unknown one is always a mistake, unlike a reward key carrying
+`params.expr`. `validate` blocks training on keys that are real but untrainable (PyBullet produces
+14 sources, Isaac consumes 7). `custom_python` warns at patch time pointing at `params.expr`. The
+agent sees these errors inside its own turn and self-corrects; a failed run also surfaces a
+**Diagnose button** in the chat (`chat_controller._checkTrainingFailure` →
+`diagnoseTrainingFailure`), deliberately one click rather than an automatic retry loop.
 `compile_expr(source, allowed)` parses with `ast` and walks a node **whitelist**, compiling to
 batched torch ops; `TermSet` holds weighted named terms and reports a per-term breakdown like the
 existing `out_terms`. Because `ast.Attribute` and `ast.Subscript` are simply absent from the
@@ -314,25 +357,57 @@ flags NaN/infinite terms, a penalty exceeding the whole positive budget, a penal
 (>50%), an all-penalty reward with no objective, and — the one a budget check alone misses —
 `sum()` over per-element state, which is DOF-dependent: `-0.01 * sum(joint_vel)` is −0.91/step on
 A1's 12 joints and would be −3.9/step on H1_2's 51. That exact term was quietly the largest in a
-20M-step run. 35 tests, including all 13 sandbox-escape attempts.
+20M-step run. 49 tests, including all 13 sandbox-escape attempts.
 
 **Direction of travel (agreed 2026-07-28), so you don't undo it.** The app is mid-migration from
 "catalogue of hardcoded options" to "agent authors the environment". Phase 1 (morphology) is landed
-and wired. Remaining, in order: wire contact sensing with the recipe above → a shared state
-vocabulary including **per-episode commands** (target speed/heading sampled per reset, in the
-observation, reward relative to it, so one policy is steerable instead of one-behavior-per-run) →
-move obs/rewards/terminations onto `TermSet` → a `CampaignWorker` (mirroring `TunerWorker`) running
-propose → `audit` → short probe → measure → revise, with probe length **agent-configurable** and
-revision triggered only by *mis-specification* (out-of-bounds terms, structurally absent behavior,
-collapsed episodes), never by "not converged yet" → expression editors in the Rewards/Obs/Action
-panels. Out of scope for now by decision: terrain generation, cameras/ray sensors.
-Still hardcoded and known: `classify_goal`'s 4-keyword goal enum and `_patch_for_goal`'s per-goal
-templates, both of which the above replaces.
+and wired; P0 of the expression cutover (above) is landed and wired.
+
+**`--run-dir` must be absolute, and `isaac_train`/`isaac_play` now force it** (`.resolve()`, fixed
+2026-07-29). A *relative* run dir makes `UrdfConverter` emit a relative `usd_path`; Kit cannot
+resolve it, the `UsdFileCfg` reference composes to an **empty prim**, and the failure surfaces much
+later and very misleadingly as `Articulation._initialize_impl` raising "Expected exactly one
+ArticulationRootAPI prim under '/World/envs/env_0/Robot' … found 0". Nothing is wrong with the
+payload-layered USD the converter produces — an A1 asset generated from a relative run dir is
+byte-identical (modulo embedded paths) to one that trained for 20M steps. If you ever see that
+articulation-root error again, check the resolvability of `cfg.robot_cfg.spawn.usd_path` **before**
+suspecting the asset.
+
+**Configs no longer carry the catalogue (2026-07-28).** `build_default` seeds observations and
+rewards **empty**, and the `ensure_reward_catalog` step that re-appended every missing component on
+*every* load is gone — that re-injection is why emptying the defaults alone would have changed
+nothing. `default_rewards()` / `default_reward_keys()` survive purely as the **validation allowlist**
+for `apply_patch`/`validate` and as the reference the agent authors against; `DEFAULT_OBSERVATIONS`
+is deleted. `apply_patch` upserts unknown obs/reward keys, so nothing needs pre-listing for the agent
+or UI to add a term. **Actions stay enumerated-but-disabled** — joints are physical facts, not an
+authored list, so that page shows a decision instead of a blank form. The Obs/Action and Rewards
+panels now render rows from the **config**, not from `GET /robot/observations`
+(`default_reward_components` + `OBSERVATION_CATALOG`), which still exists and still returns the full
+catalogue. Don't re-seed configs to "make the UI show the options" — that was the bug.
+
+**`docs/superpowers/plans/2026-07-29-expression-cutover.md` is the live handoff — read its
+START HERE section first if you are picking this up fresh.** It carries what is landed vs blocked,
+the uncommitted-working-tree state, the exact command that reproduces the Isaac spawn blocker, and
+the USD diagnostic so it need not be re-derived. Read it before touching rewards. Ordering decided there and worth not re-deriving: **expressions land before
+contact sensing**, because contacts-first means implementing `air_time`/`flight_phase`/`foot_slip` as
+catalogue keys in *both* lanes and deleting them a phase later, whereas expressions-first makes
+contacts a pure state-provider change (the five contact entries in `state_vocab.VOCAB` already
+exist). Phases: P0 plumbing (`build_state` per lane, `params.expr` on existing `RewardComponent`,
+`audit` at patch time, `TermSet` in `configurable_env`, parity test *before* deletion) → P1 contacts
+via the spike recipe → P2 agent authors, `classify_goal`/`_patch_for_goal` deleted, templates survive
+as prompt examples → P3 delete the catalogue **and** `custom_reward.py` → P4 expression editors.
+It is a **hard cut**: expressions become the only reward path, so old configs need the goal
+re-applied. Deferred by decision: per-episode commands (target speed/heading per reset — changes obs
+width, so one retrain), then `CampaignWorker` (propose → `audit` → probe → revise, revision only on
+*mis-specification*, never on "not converged yet"). Out of scope: terrain, cameras/ray sensors.
+Still hardcoded until P2: `classify_goal`'s 4-keyword goal enum and `_patch_for_goal`'s per-goal
+templates — which is why asking for a gallop today still returns a walk-shaped reward.
 
 ### RL — `backend/rl/`
 
-- **Engine-agnostic (used by both lanes):** `morphology.py` (structure→limbs, wired) and
-  `reward_expr.py` (expression compiler, not wired) — see their sections above. Both are pure
+- **Engine-agnostic (used by both lanes):** `morphology.py` (structure→limbs, wired),
+  `reward_expr.py` (expression compiler, not wired) and `state_vocab.py` (state vocabulary the
+  expressions reference, not wired) — see their sections above. All three are pure
   stdlib/numpy/torch with no simulator import, so they're testable in the app venv and importable
   under Isaac's Python.
 - **SB3 lane (CPU) — training is retired; kept for Optuna + reward test + inspection:**
@@ -373,8 +448,8 @@ templates, both of which the above replaces.
 
 `HelperAgent` (`helper_agent.py`) is the live chat agent. Dual LLM providers
 (`ollama_client.py` + `openai_client.py`, OpenAI-compatible), a regex `router.py` that picks a
-provider per message, an `AgentToolbox` (`tools.py`) exposing 29 tools (11 destructive + 18
-read-only; the authoritative list is the `handlers` dict in `_dispatch`) that can drive the whole
+provider per message, an `AgentToolbox` (`tools.py`) exposing 28 tools (11 `DESTRUCTIVE_TOOLS` + 17
+`READ_TOOLS`; the authoritative list is the `handlers` dict in `_dispatch`) that can drive the whole
 pipeline, and a proactive `notifier.py`. Default autonomy is `"act"`. **`DESTRUCTIVE_TOOLS`** (`tools.py`) is the confirmation gate — config-mutating tools
 like `patch_env_config` / `apply_behavior_goal` are deliberately security-sensitive (they can
 inject `custom_python` reward code that execs in-process). The legacy role agents

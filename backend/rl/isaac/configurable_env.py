@@ -30,6 +30,8 @@ from isaaclab.utils import configclass
 
 from backend.rl.isaac import env_math
 from backend.rl.isaac.env_spec import EnvSpec
+from backend.rl.reward_expr import Term, TermSet
+from backend.rl.state_vocab import allowed_names
 
 # ANYmal reference defaults (isaaclab_assets/robots/anymal.py) used as fallbacks.
 ANYMAL_STIFFNESS = 40.0
@@ -167,11 +169,32 @@ class ConfigurableEnv(DirectRLEnv):
             cols.append(col)
             jids.append(self._act_ids[col])
 
+        # The reward is expressions over the state vocabulary — the legacy
+        # catalogue keys arrive already translated by env_spec.LEGACY_EXPR, so
+        # there is one evaluation path rather than a branch chain per lane.
+        # Compiled here, not in build_spec: env_spec stays torch-free.
+        # ponytail: contacts=False until P1 wires the contact sensor; a contact
+        # term is then a state-provider change, not a new reward key.
+        self._allowed = allowed_names(contacts=False, commands=False)
+        self._reward_set = TermSet(
+            [Term(name=t.name, expr=t.expr, weight=t.weight) for t in self.spec.reward_terms],
+            self._allowed,
+        )
+        self._termination_set = (
+            TermSet([Term(name="terminate", expr=self.spec.termination_expr)], self._allowed)
+            if self.spec.termination_expr
+            else None
+        )
+        # Height reference for the dimensionless height_ratio: the measured spawn
+        # height this robot was calibrated at (init_state.pos[2]).
+        self._standing_height = float(cfg.robot_cfg.init_state.pos[2])
+
         n_actions = len(self.spec.actions)
         # Per-term reward means from the last step, read by isaac_train for
         # telemetry (batch means over thousands of envs, so a single step is a
         # representative sample).
         self.reward_terms: dict[str, float] = {}
+        self._state_cache: dict[str, torch.Tensor] | None = None
         self._raw_actions = torch.zeros((self.num_envs, n_actions), device=self.device)
         self._physical = torch.zeros((self.num_envs, n_actions), device=self.device)
         self._prev_action = torch.zeros((self.num_envs, n_actions), device=self.device)
@@ -187,6 +210,7 @@ class ConfigurableEnv(DirectRLEnv):
         light.func("/World/Light", light)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
+        self._state_cache = None  # new step: whatever was cached is now stale
         self._raw_actions = actions.clone()
         self._physical = env_math.map_actions(
             actions,
@@ -208,6 +232,16 @@ class ConfigurableEnv(DirectRLEnv):
             else:  # torque
                 self.robot.set_joint_effort_target_index(target=target, joint_ids=joint_ids)
 
+    def _episode_progress(self) -> torch.Tensor:
+        """0 at reset -> 1 at the step limit, per env.
+
+        The reward and the observation must read the SAME value or the policy is
+        being graded on a phase it cannot see.
+        """
+        return (self.episode_length_buf / max(1, int(self.max_episode_length))).to(
+            torch.float32
+        )
+
     def _get_observations(self) -> dict:
         d = self.robot.data
         obs = env_math.build_obs(
@@ -218,24 +252,42 @@ class ConfigurableEnv(DirectRLEnv):
             ang_vel=d.root_ang_vel_w.torch,
             joint_pos=d.joint_pos.torch,
             joint_vel=d.joint_vel.torch,
+            episode_progress=self._episode_progress(),
         )
         return {"policy": obs}
 
-    def _get_rewards(self) -> torch.Tensor:
+    def _current_state(self) -> dict[str, torch.Tensor]:
+        """This step's state vocabulary, built once.
+
+        DirectRLEnv.step calls `_get_dones` BEFORE `_get_rewards`, and both need
+        the same state, so neither may own the build. The cache is invalidated in
+        `_pre_physics_step`, which makes this order-independent — caching from
+        `_get_rewards` alone fed the termination the *previous* step's state.
+        """
+        if self._state_cache is None:
+            self._state_cache = self._build_state()
+        return self._state_cache
+
+    def _build_state(self) -> dict[str, torch.Tensor]:
         d = self.robot.data
-        self.reward_terms = {}
-        reward = env_math.compute_reward(
-            self.spec.rewards,
+        return env_math.build_state(
+            root_pos=d.root_pos_w.torch,
+            root_quat_xyzw=d.root_quat_w.torch,
             lin_vel=d.root_lin_vel_w.torch,
-            quat_xyzw=d.root_quat_w.torch,
-            root_z=d.root_pos_w.torch[:, 2],
+            ang_vel=d.root_ang_vel_w.torch,
+            joint_pos=d.joint_pos.torch,
             joint_vel=d.joint_vel.torch,
             action=self._raw_actions,
             prev_action=self._prev_action,
-            ang_vel=d.root_ang_vel_w.torch,
-            joint_pos=d.joint_pos.torch,
             joint_limits=self._joint_limits,
-            out_terms=self.reward_terms,
+            standing_height=self._standing_height,
+            episode_progress=self._episode_progress(),
+        )
+
+    def _get_rewards(self) -> torch.Tensor:
+        self.reward_terms = {}
+        reward = self._reward_set.evaluate(
+            self._current_state(), self.num_envs, out_terms=self.reward_terms
         )
         self._prev_action = self._raw_actions.clone()
         return reward
@@ -247,6 +299,9 @@ class ConfigurableEnv(DirectRLEnv):
             terminated = root_z < self.spec.min_base_height
         else:
             terminated = torch.zeros_like(time_out)
+        if self._termination_set is not None:
+            extra = self._termination_set.evaluate(self._current_state(), self.num_envs) > 0
+            terminated = terminated | extra
         return terminated, time_out
 
     def _reset_idx(self, env_ids):

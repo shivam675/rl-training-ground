@@ -595,8 +595,11 @@ class AgentToolbox:
         )
 
     def _test_reward(self) -> dict[str, Any]:
+        standing_height = None
         if self.config_service is not None:
-            components = self.config_service.current_or_default(self.sim).rewards
+            config = self.config_service.current_or_default(self.sim)
+            components = config.rewards
+            standing_height = config.initial_base_height
         else:
             components = [
                 RewardComponent(
@@ -607,7 +610,7 @@ class AgentToolbox:
                 )
                 for item in default_reward_components()
             ]
-        return evaluate_reward(self.sim, components)
+        return evaluate_reward(self.sim, components, standing_height=standing_height)
 
     def _validate_reward_code(self, code: str) -> dict[str, Any]:
         from backend.rl.custom_reward import validate_custom_reward

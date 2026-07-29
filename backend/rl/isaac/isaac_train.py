@@ -325,7 +325,11 @@ def main() -> int:
             " --/exts/omni.kit.livestream.app/primaryStream/allowDynamicResize=true"
         )
 
-    run_dir = Path(args.run_dir)
+    # resolve(): a relative run dir makes UrdfConverter emit a relative usd_path,
+    # which Kit cannot resolve — the reference composes to an EMPTY prim and the
+    # failure surfaces much later as "Expected exactly one ArticulationRootAPI
+    # prim under '/World/envs/env_0/Robot' ... found 0".
+    run_dir = Path(args.run_dir).resolve()
     telemetry = run_dir / "telemetry.jsonl"
     stop_file = run_dir / "STOP"
 

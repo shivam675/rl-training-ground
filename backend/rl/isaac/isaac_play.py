@@ -94,7 +94,7 @@ def main() -> int:
             " --/exts/omni.kit.livestream.app/primaryStream/allowDynamicResize=true"
         ).strip()
 
-    run_dir = Path(args.run_dir)
+    run_dir = Path(args.run_dir).resolve()  # see isaac_train: relative -> empty spawn
     stop_file = run_dir / "STOP"
     status_path = run_dir / "play_status.json"
 

@@ -52,6 +52,11 @@ OBSERVATION_CATALOG = [
     {"key": "link_linear_velocities", "label": "Link linear velocities", "size": "links*3"},
     {"key": "link_angular_velocities", "label": "Link angular velocities", "size": "links*3"},
     {"key": "contact_points", "label": "Contact points", "size": "variable"},
+    # A sequential task ("sit, then stand, then sit again") is unlearnable without
+    # this: the policy is a memoryless function of its observation, so the first
+    # sit and the second sit are the SAME state unless something tells it where in
+    # the episode it is. Dimensionless 0->1 so it ports across episode lengths.
+    {"key": "episode_progress", "label": "Episode progress (0-1)", "size": 1},
     {"key": "camera_image", "label": "Camera image placeholder", "size": 0, "placeholder": True},
 ]
 
@@ -893,6 +898,10 @@ class PyBulletManager:
             if "contact_points" in keys:
                 contacts = p.getContactPoints(bodyA=body, physicsClientId=self.cid)
                 out.extend([float(len(contacts))])
+            if "episode_progress" in keys:
+                # Set by the training env each step; 0 in the inspection world,
+                # which has no episode at all.
+                out.extend([float(getattr(self, "episode_progress", 0.0))])
             return [0.0 if not math.isfinite(float(v)) else float(v) for v in out]
 
     def apply_action_test(self, req: ActionTestRequest) -> dict[str, Any]:
