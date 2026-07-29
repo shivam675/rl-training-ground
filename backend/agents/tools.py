@@ -266,29 +266,28 @@ class AgentToolbox:
                 "the returned Final changes instead of dumping raw JSON. A fresh "
                 "project starts with EVERYTHING disabled, so you "
                 "enable the observations and joint actions the goal needs and add "
-                "reward components. Merge semantics: observations by key, actions "
+                "reward terms. Merge semantics: observations by key, actions "
                 "by joint_index, rewards by key (params merge). "
-                "Reward components (value = weight × raw; PENALTIES use NEGATIVE "
-                "weights): stay_alive, forward_velocity{target_speed,axis}, upright, "
-                "target_height{height}, target_base_position{target}, "
-                "target_link_position{link_index,target}, energy, action_magnitude, "
-                "action_smoothness, joint_velocity, falling_height{min_height}, "
-                "forbidden_contacts{links}, custom_python{code}. PREFER these toggles. "
-                "All enabled components are SUMMED — do NOT double-count (e.g. don't "
-                "penalize effort in both energy AND custom_python). "
-                "custom_python is a free-form reward(obs, action, ctx)->float, used "
-                "only when the toggles can't express the goal. ctx keys: "
-                "base_position[x,y,z], base_orientation[x,y,z,w quaternion], "
-                "base_linear_velocity[vx,vy,vz], base_angular_velocity[wx,wy,wz], "
-                "joint_positions[], joint_velocities[], prev_action[], sim_time. 'obs' "
-                "is the exact policy observation vector; 'action' is the applied action. "
-                "Observations are auto-normalized in training — keep reward magnitudes "
-                "O(1). Validate code with validate_reward_code before saving. "
-                "Example enabling a forward-walk reward: "
-                "{\"observations\": [{\"key\": \"base_linear_velocity\", \"enabled\": true}], "
+                "YOU AUTHOR THE REWARD, as expressions over the state vocabulary in "
+                "your system prompt. Each entry is "
+                "{\"key\": <your label>, \"enabled\": true, \"weight\": w, "
+                "\"params\": {\"expr\": \"<expression>\"}} and contributes weight × expr. "
+                "The key is only a telemetry label, so name it after what it means "
+                "(flight_phase, sit_low, foot_slip) — it does not have to be a known "
+                "component. PENALTIES use NEGATIVE weights. All enabled terms are "
+                "SUMMED, so do not double-count the same objective. Reduce per-joint "
+                "and per-limb values yourself with mean() — sum() scales with DOF count "
+                "and silently mis-weights when ported between robots. "
+                "terminations also takes an \"expr\" (a boolean expression, ORed with "
+                "the height floor), e.g. {\"terminations\": {\"expr\": \"upright < 0.2\"}}. "
+                "The response carries `warnings` from an automatic AUDIT of your weights "
+                "(penalty exceeding the positive budget, DOF-dependent sum(), an "
+                "all-penalty reward) and `problems` for anything that will not compile — "
+                "read both and fix them in a follow-up call rather than reporting success. "
+                "Example: {\"observations\": [{\"key\": \"base_linear_velocity\", \"enabled\": true}], "
                 "\"actions\": [{\"joint_index\": 3, \"enabled\": true}], "
-                "\"rewards\": [{\"key\": \"custom_python\", \"enabled\": true, \"weight\": 1.0, "
-                "\"params\": {\"code\": \"def reward(obs, action, ctx):\\n    return ctx['base_linear_velocity'][0]\"}}]}",
+                "\"rewards\": [{\"key\": \"forward_speed\", \"enabled\": true, \"weight\": 1.5, "
+                "\"params\": {\"expr\": \"min(base_vx, 1.0)\"}}]}",
                 {
                     "patch": {
                         "type": "object",
@@ -308,12 +307,25 @@ class AgentToolbox:
             ),
             tool(
                 "apply_behavior_goal",
-                "Optional shortcut that sets observations, actions, rewards and "
-                "terminations for a few common goals (walk straight, run straight, "
-                "balance/stand, reach target). Prefer authoring a tailored reward "
-                "with patch_env_config for anything else (sit, jump, crouch, wave, "
-                "custom goals).",
-                {"goal": {"type": "string", "description": "User goal, e.g. walk straight"}},
+                "CALIBRATE the environment for a goal, then author the reward yourself. "
+                "Works for ANY goal — it sets only what is measured from the robot, not "
+                "decided: which joints to actuate (structurally, with the right control "
+                "mode and an offset window around the nominal stance), the standard six "
+                "observations, and a height floor that ends a fallen episode. It sets NO "
+                "reward terms, and returns the numbers you need to write them against: "
+                "standing_height, min_base_height, enabled_joints, ground_reaching_limbs "
+                "and the state vocabulary with this robot's real widths. Call this FIRST "
+                "for a behaviour goal, then patch_env_config with your reward "
+                "expressions. Set locomotion=false for a goal that does not move over "
+                "the ground (sit, wave, reach, hold a pose) — it enables every joint and "
+                "uses a much lower fall floor so a crouch is not terminated.",
+                {
+                    "goal": {"type": "string", "description": "User goal, e.g. gallop as fast as possible"},
+                    "locomotion": {
+                        "type": "boolean",
+                        "description": "Does the goal involve moving over the ground? Default true.",
+                    },
+                },
                 ["goal"],
             ),
             tool(
@@ -641,13 +653,15 @@ class AgentToolbox:
             )
         return {"ok": True, **result}
 
-    def _apply_behavior_goal(self, goal: str) -> dict[str, Any]:
+    def _apply_behavior_goal(self, goal: str, locomotion: bool = True) -> dict[str, Any]:
         if self.config_service is None:
             return {"error": "Config service unavailable."}
-        result = apply_behavior_goal(goal, self.sim, self.config_service)
+        result = apply_behavior_goal(
+            goal, self.sim, self.config_service, locomotion=bool(locomotion)
+        )
         if self.notifier is not None:
             self.notifier.notify_threadsafe(
-                title="Reward configured",
+                title="Environment calibrated for the goal",
                 body=result["summary"],
                 severity="success",
                 category="agent_action",

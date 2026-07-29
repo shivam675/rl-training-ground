@@ -19,6 +19,7 @@ from backend.main import (
     training_worker,
 )
 from backend.models import AppPreferences, EnvConfig, OllamaSettings, TrainingStartRequest
+from backend.rl.goal_rewards import FALL_MIN_HEIGHT_RATIO, LOCOMOTION_MIN_HEIGHT_RATIO
 from backend.simulation.pybullet_manager import PyBulletManager
 
 
@@ -185,20 +186,49 @@ def test_position_action_windows_straddle_zero_so_the_stance_is_reachable():
     assert _position_action_range({}) == pytest.approx((-0.6, 0.6))
 
 
-def test_walk_goal_includes_gait_penalties():
-    """forward_velocity alone is indifferent between a trot and a splayed slide."""
-    from backend.rl.goal_rewards import WALK_GAIT_PENALTIES, _patch_for_goal
+@pytest.mark.parametrize("goal", ["walk", "balance", "gallop", "sit_stand_sit"])
+def test_reward_priors_compile_and_survive_their_own_audit(goal):
+    """The priors are what the agent authors AGAINST, so they must be exemplary.
 
-    class FakeSim:
-        robot_body = None
-        cid = None
+    They are data rather than prompt prose precisely so this can run: every prior
+    has to compile against the state vocabulary and pass `audit`, which is the
+    mechanical form of the rule that no penalty may exceed the positive budget. A
+    prior that failed its own audit would teach the model to write the bug.
+    """
+    from backend.rl.goal_rewards import REWARD_PRIORS
+    from backend.rl.reward_expr import Term, TermSet, audit
+    from backend.rl.state_vocab import allowed_names, sample_states
 
-    patch, summary = _patch_for_goal("walk_straight", FakeSim(), [])
-    enabled = {r["key"]: r["weight"] for r in patch["rewards"] if r["enabled"]}
+    terms = REWARD_PRIORS[goal]
+    assert any(w > 0 for _n, _e, w in terms), "a reward of only penalties cannot be won"
+    term_set = TermSet(
+        [Term(name=n, expr=e, weight=w) for n, e, w in terms],
+        allowed_names(contacts=True, commands=False),
+    )
+    states = sample_states(
+        n_joints=12, n_actions=12, n_contacts=4, contacts=True, standing_height=0.3125
+    )
+    assert audit(term_set.bounds(states, num_envs=1), term_set.scaling_terms(states[0])) == []
 
-    for key, weight in WALK_GAIT_PENALTIES.items():
-        assert enabled[key] == weight
-        assert weight < 0  # penalties, per the sign convention
+
+def test_walk_priors_keep_the_anti_slide_penalties():
+    """forward speed alone is indifferent between a trot and a splayed slide, and the
+    slide is easier to find — a 100M-step A1 run converged to exactly that."""
+    from backend.rl.goal_rewards import REWARD_PRIORS
+
+    weights = {name: weight for name, _expr, weight in REWARD_PRIORS["walk"]}
+    for key in ("lateral_velocity", "vertical_velocity", "body_rate", "joint_limit_violation"):
+        assert weights[key] < 0, key
+
+
+def test_gallop_prior_references_contact_state():
+    """A flight phase is inexpressible without contacts — and the four walk penalties
+    actively forbid one, so the gallop prior must not simply inherit them."""
+    from backend.rl.goal_rewards import REWARD_PRIORS
+
+    exprs = {name: expr for name, expr, _w in REWARD_PRIORS["gallop"]}
+    assert "contact" in exprs["flight_phase"]
+    assert "vertical_velocity" not in exprs and "body_rate" not in exprs
 
 
 def test_locomotion_actions_fall_back_to_every_joint_without_morphology():
@@ -277,21 +307,37 @@ def test_a1_locomotion_commands_stay_inside_joint_limits():
     assert [c["value"] for c in held] == pytest.approx([0.1, 0.8, -1.5])
 
 
-@pytest.mark.parametrize("kind", ["walk_straight", "run_straight"])
-def test_locomotion_goal_terminates_below_seventy_percent_height(kind):
-    from backend.rl.goal_rewards import _patch_for_goal
+@pytest.mark.parametrize(
+    "locomotion,ratio", [(True, LOCOMOTION_MIN_HEIGHT_RATIO), (False, FALL_MIN_HEIGHT_RATIO)]
+)
+def test_goal_height_floor_is_strict_for_locomotion_and_permissive_otherwise(
+    locomotion, ratio, tmp_path
+):
+    """A locomotion goal terminates below 70% of standing height, which is what stops
+    a legged robot farming forward velocity by crawling. A stationary goal must NOT:
+    a sit or crouch legitimately spends the whole episode low, and a posture floor
+    would make it unlearnable."""
+    from backend.rl.goal_rewards import apply_behavior_goal
 
-    class UnloadedSim:
+    class FakeSim:
         robot_body = None
         cid = None
 
-    patch, _ = _patch_for_goal(
-        kind,
-        UnloadedSim(),
-        [{"joint_index": 0, "joint_name": "hip"}],
-    )
+        def actions(self):
+            return {"actions": [{"joint_index": 0, "joint_name": "hip"}]}
 
-    assert patch["terminations"]["min_base_height"] == pytest.approx(0.42)
+        def robot_info(self):
+            return {"path": "r2d2.urdf"}
+
+    service = ConfigService(tmp_path)
+    service.save(EnvConfig(urdf_path="r2d2.urdf", observations=[], actions=[], rewards=[]))
+    result = apply_behavior_goal("some goal", FakeSim(), service, locomotion=locomotion)
+
+    # _base_height falls back to 0.6 for an unloaded sim.
+    assert result["min_base_height"] == pytest.approx(0.6 * ratio)
+    assert result["config"]["terminations"]["min_base_height"] == pytest.approx(0.6 * ratio)
+    # Calibration only — the reward is the model's job.
+    assert [r for r in result["config"]["rewards"] if r["enabled"]] == []
 
 
 def test_validate_flags_bad_action_scales(client):

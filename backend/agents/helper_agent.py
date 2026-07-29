@@ -76,39 +76,39 @@ class HelperAgent(BaseAgent):
         "sample-efficient but pickier. Train for enough steps (locomotion often needs "
         "200k–1M).\n\n"
 
-        "REWARD COMPONENTS (each is value = weight × raw; raw is a positive-meaning "
-        "quantity, so PENALTIES use NEGATIVE weights). Prefer these built-in toggles "
-        "over custom code:\n"
-        "- stay_alive: +1 each step alive (small positive weight, e.g. 0.5).\n"
-        "- forward_velocity: rewards base speed up to params.target_speed along "
-        "params.axis (0=x). Main driver for walking/running (weight ~1.5).\n"
-        "- upright: +1 when perfectly upright (weight ~0.5–1.0). Key for legged "
-        "robots.\n"
-        "- target_height: penalizes |base_z − params.height| (negative weight).\n"
-        "- target_base_position / target_link_position: penalize distance to a target "
-        "(negative weight); good for reaching/goal-reaching.\n"
-        "- energy (Σaction²), action_magnitude, action_smoothness (jerk), "
-        "joint_velocity: small NEGATIVE weights to get smooth, efficient motion.\n"
-        "- falling_height / forbidden_contacts: situational penalties (negative "
-        "weight).\n"
-        "- custom_python: AVOID. It cannot run on the Isaac lane (the only "
-        "training lane), so a config using it will not train. If the toggles "
-        "can't express the goal, write params.expr instead — an expression over "
-        "robot state that compiles to tensor ops and DOES run on the GPU, e.g. "
-        "{\"key\": \"sit_low\", \"weight\": 1.0, \"params\": {\"expr\": "
-        "\"step(0.5 - height_ratio)\"}}. Available names include base_vx/vy/vz, "
-        "speed, roll_rate, pitch_rate, yaw_rate, upright, height_ratio, "
-        "episode_progress, joint_pos, joint_vel, joint_limit_use, action, "
-        "prev_action; functions abs/min/max/clamp/mean/sum/norm/sqrt/exp/log/"
-        "tanh/sign/step/where. Per-joint values must be reduced with mean() (not "
-        "sum(), which scales with DOF count).\n\n"
+        "YOU AUTHOR THE REWARD, AS EXPRESSIONS. There is no fixed menu of reward "
+        "components to pick from any more, and no goal you cannot express. Every "
+        "reward term is\n"
+        "  {\"key\": \"<your label>\", \"enabled\": true, \"weight\": w, "
+        "\"params\": {\"expr\": \"<expression>\"}}\n"
+        "contributing weight × expr each step. The key is only a telemetry label — "
+        "name it after what it MEANS (flight_phase, sit_low, foot_slip) so the "
+        "per-term breakdown in telemetry is readable. PENALTIES use NEGATIVE "
+        "weights; every enabled term is SUMMED, so never express the same objective "
+        "twice. terminations also accepts an \"expr\" (a boolean, ORed with the "
+        "height floor), e.g. {\"expr\": \"upright < 0.2\"}.\n"
+        "Functions: abs min max clamp mean sum norm sqrt exp log tanh sign step "
+        "where. Attribute access, indexing and calls to anything else do not parse, "
+        "so there is no way to write arbitrary Python here — that is deliberate.\n\n"
 
-        "CRITICAL — DO NOT DOUBLE-COUNT: every enabled component is SUMMED, and "
-        "custom_python is just one more term. If you enable custom_python AND manual "
-        "terms, make sure they don't reward/penalize the same thing twice (e.g. effort "
-        "in both). Prefer EITHER a clean set of toggles OR a single comprehensive "
-        "custom_python — not both. Falling is best handled by a termination, not a "
-        "reward penalty that the policy can game.\n\n"
+        "REWARD SCALE IS A CORRECTNESS PROPERTY, NOT TASTE. The positive terms "
+        "should total roughly 2.5 per step. ANY penalty that can exceed the total "
+        "positive budget makes dying strictly better than recovering, and PPO finds "
+        "that: a per-joint penalty SUMMED over 12 joints turned weight -0.5 into an "
+        "effective -6/step and collapsed a healthy 7.4M-step walking policy into "
+        "13-step episodes it never recovered from. So:\n"
+        "- Reduce per-joint and per-limb values with mean(), never sum(). mean() is "
+        "DOF-independent and bounded by its own weight; sum(abs(joint_vel)) is "
+        "-0.9/step on a 12-joint quadruped and -3.9/step on a 51-joint humanoid.\n"
+        "- Bound each penalty's worst case in your head and check it against the "
+        "positive budget before you write it.\n"
+        "- Prefer the DIMENSIONLESS state (height_ratio, upright) over absolute "
+        "metres. `base_z > 0.25` is an A1-only constant; `height_ratio > 0.8` ports "
+        "to any robot.\n"
+        "- End bad episodes with a termination instead of a large fall penalty the "
+        "policy can game.\n"
+        "patch_env_config runs this audit automatically and returns it in "
+        "`warnings`; read it and fix what it flags instead of reporting success.\n\n"
 
         "DEEP RL / DIAGNOSIS RULES:\n"
         "- Optimize discounted episode return, not a single reward reading. Separate "
@@ -138,43 +138,55 @@ class HelperAgent(BaseAgent):
         "cost and are not automatically better. Inspect observation/action dimensions, "
         "state the chosen net_arch, and let the user confirm it before training.\n\n"
 
-        "REWARD EXAMPLES:\n"
-        "- WALK FORWARD: forward_velocity(weight 1.5, target_speed 1.0) + upright(0.5) + "
-        "stay_alive(0.5) + target_height(-0.5, height=start) + energy(-0.005) + "
-        "action_smoothness(-0.01) + the gait-shaping penalties lateral_velocity(-0.5), "
-        "vertical_velocity(-0.2), body_rate(-0.05), joint_limit_violation(-0.5); "
-        "terminations {max_steps:1000, min_base_height: 0.7× start height}. "
-        "(apply_behavior_goal 'walk straight' sets exactly this.) Forward velocity "
-        "alone is indifferent between a trot and a splayed slide at the same speed — "
-        "the penalties and the height termination are what make the slide score "
-        "worse, so do not drop them from a locomotion goal.\n"
-        "- BALANCE/STAND: stay_alive(1.0) + upright(1.0) + target_height(-1.0) + "
-        "target_base_position(-0.5, target=start xy) + energy(-0.01) + "
-        "action_smoothness(-0.01).\n"
-        "- REACH: target_link_position(-1.0, end-effector link → target) + upright(0.3) "
-        "+ energy(-0.01) + action_smoothness(-0.01).\n"
-        "- CUSTOM example (only when needed) — reward a target forward speed while "
-        "staying upright:\n"
-        "    def reward(obs, action, ctx):\n"
-        "        vx = ctx['base_linear_velocity'][0]\n"
-        "        qx, qy, qz, qw = ctx['base_orientation']\n"
-        "        up = 1.0 - 2.0*(qx*qx + qy*qy)  # body-up dot world-up\n"
-        "        effort = sum(a*a for a in action)\n"
-        "        return 1.0 - abs(vx - 1.0) + 0.3*up - 0.005*effort\n"
-        "  ctx keys: base_position[x,y,z], base_orientation[x,y,z,w], "
-        "base_linear_velocity, base_angular_velocity, joint_positions[], "
-        "joint_velocities[], prev_action[], sim_time. 'obs' is the exact policy "
-        "observation vector. ALWAYS validate_reward_code before saving via "
-        "patch_env_config.\n\n"
+        "NOTES ON THE PRIORS BELOW. `walk`'s four gait penalties (lateral_velocity, "
+        "vertical_velocity, body_rate, joint_limit_violation) are what make a splayed "
+        "slide score WORSE than a gait — forward speed alone is indifferent between "
+        "them and the slide is easier to find, which is what a 100M-step run "
+        "converged to. Do not drop them from a walking goal. But note they are "
+        "ANTI-GAIT for a bound or gallop: they penalize exactly the vertical "
+        "oscillation and pitch rate that define one, so `gallop` trades them for "
+        "contact terms and a flight phase. A flight-phase term needs the contact "
+        "state, which exists only on a robot with ground-reaching limbs.\n\n"
 
-        "HOW TO ACT: when the user gives a goal (walk, run, stand, balance, reach, sit, "
-        "jump, …), inspect the robot and its actions, then call apply_behavior_goal for "
-        "the common ones or patch_env_config to enable the right observations/actions "
-        "and reward components for anything else. Always tell the user exactly which "
-        "observations, actions and reward components you set (and that they're "
-        "editable), then ask them to confirm before training. Only start training when "
+        "HOW TO ACT on a behaviour goal: (1) inspect the robot, (2) call "
+        "apply_behavior_goal — it calibrates joints, observations and the fall floor "
+        "for ANY goal and hands back the measured standing height and this robot's "
+        "state widths, (3) call patch_env_config with your authored reward "
+        "expressions, (4) read the returned problems and warnings and fix what they "
+        "flag. Always tell the user exactly which observations, actions and reward "
+        "terms you set, in plain language including the expressions, note they are "
+        "editable, and ask them to confirm before training. Only start training when "
         "the user explicitly asks and the config is valid. If training stalls, read "
-        "get_training_telemetry and propose a concrete fix (re-shape reward, fewer "
-        "observations, different algorithm/hyperparameters, longer training). Keep "
-        "replies concise and action-oriented."
+        "get_training_telemetry — it carries a PER-TERM reward breakdown, so name the "
+        "term that is dominating rather than guessing — and propose a concrete fix. "
+        "Keep replies concise and action-oriented."
     )
+
+    def _full_prompt(self) -> str:
+        """The static prompt plus what is specific to the robot in front of us.
+
+        The vocabulary has to be injected rather than hardcoded because its widths
+        come from the robot: `mean(contact)` over 4 limbs and over 2 is the same
+        expression but not the same reward, and the difference between 12 and 51
+        joints is what silently mis-weights a per-joint penalty. A stale hardcoded
+        list is also how the agent came to patch in a `contact_forces` observation
+        that does not exist.
+        """
+        base = super()._full_prompt()
+        return f"{base}\n\n{self._robot_section()}"
+
+    def _robot_section(self) -> str:
+        from backend.rl.goal_rewards import describe_priors, describe_vocabulary
+
+        urdf_path = None
+        actions: list[str] = []
+        if self.toolbox is not None and self.toolbox.config_service is not None:
+            try:
+                config = self.toolbox.config_service.current_or_default(self.toolbox.sim)
+                urdf_path = config.urdf_path
+                actions = [a.joint_name for a in config.actions if a.enabled and a.joint_name]
+            except Exception:
+                # A prompt is never worth failing a turn for; the vocabulary just
+                # renders with zero widths, which still names every entry.
+                pass
+        return f"{describe_vocabulary(urdf_path, actions)}\n\n{describe_priors()}"

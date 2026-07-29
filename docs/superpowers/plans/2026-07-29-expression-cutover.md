@@ -326,6 +326,45 @@ still refuses with the morphology description.
 **Done when** a gallop request yields a reward that references a flight phase, and a 5–10M-step
 A1 run shows a non-zero airborne fraction in telemetry.
 
+### Status: LANDED 2026-07-29
+
+Suite **237 passed, 1 skipped**. `classify_goal` and `_patch_for_goal` are gone (with
+`_last_link_index` and `WALK_GAIT_PENALTIES`), so the 4-keyword goal enum no longer exists and
+asking for a gallop no longer returns a walk.
+
+`apply_behavior_goal(goal, sim, config_service, *, locomotion=True)` now sets **only what is
+measured** — joints (structurally, with control mode and offset window), the six standard
+observations, and the height floor — and **no reward terms at all**. It hands back
+`standing_height`, `min_base_height`, `enabled_joints`, `ground_reaching_limbs`, the morphology
+description and `describe_vocabulary(...)` with this robot's real widths, which is what the model
+authors against. `locomotion` is the model's declaration; it selects the joints, picks the floor
+(`LOCOMOTION_MIN_HEIGHT_RATIO` 0.70 vs the new `FALL_MIN_HEIGHT_RATIO` 0.35 — a *fell over* floor,
+because a sit goal legitimately spends the episode at half standing height and a posture floor would
+make it unlearnable), and is what preserves the no-ground-reaching-limbs rejection.
+
+The four templates survive as `REWARD_PRIORS` — **expressions, as data rather than prompt prose so a
+test can compile and `audit` them**, which is how the calibrated numbers stay trustworthy. `walk`
+keeps the anti-slide set; `gallop` deliberately drops `vertical_velocity`/`body_rate` (they penalize
+exactly what defines a bound) and pays for `1 - max(contact)`; `sit_stand_sit` is the
+`episode_progress` worked example.
+
+Two findings from writing this:
+
+1. **`audit` rejected my own first gallop prior.** `1 - clamp(sum(contact), 0, 1)` is flagged as
+   DOF-dependent — correctly by the heuristic, though the `clamp` does bound it. The fix is better
+   than an exemption: **`1 - max(contact)`** is exactly equivalent for a 0/1 vector, needs no
+   `sum()`, and is shorter. That is now the canonical flight-phase idiom in `state_vocab`, the
+   priors and the tests.
+2. `HelperAgent._full_prompt()` is overridden to inject the robot section, because a *static* prompt
+   cannot carry widths that come from the robot. With **no** robot loaded it says so rather than
+   rendering zeros — "0 ground-reaching limbs" is a false claim about a robot that isn't there, and
+   pinning that is `test_prompt_with_no_robot_says_so_instead_of_claiming_zero_limbs`.
+
+The plan's "ask the agent for a gallop" check cannot be an assertion (it needs a live LLM), so
+`test_agent_authoring.py` pins the three things that decide whether it *can* answer correctly: the
+prompt carries the vocabulary with real widths, a contact term validates on A1 and is a hard problem
+on a fixed-base arm, and a locomotion goal on that arm still refuses with the structural reason.
+
 ---
 
 # P3 — delete the catalogue

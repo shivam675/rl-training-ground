@@ -133,7 +133,7 @@ def test_flight_phase_is_expressible_and_only_fires_when_all_limbs_are_up():
     """The term the whole cutover exists for: no weighting of the 11 legacy keys
     can produce this, because none of them can see the ground."""
     term = TermSet(
-        [Term(name="flight", expr="1 - clamp(sum(contact), 0, 1)")],
+        [Term(name="flight", expr="1 - max(contact)")],
         allowed_names(contacts=True, commands=False),
     )
     airborne = term.evaluate(_base_state(contact_force_w=_forces([0.0] * K)), N)

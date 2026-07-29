@@ -90,7 +90,7 @@ VOCAB: tuple[Entry, ...] = (
     Entry("joint_limit_use", Width.PER_JOINT, "0 at mid-range, 1 pinned at a limit. mean() gives a DOF-independent penalty."),
 
     # --- contact, per ground-reaching limb ---
-    Entry("contact", Width.PER_CONTACT, "1 where that limb touches the ground, else 0. sum(contact) counts limbs down; 1 - clamp(sum(contact),0,1) is a flight phase.", needs_contacts=True),
+    Entry("contact", Width.PER_CONTACT, "1 where that limb touches the ground, else 0. mean(contact) is the fraction of limbs down; 1 - max(contact) is a FLIGHT PHASE (1 only when every limb is airborne) and needs no sum().", needs_contacts=True),
     Entry("contact_force", Width.PER_CONTACT, "Contact force magnitude per limb, N.", needs_contacts=True),
     Entry("air_time", Width.PER_CONTACT, "Seconds since that limb last left the ground, 0 while down.", needs_contacts=True),
     Entry("contact_time", Width.PER_CONTACT, "Seconds that limb has been down, 0 while airborne.", needs_contacts=True),
