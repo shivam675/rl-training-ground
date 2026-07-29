@@ -16,6 +16,7 @@ from __future__ import annotations
 import torch
 
 from backend.rl.isaac.env_spec import ActionSpec, RewardSpec
+from backend.rl.state_vocab import CONTACT_FORCE_THRESHOLD
 
 
 def map_actions(
@@ -92,14 +93,19 @@ def build_state(
     joint_limits: torch.Tensor,    # (D,2) lower/upper
     standing_height: float,
     episode_progress: torch.Tensor | None = None,  # (N,) 0 at reset -> 1 at the limit
+    contact_force_w: torch.Tensor | None = None,   # (N,K,3) net contact force per limb
+    air_time: torch.Tensor | None = None,          # (N,K) seconds airborne
+    contact_time: torch.Tensor | None = None,      # (N,K) seconds down
+    contact_body_vel: torch.Tensor | None = None,  # (N,K,3) world vel of contact bodies
+    contact_threshold: float = CONTACT_FORCE_THRESHOLD,
 ) -> dict[str, torch.Tensor]:
     """Physics tensors -> the state vocabulary an expression may reference.
 
     Names and semantics come from `rl/state_vocab.py`, which the PyBullet lane and
     the agent prompt read from the same declaration — so an expression cannot mean
-    two things on two backends. Contact entries are added by the caller when a
-    contact sensor exists; they are *absent* rather than zero otherwise, so a
-    contact term on a robot without feet is an error, not a silent no-op.
+    two things on two backends. Contact entries appear only when the caller passes
+    the matching tensor; they are *absent* rather than zero otherwise, so a contact
+    term on a robot without feet is an error, not a silent no-op that costs a run.
     """
     lower, upper = joint_limits[:, 0], joint_limits[:, 1]
     half = (upper - lower) * 0.5
@@ -111,7 +117,7 @@ def build_state(
     progress = (
         torch.zeros_like(vx) if episode_progress is None else episode_progress.reshape(-1)
     )
-    return {
+    state = {
         "episode_progress": progress,
         "base_x": root_pos[:, 0],
         "base_y": root_pos[:, 1],
@@ -134,6 +140,23 @@ def build_state(
         "action": action,
         "prev_action": prev_action,
     }
+    if contact_force_w is not None:
+        magnitude = torch.linalg.vector_norm(contact_force_w, dim=-1)
+        state["contact_force"] = magnitude
+        # A force threshold rather than "any contact at all": PhysX reports
+        # grazing sub-newton touches that are not a foot bearing weight, and a
+        # flight-phase term written as 1 - clamp(sum(contact),0,1) reads those as
+        # "still on the ground".
+        state["contact"] = (magnitude > contact_threshold).to(magnitude.dtype)
+    if air_time is not None:
+        state["air_time"] = air_time
+    if contact_time is not None:
+        state["contact_time"] = contact_time
+    if contact_body_vel is not None:
+        # Horizontal only: a foot moving *up* is swinging, a foot sliding sideways
+        # while loaded is the slip a gait reward wants to punish.
+        state["foot_speed"] = torch.linalg.vector_norm(contact_body_vel[..., :2], dim=-1)
+    return state
 
 
 def compute_reward(

@@ -205,7 +205,22 @@ def build_env_cfg(run_dir: Path, num_envs: int):
     )
     cfg.spec = spec
     cfg.action_joint_names = [a.joint_name for a in spec.actions]
+    # Ground-reaching limbs, so the env can put a contact sensor on each foot. Empty
+    # for a fixed-base arm (or an unparseable URDF), which is the honest answer: the
+    # contact vocabulary is then excluded and a contact term is a compile error.
+    cfg.contact_chains = _contact_chains(urdf_path)
     return cfg, spec, request
+
+
+def _contact_chains(urdf_path: Path) -> list[list[str]]:
+    from backend.rl.morphology import analyze
+
+    try:
+        return analyze(urdf_path).contact_chains()
+    except Exception:
+        # Broad on purpose, matching goal_rewards.describe_robot: an unreadable or
+        # uninterpretable URDF means "no contact state", never a failed launch.
+        return []
 
 
 def _ensure_newton_usd_schemas() -> None:

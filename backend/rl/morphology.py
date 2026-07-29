@@ -103,6 +103,13 @@ class Morphology:
         """Leaf links of the ground-reaching limbs — where contact sensors go."""
         return [self.chains[i].leaf for g in self.ground_groups for i in self.groups[g]]
 
+    def contact_chains(self) -> list[list[str]]:
+        """Root->leaf link names for each ground-reaching limb, in ``contact_links()``
+        order. Plain data, so it can cross into the Isaac env's config (which must
+        stay free of custom types) and be resolved there against the bodies the
+        simulator actually created — see ``deepest_present``."""
+        return [list(self.chains[i].links) for g in self.ground_groups for i in self.groups[g]]
+
     def resolve_contact_bodies(self, available: Sequence[str]) -> dict[str, str]:
         """Map each contact link onto the simulated body that carries its geometry.
 
@@ -118,14 +125,14 @@ class Morphology:
         on any given robot.
         """
         present = set(available)
+        contact = set(self.contact_links())
         resolved: dict[str, str] = {}
         for chain in self.chains:
-            if chain.leaf not in set(self.contact_links()):
+            if chain.leaf not in contact:
                 continue
-            for link in reversed(chain.links):
-                if link in present:
-                    resolved[chain.leaf] = link
-                    break
+            body = deepest_present(chain.links, present)
+            if body is not None:
+                resolved[chain.leaf] = body
         return resolved
 
     def locomotion_joints(self) -> list[str]:
@@ -236,6 +243,20 @@ def _limits(joint_el: ET.Element, joint_type: str) -> tuple[float, float]:
         if limit.get("upper") is not None:
             upper = float(limit.get("upper"))  # type: ignore[arg-type]
     return (lower, upper)
+
+
+def deepest_present(chain: Sequence[str], available) -> str | None:
+    """The deepest link of a root->leaf chain that the simulator actually created.
+
+    URDF->USD conversion with ``merge_fixed_joints=True`` folds fixed-joint children
+    into their parent, so A1's ``FR_foot`` is not a body at all — its collision
+    geometry went onto ``FR_calf``, and a contact reported there *is* that foot
+    touching down. Walking up finds that body without changing the conversion.
+    """
+    for link in reversed(list(chain)):
+        if link in available:
+            return link
+    return None
 
 
 def analyze(urdf_path: str | Path) -> Morphology:

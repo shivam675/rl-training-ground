@@ -28,6 +28,15 @@ from enum import Enum
 from typing import Any
 
 
+#: Newtons above which a limb counts as touching the ground. Not zero: the physics
+#: engines report grazing sub-newton touches that are not a foot bearing weight, and
+#: a flight-phase term written as ``1 - clamp(sum(contact), 0, 1)`` reads those as
+#: "still down". Declared here because it is part of what ``contact`` MEANS, and both
+#: lanes have to agree — on the Isaac lane it is also the sensor's air-time threshold,
+#: so the boolean and the timers cannot disagree.
+CONTACT_FORCE_THRESHOLD = 1.0
+
+
 class Width(str, Enum):
     SCALAR = "scalar"
     PER_JOINT = "per_joint"

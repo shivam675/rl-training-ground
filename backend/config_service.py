@@ -86,6 +86,19 @@ def _expr_of(item: Any) -> str | None:
     return expr.strip() if isinstance(expr, str) and expr.strip() else None
 
 
+def _contact_links(urdf_path: str | None) -> list[str]:
+    """Ground-reaching limbs of this robot, or [] if it has none (a fixed-base arm)
+    or the URDF cannot be read. Decides whether the contact vocabulary exists."""
+    if not urdf_path:
+        return []
+    from backend.rl.morphology import analyze
+
+    try:
+        return analyze(urdf_path).contact_links()
+    except Exception:
+        return []
+
+
 class ConfigService:
     def __init__(self, config_dir: Path):
         self.config_dir = config_dir
@@ -335,9 +348,12 @@ class ConfigService:
         from backend.rl.reward_expr import ExprError, Term, TermSet, audit
         from backend.rl.state_vocab import allowed_names, sample_states
 
-        # Contacts/commands are not provided by either lane yet (P1 / deferred),
-        # so referencing them is a compile error rather than a silent zero.
-        allowed = allowed_names(contacts=False, commands=False)
+        # Contacts exist iff the robot has ground-reaching limbs — the same test the
+        # Isaac env makes, because this is the gate on launching a run and rejecting
+        # something the env would accept just blocks training for no reason. Commands
+        # are still deferred, so referencing one is a compile error, not a zero.
+        contact_links = _contact_links(config.urdf_path)
+        allowed = allowed_names(contacts=bool(contact_links), commands=False)
         problems: list[str] = []
         terms: list[Term] = []
         untranslatable = False
@@ -375,6 +391,8 @@ class ConfigService:
         states = sample_states(
             n_joints=max(1, len(config.actions)),
             n_actions=max(1, sum(1 for a in config.actions if a.enabled)),
+            n_contacts=len(contact_links),
+            contacts=bool(contact_links),
             standing_height=float(config.initial_base_height or 0.35),
         )
         audit_warnings = audit(

@@ -7,6 +7,8 @@ import numpy as np
 import pybullet as p
 
 from backend.models import RewardComponent
+from backend.rl.morphology import analyze, deepest_present
+from backend.rl.state_vocab import CONTACT_FORCE_THRESHOLD
 from backend.simulation.pybullet_manager import PyBulletManager
 
 # Reward convention (IMPORTANT):
@@ -136,7 +138,63 @@ def build_state(
         "joint_limit_use": row(limit_use),
         "action": row([float(v) for v in action.tolist()]),
         "prev_action": row([float(v) for v in prev.tolist()]),
+        **_contact_state(manager, body, row),
     }
+
+
+def _contact_state(manager: PyBulletManager, body: int, row) -> dict[str, Any]:
+    """`contact`, `contact_force` and `foot_speed` per ground-reaching limb.
+
+    ``air_time``/``contact_time`` are deliberately ABSENT here: they need a per-step
+    counter and this lane evaluates single snapshots (the "Test reward" preview), so
+    a zero would be a lie. Absent means an expression using them is rejected on this
+    lane with a clear message instead of silently reading 0 — see D4 in
+    docs/superpowers/plans/2026-07-29-expression-cutover.md.
+    """
+    chains = _contact_chains(manager)
+    if not chains:
+        return {}
+    # link index -> name, plus the base at -1, so a contact can be attributed to a limb.
+    names = {-1: _decode(p.getBodyInfo(body, physicsClientId=manager.cid)[0])}
+    for i in range(p.getNumJoints(body, physicsClientId=manager.cid)):
+        names[i] = _decode(p.getJointInfo(body, i, physicsClientId=manager.cid)[12])
+    by_name = {name: index for index, name in names.items()}
+
+    forces: dict[int, float] = {}
+    for contact in p.getContactPoints(bodyA=body, physicsClientId=manager.cid):
+        forces[contact[3]] = forces.get(contact[3], 0.0) + float(contact[9])
+
+    magnitudes, speeds = [], []
+    for chain in chains:
+        link = deepest_present(chain, by_name)
+        index = by_name[link] if link is not None else None
+        magnitudes.append(0.0 if index is None else forces.get(index, 0.0))
+        if index is None or index < 0:
+            speeds.append(0.0)
+            continue
+        state = p.getLinkState(body, index, computeLinkVelocity=1, physicsClientId=manager.cid)
+        speeds.append(math.hypot(state[6][0], state[6][1]))
+    return {
+        "contact_force": row(magnitudes),
+        "contact": row([1.0 if f > CONTACT_FORCE_THRESHOLD else 0.0 for f in magnitudes]),
+        "foot_speed": row(speeds),
+    }
+
+
+def _decode(raw) -> str:
+    return raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+
+
+def _contact_chains(manager: PyBulletManager) -> list[list[str]]:
+    """Ground-reaching limbs of the loaded robot, or [] if there are none."""
+    request = getattr(manager, "current_request", None)
+    urdf_path = getattr(request, "path", None)
+    if not urdf_path:
+        return []
+    try:
+        return analyze(urdf_path).contact_chains()
+    except Exception:
+        return []
 
 
 def evaluate_reward(
@@ -193,8 +251,15 @@ def evaluate_reward(
                     manager, body, base_pos, base_orn, lin_vel, ang_vel,
                     joint_states, action, prev, standing_height,
                 )
+            # air_time/contact_time are the two contact entries this lane cannot
+            # provide (they need a per-step counter and this is a snapshot), so a
+            # term using them is rejected here with a clear message rather than
+            # quietly evaluated against a zero it made up.
+            allowed = allowed_names(
+                contacts="contact" in expr_state, commands=False
+            ) - {"air_time", "contact_time"}
             try:
-                compiled = compile_expr(expr, allowed_names(contacts=False, commands=False))
+                compiled = compile_expr(expr, allowed)
                 raw = float(compiled(expr_state, 1)[0])
             except ExprError as exc:
                 warnings.append(f"Reward expression {key!r} rejected: {exc}")

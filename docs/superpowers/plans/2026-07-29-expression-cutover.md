@@ -260,6 +260,43 @@ for a lifted foot.
 **Done when** the spike file shows per-foot contact and air time on A1, and
 `1.0 - clamp(sum(contact), 0, 1)` is non-zero at some point during a hop.
 
+### Status: LANDED 2026-07-29
+
+Suite **225 passed, 1 skipped** (was 217); `backend/tests/test_contact_state.py` is the CI-side
+half — everything that decides what a contact expression *means*, on a synthetic quadruped and a
+synthetic fixed-base arm.
+
+The single non-obvious thing, worth not rediscovering: `activate_contact_sensors` on the spawn cfg
+gets you **one** reporter, not thirteen. `sim/schemas/schemas.py:690` stops descending the moment it
+meets a prim with `RigidBodyAPI` — "nested rigid bodies are not allowed by SDK" — and our converted
+USD nests them by kinematic tree (`Geometry/base/FR_hip/FR_thigh/FR_calf`), so the walk reaches the
+root and stops. `_activate_nested_contact_reporters` in `configurable_env` re-walks with
+`Usd.PrimRange` and applies the schema to every rigid body. That is the whole content of the earlier
+spike's "only 1 of 13 bodies gets a reporter" finding, and the prim-path regex was indeed never the
+problem. It runs **before** `clone_environments`, so all envs inherit it.
+
+Spike output, A1 at reset (it spawns 1 cm clear of the ground, so the first steps are a landing —
+a better air-time test than a teleport):
+
+```
+step 0: contact [0,0,0,0]  force [0,0,0,0]        air_time [.0167]*4   contact_time [0]*4
+step 1: contact [0,0,0,0]  force [0,0,0,0]        air_time [.0333]*4   contact_time [0]*4
+step 2: contact [1,1,0,0]  force [21.3,21.3,0,0]  air_time [0,0,.05,.05]  <- front feet land
+step 3: contact [1,1,1,1]  force [34.7,34.9,28.2,28.4]                    <- all four down
+standing (step 30-119): sum(contact)=4, force 28-43 N, contact_time ticks 4/240 s per step
+```
+
+Contact bodies resolve `FR_foot -> FR_calf` etc. exactly as designed (the articulation is 13 bodies,
+no `*_foot`), forces sum to ~130 N against A1's ~12 kg, and `air_time` advances by one control step
+per step and zeroes on touchdown. A 4k-step training run with authored `1 - clamp(sum(contact),0,1)`,
+`sum(contact)`, `mean(air_time)` and `mean(contact * foot_speed)` terms reported 0.16 / 1.8 / 0.038 /
+0.45 — so a flight phase is now expressible *and* non-zero.
+
+One spike artifact recorded so it is not mistaken for a bug: writing the root pose directly with
+`write_root_pose_to_sim_index` **outside** `_reset_idx` moves the robot (`base_z` tracked free-fall
+exactly) but the contact report keeps its last value — no touch-lost event reaches the sensor.
+Production only teleports inside `_reset_idx`, where step 0 above shows contacts correctly cleared.
+
 ---
 
 # P2 — the agent authors, templates become examples

@@ -214,16 +214,32 @@ names is what this replaced. A robot with **no** ground-reaching limbs (Z1, the 
 makes `apply_behavior_goal` reject locomotion goals with the morphology description attached,
 instead of training a reward it can never satisfy.
 
-**Contact sensing on the Isaac lane — recipe established by spike, NOT yet wired.** Four spike
-passes found: (1) the spawn cfg needs `activate_contact_sensors=True` or *zero* bodies report
-contacts; (2) even with it only **1 of 13** rigid bodies gets a reporter (the root), so
-`PhysxContactReportAPI` has to be applied explicitly to the bodies you want — the prim_path regex
-was never the problem; (3) `merge_fixed_joints=True` in the URDF→USD conversion **deletes every
-foot** (A1's articulation is `base` + 4 hips + 4 thighs + 4 calves; `FR_foot`…`RL_foot` do not
-exist), which is what `resolve_contact_bodies()` exists for — it walks up to the nearest surviving
-body, `FR_foot → FR_calf`, where the collision geometry actually went, so no converter change is
-needed; (4) prims nest by kinematic tree under `Geometry/`. `track_air_time=True` works —
-`current_air_time` / `current_contact_time` populate as `ProxyArray` (use `.torch`).
+**Contact sensing on the Isaac lane — WIRED (P1, 2026-07-29).** The five contact vocabulary entries
+carry real per-limb data, so a flight phase is expressible. `contact_chains()` (plain root→leaf link
+names — plain data because `ConfigurableEnvCfg` must stay free of custom types) goes onto the cfg in
+`isaac_train.build_env_cfg`; the env resolves each chain against the bodies the simulator actually
+made via `morphology.deepest_present`, because `merge_fixed_joints=True` **deletes every foot** (A1's
+articulation is `base` + 4 hips + 4 thighs + 4 calves), so `FR_foot → FR_calf`, where the collision
+geometry went. No converter change needed.
+
+The one trap: **`activate_contact_sensors=True` gets you 1 reporter, not 13.**
+`isaaclab/sim/schemas/schemas.py:690` stops descending the moment it meets a prim with
+`RigidBodyAPI` ("nested rigid bodies are not allowed by SDK"), and the converted USD nests bodies by
+kinematic tree under `Geometry/`, so the walk reaches the root and stops.
+`configurable_env._activate_nested_contact_reporters` re-walks with `Usd.PrimRange` and applies the
+schema to every rigid body — **before `clone_environments`**, or only env_0 gets it. The prim_path
+regex was never the problem. `track_air_time=True` works; `current_air_time` /
+`current_contact_time` are `ProxyArray` (use `.torch`).
+
+`CONTACT_FORCE_THRESHOLD` (1.0 N, in `state_vocab.py` because it is part of what `contact` *means*)
+is both the boolean's cutoff and the sensor's `force_threshold`, so the flag and the air/contact
+timers cannot disagree. Not zero: sub-newton grazing touches are not a foot bearing weight, and
+`1 - clamp(sum(contact),0,1)` would read them as "still down". The PyBullet lane provides `contact`,
+`contact_force` and `foot_speed` from `getContactPoints`, but **deliberately not `air_time` /
+`contact_time`** — it evaluates snapshots, so a zero there would be a lie; they are absent, and an
+expression using them is rejected on that lane with a clear message. A robot with no ground-reaching
+limbs gets the whole contact vocabulary **excluded, never zero-filled**, so a contact term on a
+fixed-base arm is a compile error rather than a term that silently contributes nothing for 20M steps.
 
 ### Robot calibration — stance, spawn height, actions, gains (spans PyBullet → Isaac)
 

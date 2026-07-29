@@ -24,14 +24,16 @@ from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import Articulation, ArticulationCfg
 from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import ContactSensor, ContactSensorCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils import configclass
 
 from backend.rl.isaac import env_math
 from backend.rl.isaac.env_spec import EnvSpec
+from backend.rl.morphology import deepest_present
 from backend.rl.reward_expr import Term, TermSet
-from backend.rl.state_vocab import allowed_names
+from backend.rl.state_vocab import CONTACT_FORCE_THRESHOLD, allowed_names
 
 # ANYmal reference defaults (isaaclab_assets/robots/anymal.py) used as fallbacks.
 ANYMAL_STIFFNESS = 40.0
@@ -41,6 +43,7 @@ ANYMAL_VELOCITY_LIMIT = 7.5
 
 _SIM_DT = 1.0 / 240.0
 _DECIMATION = 4  # -> 60 Hz control, mirroring the PyBullet lane (240 Hz, 4 substeps)
+
 
 
 @configclass
@@ -58,6 +61,48 @@ class ConfigurableEnvCfg(DirectRLEnvCfg):
     # Custom (non-base) fields, set by isaac_train before construction:
     spec: EnvSpec | None = None
     action_joint_names: list = field(default_factory=list)
+    #: `Morphology.contact_chains()` — root->leaf link names per ground-reaching
+    #: limb, resolved to real bodies after spawn. Empty means this robot has no feet
+    #: (a fixed-base arm), and the contact vocabulary is then *excluded* rather than
+    #: zero-filled, so a contact term on such a robot is an error not a silent no-op.
+    contact_chains: list = field(default_factory=list)
+
+
+def make_contact_sensor_cfg() -> ContactSensorCfg:
+    """Every body under the robot, with air/contact timers.
+
+    Covering all bodies rather than just the feet costs nothing measurable (it is
+    what Isaac Lab's own ANYmal task does) and it is what makes "the torso hit the
+    ground" expressible as a termination later — which is the gait-correct
+    replacement for the min_base_height floor that currently forbids a flight phase.
+    """
+    return ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/.*",
+        update_period=0.0,  # every physics step; the reward reads it every step
+        track_air_time=True,
+        # Same threshold the `contact` vocabulary entry uses, so "down" means one
+        # thing: the air/contact timers and the boolean cannot disagree.
+        force_threshold=CONTACT_FORCE_THRESHOLD,
+    )
+
+
+def _activate_nested_contact_reporters(prim_path: str) -> None:
+    """Apply the contact-report API to EVERY rigid body under ``prim_path``.
+
+    ``UsdFileCfg.activate_contact_sensors`` (and the ``sim_utils`` helper behind it)
+    stops descending as soon as it meets a prim with ``RigidBodyAPI``, on the
+    normally-true assumption that rigid bodies are never nested. Our URDF->USD
+    output nests them by kinematic tree — ``Geometry/base/FR_hip/FR_thigh/FR_calf``
+    — so that walk reaches exactly one body, the root, and every foot silently
+    reports no contact at all. Measured: 1 reporter out of 13 bodies.
+    """
+    from pxr import Usd, UsdPhysics
+
+    stage = sim_utils.get_current_stage()
+    root = stage.GetPrimAtPath(prim_path)
+    for prim in Usd.PrimRange(root):
+        if prim.HasAPI(UsdPhysics.RigidBodyAPI):
+            sim_utils.activate_contact_sensors(prim.GetPath().pathString)
 
 
 def make_robot_cfg(
@@ -173,9 +218,23 @@ class ConfigurableEnv(DirectRLEnv):
         # catalogue keys arrive already translated by env_spec.LEGACY_EXPR, so
         # there is one evaluation path rather than a branch chain per lane.
         # Compiled here, not in build_spec: env_spec stays torch-free.
-        # ponytail: contacts=False until P1 wires the contact sensor; a contact
-        # term is then a state-provider change, not a new reward key.
-        self._allowed = allowed_names(contacts=False, commands=False)
+        # Contact bodies in contact_chains() order, so contact[0] means the same limb
+        # here, on the PyBullet lane and in the agent's prompt. Resolved HERE rather
+        # than in build_spec because it needs the bodies the simulator actually made:
+        # merge_fixed_joints deletes A1's four feet, so FR_foot resolves to FR_calf,
+        # which is where its collision geometry went.
+        self._contact_ids: list[int] = []
+        self._contact_body_ids: list[int] = []
+        if self._contact_sensor is not None:
+            present = set(self.robot.body_names)
+            bodies = [deepest_present(c, present) for c in cfg.contact_chains]
+            bodies = [b for b in bodies if b is not None]
+            if bodies:
+                self._contact_ids, _ = self._contact_sensor.find_sensors(
+                    bodies, preserve_order=True
+                )
+                self._contact_body_ids, _ = self.robot.find_bodies(bodies, preserve_order=True)
+        self._allowed = allowed_names(contacts=bool(self._contact_ids), commands=False)
         self._reward_set = TermSet(
             [Term(name=t.name, expr=t.expr, weight=t.weight) for t in self.spec.reward_terms],
             self._allowed,
@@ -201,11 +260,19 @@ class ConfigurableEnv(DirectRLEnv):
 
     def _setup_scene(self):
         self.robot = Articulation(self.cfg.robot_cfg)
+        self._contact_sensor: ContactSensor | None = None
+        if self.cfg.contact_chains:
+            # Before clone_environments: the reporters have to be on the source
+            # prim, or only env_0 gets them.
+            _activate_nested_contact_reporters("/World/envs/env_0/Robot")
+            self._contact_sensor = ContactSensor(make_contact_sensor_cfg())
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         self.scene.clone_environments(copy_from_source=False)
         if self.device == "cpu":
             self.scene.filter_collisions(global_prim_paths=[])
         self.scene.articulations["robot"] = self.robot
+        if self._contact_sensor is not None:
+            self.scene.sensors["contact_sensor"] = self._contact_sensor
         light = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light.func("/World/Light", light)
 
@@ -268,6 +335,19 @@ class ConfigurableEnv(DirectRLEnv):
             self._state_cache = self._build_state()
         return self._state_cache
 
+    def _contact_tensors(self) -> dict[str, object]:
+        """Per-limb contact state, or {} when this robot has no ground-reaching limbs."""
+        if not self._contact_ids:
+            return {}
+        data = self._contact_sensor.data
+        return {
+            "contact_force_w": data.net_forces_w.torch[:, self._contact_ids],
+            "air_time": data.current_air_time.torch[:, self._contact_ids],
+            "contact_time": data.current_contact_time.torch[:, self._contact_ids],
+            "contact_body_vel": self.robot.data.body_lin_vel_w.torch[:, self._contact_body_ids],
+            "contact_threshold": CONTACT_FORCE_THRESHOLD,
+        }
+
     def _build_state(self) -> dict[str, torch.Tensor]:
         d = self.robot.data
         return env_math.build_state(
@@ -282,6 +362,7 @@ class ConfigurableEnv(DirectRLEnv):
             joint_limits=self._joint_limits,
             standing_height=self._standing_height,
             episode_progress=self._episode_progress(),
+            **self._contact_tensors(),
         )
 
     def _get_rewards(self) -> torch.Tensor:
