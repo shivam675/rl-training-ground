@@ -363,6 +363,14 @@ so `mean(contact)` ports from quadruped to biped and `(c0+c1+c2+c3)/4` never get
 `height_ratio` and `upright` are deliberately dimensionless — `base_z > 0.25` is an A1 constant,
 `height_ratio > 0.8` is not. Per-episode commands are **not** in it yet.
 
+**The vocabulary names are NOT the observation key names, and that confusion is the single most
+likely authoring mistake** — the prompt hands the agent both sets and they are the same quantities
+under different spellings. Observed on a real GO1 goal: `base_angular_velocity[2]` and
+`norm(base_linear_velocity)`, where the vocabulary says `yaw_rate` and `base_vx`/`base_vy`/`base_vz`.
+`state_vocab.OBSERVATION_NAME_TRAP` is appended to every `describe()` with the explicit mapping and
+the no-indexing rule, `reward_expr`'s `Subscript` error names the way out, and `apply_patch` compiles
+so such a term cannot be stored. Keep all three — each one alone let this through.
+
 **`episode_progress` (added 2026-07-29) is what makes a SEQUENTIAL task possible at all.** It is
 both a vocabulary entry and the 7th observation (0 at reset → 1 at the step limit, assembled
 **last** so enabling it appends instead of shifting existing columns; `ConfigurableEnv.
@@ -373,7 +381,10 @@ same state and no reward can distinguish them. The reward references `episode_pr
 observation must be enabled — grading a phase the policy cannot see is the same bug in a new place.
 
 **Bad config now fails at patch time, not at launch** (same date, same session that motivated the
-clock). `apply_patch` rejects unknown *observation* keys with the real list attached — observations
+clock). `apply_patch` **compiles** every enabled reward expression and `terminations.expr`, so a term
+that cannot run is never saved — a *disabled* term is exempt, or the patch that turns a broken
+expression off would be rejected for the expression it disables. It also rejects unknown *observation*
+keys with the real list attached — observations
 have no expression escape hatch, so an unknown one is always a mistake, unlike a reward key, whose
 name is free-form as long as it carries `params.expr`. `validate` blocks training on observation keys
 that are real but untrainable (PyBullet produces 14 sources, Isaac consumes 7) and on any reward with
@@ -444,9 +455,13 @@ section carrying what was verified and the findings worth not re-deriving. Order
 worth keeping in mind: **expressions landed before contact sensing**, because contacts-first would
 have meant implementing `air_time`/`flight_phase`/`foot_slip` as catalogue keys in *both* lanes and
 deleting them a phase later, whereas expressions-first made contacts a pure state-provider change.
-Remaining: **P4, expression editors in the Flutter panels** — a text field bound to `params.expr` plus
-the inline `audit` verdict, in `panels/reward_panel.dart`, `panels/observation_action_panel.dart` and
-`app_state.dart`.
+**P4 landed too (expression editors in the panels)**, so the whole plan is done. `reward_panel.dart`
+has `_ExpressionEditor` — the expression shown collapsed *where the key used to be*, since the key is
+only a telemetry label now — with the `audit` verdict printed beside the term it is about
+(`AppState.feedbackForReward(key)` filters the already-refreshed `configProblems`/`configWarnings` by
+substring; no new plumbing). `_CustomCodeEditor` and `AppState.validateCustomReward` are gone with the
+endpoint. **`observation_action_panel.dart` was deliberately NOT touched**: observations have no
+`params.expr` to bind to, and a field for a config key the backend rejects is worse than nothing.
 
 ### RL — `backend/rl/`
 

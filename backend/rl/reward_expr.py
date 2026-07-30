@@ -102,6 +102,10 @@ FUNCTIONS: dict[str, Callable[..., Any]] = {
     "where": lambda c, a, b: torch.where(_tensor(c) > 0, _tensor(a), _tensor(b)),
 }
 
+#: Named alternatives to the indexing an author reaches for out of habit. Spelled out
+#: here rather than in state_vocab so the compiler's own error is self-contained.
+_NAME_HINT = "yaw_rate not base_angular_velocity[2], base_vz not base_linear_velocity[2]"
+
 _BIN_OPS = {
     ast.Add: lambda a, b: a + b,
     ast.Sub: lambda a, b: a - b,
@@ -237,9 +241,19 @@ def compile_expr(source: str, allowed: set[str] | frozenset[str]) -> Compiled:
         # Everything else — attribute access, subscripting, lambdas, comprehensions,
         # f-strings, walrus, starred args — is rejected by omission. That is what
         # makes the sandbox structural rather than a denylist.
+        hint = (
+            # Observed: `base_angular_velocity[2]`. Indexing is the natural way to
+            # reach into an observation vector, so it is the first thing an author
+            # reaches for — and the bare "not allowed" said nothing about the
+            # alternative. Naming both routes out is what makes this self-correcting.
+            " Per-element state is reduced with mean(), sum(), max() or norm() — never"
+            f" indexed — and a single component has its own name ({_NAME_HINT})."
+            if isinstance(node, ast.Subscript)
+            else ""
+        )
         raise ExprError(
             f"{type(node).__name__} is not allowed in an expression. "
-            "Use arithmetic, comparisons, and the built-in functions only."
+            f"Use arithmetic, comparisons, and the built-in functions only.{hint}"
         )
 
     fn = walk(tree)

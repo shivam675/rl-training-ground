@@ -469,6 +469,43 @@ per-episode commands together (one retrain), then `CampaignWorker`.
 
 ---
 
+# Post-cutover fixes, from watching it used (2026-07-29)
+
+Three defects that only showed up once real goals went through the new path. All fixed;
+suite **237 passed, 1 skipped**, Flutter **12 passed**.
+
+**1. The agent used OBSERVATION names inside expressions.** On a GO1 rotation goal it authored
+`base_angular_velocity[2]` and `norm(base_linear_velocity)`. Both were correctly rejected — but both
+were *saved enabled*, and the agent reported "I've configured the following reward components". Three
+changes, because the failure had three separate causes:
+
+- `state_vocab.describe()` now ends with `OBSERVATION_NAME_TRAP`, an explicit mapping
+  (`base_angular_velocity -> roll_rate, pitch_rate, yaw_rate`, …) plus the no-indexing rule. Listing
+  the vocabulary was not enough: the prompt hands the agent *both* name sets — observation keys for
+  the observation list, vocabulary names for expressions — and they are the same quantities under
+  different spellings.
+- `apply_patch` now **compiles** every enabled reward expression and `terminations.expr`, so a term
+  that cannot run is never stored. Observations have always been guarded this way; rewards were the
+  hole. A *disabled* term is exempt, or a config holding a bad expression could not be repaired — the
+  patch turning it off would be rejected for the expression it disables.
+- `reward_expr`'s `Subscript` error now names the way out. It was the one error carrying no
+  vocabulary, and indexing is the first thing anyone reaches for on a vector.
+
+**2. Four false-alarm warnings on a correctly calibrated robot.** `config_service.warnings` compared
+the position action window against absolute URDF limits, which has been a category error since offset
+actions landed: the window is a travel allowance *around the stance* and is supposed to straddle zero
+(GO1's calf limits are `[-2.818, -0.888]` against a correct `±0.6` window). `_position_window_warnings`
+now checks the **reachable** command range after clamping, and flags what actually matters — a stance
+outside its limits, or a stance pinned near one so most of the window is dead (which is exactly the
+straight-legged splay the stance calibration exists to prevent).
+
+**3. The dashboard still advertised the deleted goal menu.** `walk / balance / stand / reach a target`
+were the four templates P2 removed. Replaced with examples that show the new capability
+(`gallop as fast as it can`, `sit, then stand, then sit again` — both impossible under the classifier),
+and the label now says "anything, not just these".
+
+---
+
 ---
 
 # P0.5 — landed 2026-07-29, from a real failed session

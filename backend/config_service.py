@@ -75,6 +75,56 @@ def _expr_of(item: Any) -> str | None:
     return expr.strip() if isinstance(expr, str) and expr.strip() else None
 
 
+#: Fraction of a position window that must survive the joint-limit clamp before it
+#: is worth flagging. ponytail: one threshold, not a per-joint policy — it exists to
+#: catch a stance pinned against a limit, which halves the usable travel.
+_MIN_USABLE_WINDOW_FRACTION = 0.75
+
+
+def _position_window_warnings(config, action, label: str, low: float, high: float) -> list[str]:
+    """Warnings about a position action's REACHABLE command range.
+
+    Position commands are offsets from the nominal stance and are clamped into the
+    joint's limits (`rl/action_mapping`), so the window itself is *supposed* to
+    straddle zero and has no reason to sit inside those limits. Comparing the two
+    directly — which this used to do — flags every correctly-calibrated legged robot:
+    GO1's four calf joints have limits [-2.818, -0.888] and a correct +-0.6 window.
+    What actually matters is how much travel survives the clamp.
+    """
+    name = action.joint_name or ""
+    configured = float((config.initial_joint_pose or {}).get(name, 0.0))
+    # Mirror isaac_train._joint_positions, which clamps the stance into the limits.
+    nominal = min(max(configured, low), high)
+    out: list[str] = []
+    if not (low <= configured <= high):
+        out.append(
+            f"Action {label}: stance {configured} is outside URDF limits [{low}, {high}] — "
+            f"clamped to {nominal:.3f}. Set initial_joint_pose for this joint."
+        )
+    window = action.scale_high - action.scale_low
+    usable = min(high, nominal + action.scale_high) - max(low, nominal + action.scale_low)
+    if window > 0 and usable < _MIN_USABLE_WINDOW_FRACTION * window:
+        out.append(
+            f"Action {label}: stance {nominal:.3f} sits near a limit, so only "
+            f"{max(0.0, usable):.3f} of its {window:.3f} rad window is reachable — the "
+            "policy has little travel on this joint. Set initial_joint_pose to a real "
+            "standing angle."
+        )
+    return out
+
+
+def _compile_or_raise(expr: str, what: str, allowed: set[str]) -> None:
+    """Reject an uncompilable expression as a patch error, keeping ExprError's text —
+    it already names every available state entry and function, which is what lets the
+    agent fix it inside the same turn instead of shipping a broken run."""
+    from backend.rl.reward_expr import ExprError, compile_expr
+
+    try:
+        compile_expr(expr, allowed)
+    except ExprError as exc:
+        raise ValueError(f"{what}: {exc}") from exc
+
+
 def _contact_links(urdf_path: str | None) -> list[str]:
     """Ground-reaching limbs of this robot, or [] if it has none (a fixed-base arm)
     or the URDF cannot be read. Decides whether the contact vocabulary exists."""
@@ -220,6 +270,15 @@ class ConfigService:
                 entry["weight"] = float(reward_patch["weight"])
             if "params" in reward_patch and isinstance(reward_patch["params"], dict):
                 entry["params"] = {**entry.get("params", {}), **reward_patch["params"]}
+            merged = _expr_of(entry)
+            if merged and entry.get("enabled", True):
+                # Compile now, so an expression that cannot run is never SAVED. The
+                # observation guard above has always worked this way; rewards did not,
+                # and the gap was visible: an agent authored
+                # `norm(base_linear_velocity)`, the term was stored enabled-and-broken,
+                # and the failure only surfaced later in validate() — by which point it
+                # had already told the user the reward was configured.
+                _compile_or_raise(merged, f"Reward {key!r}", self._allowed_names(config))
 
         if isinstance(patch.get("terminations"), dict):
             unknown = set(patch["terminations"]) - SUPPORTED_TERMINATION_KEYS
@@ -232,6 +291,11 @@ class ConfigService:
                     + "."
                 )
             data["terminations"] = {**data["terminations"], **patch["terminations"]}
+            term_expr = data["terminations"].get("expr")
+            if isinstance(term_expr, str) and term_expr.strip():
+                _compile_or_raise(
+                    term_expr.strip(), "terminations.expr", self._allowed_names(config)
+                )
 
         if isinstance(patch.get("domain_randomization"), dict):
             data["domain_randomization"] = {
@@ -240,6 +304,15 @@ class ConfigService:
             }
 
         return EnvConfig.model_validate(data)
+
+    def _allowed_names(self, config: EnvConfig) -> set[str]:
+        """The names this robot's expressions may reference. Contacts exist iff it has
+        ground-reaching limbs — the same test the Isaac env makes."""
+        from backend.rl.state_vocab import allowed_names
+
+        return allowed_names(
+            contacts=bool(_contact_links(config.urdf_path)), commands=False
+        )
 
     def validate(self, config: EnvConfig, sim) -> list[str]:
         """Return human-readable problems that would break a training run."""
@@ -426,10 +499,8 @@ class ConfigService:
                     warnings.append(
                         f"Action {label}: URDF has missing/unusual position limits; review the physical command range."
                     )
-                elif action.scale_low < low or action.scale_high > high:
-                    warnings.append(
-                        f"Action {label}: command range [{action.scale_low}, {action.scale_high}] exceeds URDF limits [{low}, {high}]."
-                    )
+                else:
+                    warnings.extend(_position_window_warnings(config, action, label, low, high))
             elif action.control_mode == "velocity":
                 if max_velocity is None or max_velocity <= 0:
                     warnings.append(

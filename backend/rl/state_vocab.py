@@ -161,7 +161,28 @@ def describe(
         header.append(
             "  (contact state unavailable: this robot has no ground-reaching limbs)"
         )
-    return "\n".join(header + lines)
+    return "\n".join(header + lines + [OBSERVATION_NAME_TRAP])
+
+
+#: The mistake this prevents was observed, not imagined: an agent authored
+#: ``base_angular_velocity[2]`` and ``norm(base_linear_velocity)``, using the
+#: OBSERVATION source names — which it had also just been given, for the observation
+#: list — inside expressions. Both were rejected, but the run was set up wrong and the
+#: agent reported success. The names are conceptually the same quantities under
+#: different spellings, so listing the vocabulary alone is not enough; the mapping has
+#: to be explicit.
+OBSERVATION_NAME_TRAP = """
+CAREFUL — these are NOT the observation key names. Observation keys name what the
+policy senses; the names above are what an expression may reference. The overlap is
+where mistakes happen:
+  base_linear_velocity  -> base_vx, base_vy, base_vz (or speed)
+  base_angular_velocity -> roll_rate, pitch_rate, yaw_rate
+  base_orientation      -> upright
+  base_position         -> base_x, base_y, base_z (or height_ratio)
+  joint_positions       -> joint_pos      joint_velocities -> joint_vel
+There is also NO indexing or attribute access: `base_angular_velocity[2]` does not
+parse (subscripts are not in the grammar) — write `yaw_rate`. Per-element entries are
+reduced with mean()/sum()/max()/norm(), never with a subscript.""".strip()
 
 
 #: Scalar values per sample profile. The profiles are not physics — they are the

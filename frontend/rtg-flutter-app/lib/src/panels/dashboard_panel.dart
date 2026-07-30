@@ -223,7 +223,7 @@ class DashboardPanel extends ConsumerWidget {
         const SizedBox(height: 14),
         if (hasRobot) ...[
           Text(
-            'Tell the assistant what to learn:',
+            'Tell the assistant what to learn — anything, not just these:',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -235,11 +235,15 @@ class DashboardPanel extends ConsumerWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
+              // Examples, not a menu: the assistant writes the reward as an
+              // expression, so any goal works. These are picked to show that —
+              // 'gallop' and 'sit, then stand, then sit again' were both
+              // impossible under the old four-template classifier.
               for (final goal in const [
-                'walk',
-                'balance',
-                'stand',
-                'reach a target',
+                'walk forward',
+                'gallop as fast as it can',
+                'balance on the spot',
+                'sit, then stand, then sit again',
               ])
                 ActionChip(
                   avatar: Icon(

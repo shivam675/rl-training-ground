@@ -123,7 +123,9 @@ def test_validation_warnings_are_non_blocking():
     )
     service = ConfigService(Path("unused"))
     assert service.validate(config, FakeSim()) == []
-    assert any("exceeds URDF limits" in w for w in service.warnings(config, FakeSim()))
+    # A +-2.0 window on a +-1.0 joint: half of it is clamped away, so the joint has
+    # less travel than the action space implies. Worth flagging, never blocking.
+    assert any("is reachable" in w for w in service.warnings(config, FakeSim()))
 
 
 def test_patch_rejects_unsupported_termination_keys():

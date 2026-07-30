@@ -62,6 +62,61 @@ def test_observation_the_training_lane_cannot_use_blocks_training(client):
     assert any("contact_points" in p and "cannot be used for training" in p for p in problems)
 
 
+@pytest.mark.parametrize(
+    "expr,needle",
+    [
+        # Both observed from a real GO1 rotation goal: the agent reached for the
+        # OBSERVATION key names inside an expression. Neither term could ever run, yet
+        # both were saved enabled and the agent reported the reward configured.
+        ("base_angular_velocity[2]", "Subscript"),
+        ("norm(base_linear_velocity)", "base_linear_velocity"),
+    ],
+)
+def test_an_uncompilable_expression_is_rejected_at_patch_time(client, expr, needle):
+    config = config_service.current_or_default(sim)
+    with pytest.raises(ValueError) as excinfo:
+        config_service.apply_patch(
+            config,
+            {"rewards": [{"key": "rotation_reward", "enabled": True, "params": {"expr": expr}}]},
+        )
+    message = str(excinfo.value)
+    assert needle in message
+    # The error carries the real vocabulary, which is what lets the agent self-correct.
+    assert "yaw_rate" in message
+
+
+def test_a_disabled_broken_expression_can_still_be_patched(client):
+    """Otherwise a config that already holds a bad term could not be repaired: the
+    patch that turns it off would be rejected for the very expression it disables."""
+    config = config_service.current_or_default(sim)
+    updated = config_service.apply_patch(
+        config,
+        {
+            "rewards": [
+                {"key": "broken", "enabled": False, "params": {"expr": "nonsense_name"}}
+            ]
+        },
+    )
+    assert any(r.key == "broken" and not r.enabled for r in updated.rewards)
+
+
+def test_a_bad_termination_expression_is_rejected_at_patch_time(client):
+    config = config_service.current_or_default(sim)
+    with pytest.raises(ValueError, match="terminations.expr"):
+        config_service.apply_patch(config, {"terminations": {"expr": "base_orientation < 0.2"}})
+
+
+def test_the_vocabulary_maps_observation_names_onto_expression_names():
+    """The two spellings are the same physical quantities, so the vocabulary listing
+    alone did not stop the confusion — the mapping has to be spelled out."""
+    from backend.rl.state_vocab import describe
+
+    text = describe(joint_names=["a"], contact_links=["f"], action_names=["a"])
+    assert "NOT the observation key names" in text
+    assert "base_angular_velocity -> roll_rate, pitch_rate, yaw_rate" in text
+    assert "does not\nparse" in text  # the no-subscript rule
+
+
 def test_a_bare_reward_key_is_blocked_with_the_fix_attached(client):
     """`custom_python` used to be accepted here and warned about. It is now rejected
     at patch time along with every other bare key: named reward components are gone,

@@ -186,6 +186,49 @@ def test_position_action_windows_straddle_zero_so_the_stance_is_reachable():
     assert _position_action_range({}) == pytest.approx((-0.6, 0.6))
 
 
+def test_a_calibrated_position_window_does_not_warn_about_urdf_limits(tmp_path):
+    """GO1's real numbers. Position actions are OFFSETS from the stance and are
+    clamped into the joint limits, so a correct window straddles zero and sits well
+    outside those limits — the old check compared the two directly and flagged all
+    four calf joints on a perfectly calibrated robot."""
+    from backend.models import ActionSelection
+
+    class FakeSim:
+        def actions(self):
+            return {"actions": []}
+
+        def robot_info(self):
+            return {"path": "go1.urdf"}
+
+    calves = [
+        ActionSelection(
+            joint_index=index,
+            joint_name=f"{leg}_calf_joint",
+            enabled=True,
+            control_mode="position",
+            scale_low=-0.6,
+            scale_high=0.6,
+            lower_limit=-2.818,
+            upper_limit=-0.888,
+        )
+        for index, leg in enumerate(("FR", "FL", "RR", "RL"))
+    ]
+    service = ConfigService(tmp_path)
+    calibrated = EnvConfig(
+        urdf_path="go1.urdf",
+        actions=calves,
+        initial_joint_pose={a.joint_name: -1.5 for a in calves},
+    )
+    assert [w for w in service.warnings(calibrated, FakeSim()) if "calf" in w] == []
+
+    # Without a stance the calf clamps to -0.888, pinned at its limit: half the
+    # window is dead and the leg is the straight-legged splay. THAT is worth saying.
+    splayed = EnvConfig(urdf_path="go1.urdf", actions=calves)
+    flagged = [w for w in service.warnings(splayed, FakeSim()) if "calf" in w]
+    assert len(flagged) == 8, flagged  # 4 joints x (stance out of range, little travel)
+    assert any("initial_joint_pose" in w for w in flagged)
+
+
 @pytest.mark.parametrize("goal", ["walk", "balance", "gallop", "sit_stand_sit"])
 def test_reward_priors_compile_and_survive_their_own_audit(goal):
     """The priors are what the agent authors AGAINST, so they must be exemplary.
