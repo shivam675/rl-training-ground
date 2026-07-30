@@ -183,27 +183,6 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        Text(
-          'Accent color',
-          style: TextStyle(
-            fontSize: 13,
-            color: scheme.onSurface.withValues(alpha: 0.75),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (var i = 0; i < accentPresets.length; i++)
-              _AccentSwatch(
-                preset: accentPresets[i],
-                selected: theme.accentIndex == i,
-                onTap: () => theme.setAccent(i),
-              ),
-          ],
-        ),
         const SizedBox(height: 18),
         const SectionHeader('Viewport'),
         Text(
@@ -682,77 +661,6 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       'ollama': _ollamaPayload(),
       'openai': _openaiPayload(),
     });
-  }
-}
-
-class _AccentSwatch extends StatelessWidget {
-  const _AccentSwatch({
-    required this.preset,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final AccentPreset preset;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: preset.name,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            color: selected
-                ? preset.seed.withValues(alpha: 0.14)
-                : Colors.transparent,
-            border: Border.all(
-              color: selected ? preset.seed : scheme.outlineVariant,
-              width: selected ? 1.6 : 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: preset.seed,
-                  boxShadow: selected
-                      ? [
-                          BoxShadow(
-                            color: preset.seed.withValues(alpha: 0.5),
-                            blurRadius: 8,
-                          ),
-                        ]
-                      : null,
-                ),
-                child: selected
-                    ? const Icon(Icons.check, size: 12, color: Colors.white)
-                    : null,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                preset.name,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

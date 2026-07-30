@@ -465,7 +465,9 @@ class _Header extends ConsumerWidget {
         children: [
           const Text(
             'EasyRTG',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            // w700 is the heaviest Geist weight bundled in google_fonts/ —
+            // anything above it has no asset and falls back.
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           ),
           if (state.currentProjectName != null) ...[
             const SizedBox(width: 8),

@@ -1,0 +1,332 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>EasyRTG — UI refactor mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#F4F5F7; --surface:#FFFFFF; --sunken:#F1F2F4;
+  --line:#E7E9EC; --line2:#DCE0E4;
+  --ink:#15181C; --txt:#2B3138; --txt2:#69717B; --txt3:#9AA1AA;
+  --ok:#1F9D57; --warn:#B7791F; --danger:#D23B30;
+  --sh-sm:0 1px 2px rgba(16,20,26,.05);
+  --sh-md:0 1px 2px rgba(16,20,26,.04), 0 8px 24px -10px rgba(16,20,26,.14);
+  --sh-lg:0 1px 2px rgba(16,20,26,.04), 0 18px 44px -16px rgba(16,20,26,.18);
+  --dots:radial-gradient(#D6DADF 1px, transparent 1px);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#8f959c;font-family:Geist,Inter,'Segoe UI',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.screen{width:1440px;height:900px;margin:0 auto;overflow:hidden}
+.app{width:1440px;height:900px;background:var(--canvas);display:flex;flex-direction:column;color:var(--txt);font-size:13.5px}
+.mono{font-family:'Geist Mono',monospace}
+
+/* ---------- title bar ---------- */
+.tb{height:52px;flex:0 0 52px;background:var(--surface);display:flex;align-items:center;padding:0 16px;gap:12px;box-shadow:var(--sh-sm);position:relative;z-index:5}
+.logo{width:28px;height:28px;border-radius:9px;background:var(--ink);display:grid;place-items:center;color:#fff;font-size:13px;font-weight:700}
+.brand{font-size:14.5px;font-weight:650;color:var(--ink);letter-spacing:-.015em}
+.sep{width:1px;height:18px;background:var(--line2)}
+.proj{display:flex;align-items:center;gap:7px;padding:5px 11px 5px 9px;border-radius:999px;background:var(--sunken);font-size:12.5px;font-weight:550;color:var(--txt)}
+.proj .caret{color:var(--txt3);font-size:10px}
+.tb .spacer{flex:1}
+.pill-status{display:flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;background:var(--sunken);font-size:12px;font-weight:550;color:var(--txt2)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+.iconbtn{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:var(--txt2);font-size:15px}
+.btn-ink{display:flex;align-items:center;gap:8px;height:34px;padding:0 16px;border-radius:999px;background:var(--ink);color:#fff;font-size:13px;font-weight:600;box-shadow:var(--sh-sm)}
+.btn-ink.disabled{background:var(--sunken);color:var(--txt3);box-shadow:none}
+.btn-out{height:34px;padding:0 16px;border-radius:999px;font-size:13px;font-weight:550;color:var(--txt);background:var(--surface);display:flex;align-items:center;gap:7px;box-shadow:var(--sh-sm)}
+.wincontrols{display:flex;margin-left:10px}
+.wincontrols div{width:44px;height:52px;display:grid;place-items:center;color:var(--txt2);font-size:11px}
+
+/* ---------- body split ---------- */
+.body{flex:1;display:flex;min-height:0}
+.chat{width:452px;flex:0 0 452px;background:var(--surface);display:flex;flex-direction:column;min-height:0;position:relative;z-index:3;box-shadow:6px 0 18px -14px rgba(16,20,26,.35)}
+.canvas{flex:1;display:flex;flex-direction:column;min-height:0;padding:16px 24px 24px;background-color:var(--canvas);background-image:var(--dots);background-size:16px 16px}
+
+/* ---------- chat ---------- */
+.chat-head{height:46px;flex:0 0 46px;display:flex;align-items:center;gap:9px;padding:0 14px 0 18px}
+.chat-head .t{font-size:13px;font-weight:650;color:var(--ink)}
+.chat-head .m{font-size:11.5px;color:var(--txt3)}
+.msgs{flex:1;overflow:hidden;padding:6px 18px 10px;display:flex;flex-direction:column;gap:18px}
+.m-user{align-self:flex-end;max-width:82%;background:var(--sunken);border-radius:14px 14px 4px 14px;padding:9px 13px;font-size:13.5px;line-height:1.45}
+.m-bot{max-width:100%;font-size:13.5px;line-height:1.55;color:var(--txt)}
+.m-bot p+p{margin-top:9px}
+.m-bot b{font-weight:600;color:var(--ink)}
+.tool{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;background:#FAFBFC;font-size:12px;color:var(--txt2);margin-top:10px;box-shadow:var(--sh-sm)}
+.tool .tick{width:16px;height:16px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:9px;font-weight:700}
+.tool code{font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--ink)}
+.tool .grow{flex:1}
+.tool .undo{font-size:11.5px;color:var(--txt3)}
+.sugg{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chipx{padding:7px 13px;border-radius:999px;font-size:12.5px;color:var(--txt);background:var(--surface);box-shadow:var(--sh-sm)}
+.composer{flex:0 0 auto;padding:12px 16px 16px}
+.cbox{border-radius:14px;background:var(--surface);padding:12px 12px 9px;box-shadow:var(--sh-md)}
+.cbox .ph{font-size:13.5px;color:var(--txt3);min-height:19px}
+.crow{display:flex;align-items:center;margin-top:10px;gap:6px}
+.crow .grow{flex:1}
+.mini{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--txt3);font-size:14px}
+.send{width:30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:13px}
+.send.off{background:var(--sunken);color:var(--txt3)}
+
+/* ---------- canvas ---------- */
+.ctool{height:38px;flex:0 0 38px;display:flex;align-items:center;gap:10px}
+.seg{display:flex;gap:2px;background:var(--surface);border-radius:11px;padding:3px;box-shadow:var(--sh-sm)}
+.seg span{padding:5px 13px;border-radius:8px;font-size:12.5px;font-weight:550;color:var(--txt2)}
+.seg span.on{background:var(--ink);color:#fff;font-weight:600}
+.ctool .grow{flex:1}
+.card{flex:1;background:var(--surface);border-radius:14px;min-height:0;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--sh-lg)}
+.chead{height:54px;flex:0 0 54px;display:flex;align-items:center;gap:11px;padding:0 20px;background:#FCFCFD;box-shadow:0 1px 0 rgba(16,20,26,.05)}
+.chead h2{font-size:15px;font-weight:620;color:var(--ink);letter-spacing:-.015em}
+.chead .sub{font-size:12px;color:var(--txt3)}
+.cbody{flex:1;overflow:hidden;padding:20px 22px}
+
+.grp{margin-bottom:20px}
+.grp>h3{font-size:11px;font-weight:650;letter-spacing:.09em;text-transform:uppercase;color:var(--txt3);margin-bottom:8px}
+.row{display:flex;align-items:center;gap:12px;padding:11px 2px}
+.row+.row{box-shadow:inset 0 1px 0 #F0F1F3}
+.row .nm{font-size:13px;font-weight:550;color:var(--ink);width:150px;flex:0 0 150px}
+.row .ex{flex:1;font-family:'Geist Mono',monospace;font-size:12px;color:var(--txt2);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.row .w{font-family:'Geist Mono',monospace;font-size:12.5px;font-weight:500;color:var(--ink);width:52px;text-align:right}
+.row .sw{width:34px;height:20px;border-radius:999px;background:var(--ink);position:relative;flex:0 0 34px}
+.row .sw::after{content:'';position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.verdict{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ok);padding:0 0 9px 162px}
+
+.stats{display:flex;gap:12px;margin-bottom:18px}
+.stat{flex:1;border-radius:12px;padding:14px 16px;background:#FBFCFC;box-shadow:var(--sh-sm)}
+.stat .k{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--txt3)}
+.stat .v{font-size:25px;font-weight:620;color:var(--ink);letter-spacing:-.025em;margin-top:6px;font-variant-numeric:tabular-nums}
+.stat .d{font-size:11.5px;color:var(--txt2);margin-top:3px}
+.prog{height:4px;border-radius:999px;background:#E9EBEE;overflow:hidden;margin:2px 0 18px}
+.prog i{display:block;height:100%;width:41%;background:var(--ink);border-radius:999px}
+.chartwrap{border-radius:12px;padding:16px 18px 10px;background:#FBFCFC;box-shadow:var(--sh-sm)}
+.chartwrap h4{font-size:12.5px;font-weight:620;color:var(--ink);margin-bottom:12px}
+.endlbl{font-family:'Geist Mono',monospace;font-size:10.5px}
+
+/* empty state */
+.empty{flex:1;display:grid;place-items:center}
+.drop{width:520px;border:1.5px dashed var(--line2);border-radius:16px;padding:44px 40px;text-align:center;background:#FBFCFC}
+.drop .ic{width:52px;height:52px;border-radius:16px;background:var(--sunken);margin:0 auto 18px;display:grid;place-items:center;font-size:22px}
+.drop h3{font-size:17px;font-weight:620;color:var(--ink);letter-spacing:-.015em}
+.drop p{font-size:13px;color:var(--txt2);margin-top:8px;line-height:1.5}
+.drop .acts{display:flex;gap:10px;justify-content:center;margin-top:22px}
+
+/* steps */
+.steps{display:flex;align-items:center;margin-bottom:18px}
+.step{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--txt3)}
+.step .n{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-size:10.5px;font-weight:650}
+.step.done{color:var(--txt2)}
+.step.done .n{background:var(--ink);border-color:var(--ink);color:#fff}
+.step.now{color:var(--ink);font-weight:600}
+.step.now .n{border-color:var(--ink);color:var(--ink)}
+.steps .bar{width:40px;height:1px;background:var(--line2);margin:0 13px;flex:0 0 40px}
+</style>
+</head>
+<body>
+
+<!-- =============== A : first run =============== -->
+<div class="screen"><div class="app">
+  <div class="tb">
+    <div class="logo">R</div><div class="brand">EasyRTG</div>
+    <div class="sep"></div>
+    <div class="proj">Untitled <span class="caret">▾</span></div>
+    <div class="spacer"></div>
+    <div class="pill-status"><i class="dot"></i> Backend ready</div>
+    <div class="iconbtn">⌕</div><div class="iconbtn">◔</div>
+    <div style="width:6px"></div>
+    <div class="btn-ink disabled">Train</div>
+  </div>
+  <div class="body">
+    <div class="chat">
+      <div class="chat-head"><div class="t">Assistant</div><i class="dot"></i><div class="m">connected · local</div><div style="flex:1"></div><div class="iconbtn">⋯</div></div>
+      <div class="msgs">
+        <div class="m-bot">
+          <p>Load a robot and tell me what it should learn. I'll inspect its structure, pick the joints to actuate, and write the reward — you review every change before it's saved.</p>
+          <div class="sugg">
+            <div class="chipx">Load a URDF…</div>
+            <div class="chipx">Try Unitree A1</div>
+            <div class="chipx">What can you do?</div>
+          </div>
+        </div>
+      </div>
+      <div class="composer"><div class="cbox">
+        <div class="ph">Describe the behaviour you want…</div>
+        <div class="crow"><div class="mini">＋</div><div class="mini">◎</div><div class="grow"></div><div class="send off">↑</div></div>
+      </div></div>
+    </div>
+    <div class="canvas">
+      <div class="ctool">
+        <div class="seg"><span class="on">Robot</span><span>Environment</span><span>Reward</span><span>Training</span><span>3D&nbsp;View</span></div>
+        <div class="grow"></div>
+        <div class="iconbtn">↻</div><div class="iconbtn">⤢</div>
+      </div>
+      <div class="card">
+        <div class="empty"><div class="drop">
+          <div class="ic">🦿</div>
+          <h3>Drop a URDF here</h3>
+          <p>Meshes and <span class="mono" style="font-size:12px">package://</span> paths are resolved automatically.<br>Or start from a robot that's already set up.</p>
+          <div class="acts"><div class="btn-ink">Browse files</div><div class="btn-out">⚡ Unitree A1</div><div class="btn-out">R2D2</div></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<!-- =============== B : environment authored =============== -->
+<div class="screen"><div class="app">
+  <div class="tb">
+    <div class="logo">R</div><div class="brand">EasyRTG</div>
+    <div class="sep"></div>
+    <div class="proj">a1-gallop <span class="caret">▾</span></div>
+    <div class="spacer"></div>
+    <div class="pill-status"><i class="dot"></i> A1 · 12 joints</div>
+    <div class="iconbtn">⌕</div><div class="iconbtn">◔</div>
+    <div style="width:6px"></div>
+    <div class="btn-ink">▶ Train</div>
+  </div>
+  <div class="body">
+    <div class="chat">
+      <div class="chat-head"><div class="t">Assistant</div><i class="dot"></i><div class="m">connected · local</div><div style="flex:1"></div><div class="iconbtn">⋯</div></div>
+      <div class="msgs">
+        <div class="m-user">make it gallop as fast as it can</div>
+        <div class="m-bot">
+          <p>A1 has four ground-reaching limbs, so a flight phase is expressible. I calibrated first, then wrote the reward.</p>
+          <div class="tool"><span class="tick">✓</span><code>apply_behavior_goal</code><span class="grow"></span><span class="undo">12 joints · 0.31 m</span></div>
+          <div class="tool"><span class="tick">✓</span><code>patch_env_config</code><span class="grow"></span><span class="undo">Undo</span></div>
+          <p style="margin-top:12px">Four terms. I dropped the walk penalties on purpose — <b>vertical_velocity</b> and <b>body_rate</b> punish exactly the oscillation a gallop is made of.</p>
+          <p><b>flight_phase</b> pays only when every foot is off the ground. Audit is clean: no term can outrun the +2.5 positive ceiling.</p>
+        </div>
+      </div>
+      <div class="composer"><div class="cbox">
+        <div class="ph">Ask a follow-up, or say "train it"…</div>
+        <div class="crow"><div class="mini">＋</div><div class="mini">◎</div><div class="grow"></div><div class="send">↑</div></div>
+      </div></div>
+    </div>
+    <div class="canvas">
+      <div class="ctool">
+        <div class="seg"><span>Robot</span><span>Environment</span><span class="on">Reward</span><span>Training</span><span>3D&nbsp;View</span></div>
+        <div class="grow"></div>
+        <div class="iconbtn">↻</div><div class="iconbtn">⤢</div>
+      </div>
+      <div class="card">
+        <div class="chead">
+          <h2>Reward</h2><div class="sub">4 terms · audit clean</div>
+          <div style="flex:1"></div>
+          <div class="btn-out">＋ Add term</div>
+        </div>
+        <div class="cbody">
+          <div class="steps">
+            <div class="step done"><span class="n">✓</span>Robot</div><div class="bar"></div>
+            <div class="step done"><span class="n">✓</span>Observations</div><div class="bar"></div>
+            <div class="step done"><span class="n">✓</span>Actions</div><div class="bar"></div>
+            <div class="step now"><span class="n">4</span>Reward</div><div class="bar"></div>
+            <div class="step"><span class="n">5</span>Train</div>
+          </div>
+          <div class="grp">
+            <h3>Objective</h3>
+            <div class="row"><div class="nm">forward_velocity</div><div class="ex">base_vx</div><div class="w">+1.50</div><div class="sw"></div></div>
+            <div class="row"><div class="nm">flight_phase</div><div class="ex">1 - max(contact)</div><div class="w">+0.80</div><div class="sw"></div></div>
+            <div class="verdict">✓ bounded 0–1 · DOF-independent</div>
+            <div class="row"><div class="nm">stay_alive</div><div class="ex">1.0</div><div class="w">+0.50</div><div class="sw"></div></div>
+          </div>
+          <div class="grp">
+            <h3>Penalties</h3>
+            <div class="row"><div class="nm">joint_effort</div><div class="ex">mean(abs(joint_torque))</div><div class="w">−0.02</div><div class="sw"></div></div>
+            <div class="verdict">✓ mean, not sum — same cost on a 12-DOF quadruped and a 51-DOF humanoid</div>
+          </div>
+          <div class="grp">
+            <h3>Termination</h3>
+            <div class="row"><div class="nm">falls over</div><div class="ex">height_ratio &lt; 0.35 or upright &lt; 0.2</div><div class="w"></div><div class="sw"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<!-- =============== C : training live =============== -->
+<div class="screen"><div class="app">
+  <div class="tb">
+    <div class="logo">R</div><div class="brand">EasyRTG</div>
+    <div class="sep"></div>
+    <div class="proj">a1-gallop <span class="caret">▾</span></div>
+    <div class="spacer"></div>
+    <div class="pill-status"><i class="dot"></i> Isaac · 4096 envs · 14.8k steps/s</div>
+    <div class="iconbtn">⌕</div><div class="iconbtn">◔</div>
+    <div style="width:6px"></div>
+    <div class="btn-out">■ Stop</div>
+  </div>
+  <div class="body">
+    <div class="chat">
+      <div class="chat-head"><div class="t">Assistant</div><i class="dot"></i><div class="m">connected · local</div><div style="flex:1"></div><div class="iconbtn">⋯</div></div>
+      <div class="msgs">
+        <div class="m-user">train it</div>
+        <div class="m-bot">
+          <div class="tool"><span class="tick">✓</span><code>start_training</code><span class="grow"></span><span class="undo">isaac · 8M steps</span></div>
+          <p style="margin-top:12px">Running. I'll flag it if a term starts dominating — that's how the last policy collapsed to 13-step episodes.</p>
+        </div>
+        <div class="m-bot" style="color:var(--txt2);font-size:12.5px;box-shadow:inset 2px 0 0 var(--line2);padding-left:12px">
+          <b style="color:var(--txt)">3.3M steps</b> — airborne fraction is up to 25% from 7.8% at reset. It's finding the flight phase rather than trotting fast.
+        </div>
+      </div>
+      <div class="composer"><div class="cbox">
+        <div class="ph">Ask about the run…</div>
+        <div class="crow"><div class="mini">＋</div><div class="mini">◎</div><div class="grow"></div><div class="send">↑</div></div>
+      </div></div>
+    </div>
+    <div class="canvas">
+      <div class="ctool">
+        <div class="seg"><span>Robot</span><span>Environment</span><span>Reward</span><span class="on">Training</span><span>3D&nbsp;View</span></div>
+        <div class="grow"></div>
+        <div class="iconbtn">↻</div><div class="iconbtn">⤢</div>
+      </div>
+      <div class="card">
+        <div class="chead">
+          <h2>Training</h2><div class="sub">run 20260730-1142 · PPO</div>
+          <div style="flex:1"></div>
+          <div class="btn-out">Watch live</div>
+        </div>
+        <div class="cbody">
+          <div class="stats">
+            <div class="stat"><div class="k">Steps</div><div class="v">3.31M</div><div class="d">of 8.00M · ~24 min left</div></div>
+            <div class="stat"><div class="k">Mean reward</div><div class="v">1.94</div><div class="d">+0.41 over 500k</div></div>
+            <div class="stat"><div class="k">Episode length</div><div class="v">411</div><div class="d">steps · ceiling 500</div></div>
+            <div class="stat"><div class="k">Airborne</div><div class="v">25%</div><div class="d">from 7.8% untrained</div></div>
+          </div>
+          <div class="prog"><i></i></div>
+          <div class="chartwrap">
+            <h4>Reward by term</h4>
+            <svg width="100%" height="216" viewBox="0 0 1000 216">
+              <defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#15181C" stop-opacity=".13"/><stop offset="100%" stop-color="#15181C" stop-opacity="0"/></linearGradient></defs>
+              <g stroke="#EDEFF1" stroke-width="1">
+                <line x1="0" y1="24" x2="820" y2="24"/><line x1="0" y1="72" x2="820" y2="72"/>
+                <line x1="0" y1="120" x2="820" y2="120"/><line x1="0" y1="168" x2="820" y2="168"/>
+                <line x1="0" y1="196" x2="820" y2="196"/>
+              </g>
+              <path d="M0,176 L100,158 L205,137 L310,120 L410,98 L510,84 L615,66 L720,53 L820,42 L820,196 L0,196 Z" fill="url(#ga)"/>
+              <polyline fill="none" stroke="#C3C8CE" stroke-width="1.7" points="0,189 100,186 205,188 310,184 410,185 510,182 615,183 720,181 820,182"/>
+              <polyline fill="none" stroke="#9AA1AA" stroke-width="1.7" stroke-dasharray="4 3" points="0,193 100,189 205,181 310,169 410,153 510,140 615,126 720,117 820,111"/>
+              <polyline fill="none" stroke="#69717B" stroke-width="1.7" stroke-dasharray="4 3" points="0,183 100,171 205,155 310,143 410,128 510,119 615,106 720,99 820,93"/>
+              <polyline fill="none" stroke="#15181C" stroke-width="2.4" points="0,176 100,158 205,137 310,120 410,98 510,84 615,66 720,53 820,42"/>
+              <circle cx="820" cy="42" r="3.4" fill="#15181C"/>
+              <circle cx="820" cy="93" r="2.6" fill="#69717B"/>
+              <circle cx="820" cy="111" r="2.6" fill="#9AA1AA"/>
+              <circle cx="820" cy="182" r="2.6" fill="#C3C8CE"/>
+              <g font-family="Geist Mono, monospace" font-size="10.5">
+                <text x="834" y="45" fill="#15181C" font-weight="500">total <tspan fill="#69717B">1.94</tspan></text>
+                <text x="834" y="96" fill="#69717B">forward_velocity <tspan fill="#9AA1AA">1.21</tspan></text>
+                <text x="834" y="114" fill="#8A929C">flight_phase <tspan fill="#9AA1AA">0.62</tspan></text>
+                <text x="834" y="185" fill="#A8AEB5">joint_effort <tspan fill="#9AA1AA">−0.19</tspan></text>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+</body>
+</html>

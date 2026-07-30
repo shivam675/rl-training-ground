@@ -1,11 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'package:rtg_flutter_app/main.dart';
 import 'package:rtg_flutter_app/src/api_client.dart';
 import 'package:rtg_flutter_app/src/app_state.dart';
 import 'package:rtg_flutter_app/src/panels/reward_panel.dart';
+import 'package:rtg_flutter_app/src/theme/app_theme.dart';
 
 class EmptyApi extends BackendApi {
   @override
@@ -42,6 +46,56 @@ class TelemetryApi extends EmptyApi {
 }
 
 void main() {
+  // buildAppTheme() reaches GoogleFonts, which reaches the asset bundle, which
+  // needs a binding. The testWidgets below happen to initialise one at
+  // declaration time — don't rely on that staying true.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  // main.dart sets GoogleFonts.config.allowRuntimeFetching = false, so a font
+  // the bundle doesn't carry is NOT fetched and NOT an error — it degrades to
+  // the platform default behind a debugPrint nobody reads. The lookup matches
+  // on an exact '<Family>-<Weight>' filename suffix (google_fonts_variant.dart
+  // maps w600 -> 'SemiBold'), so a single typo silently un-brands the app.
+  // These two tests are the only thing standing between that and a release.
+  test('every weight the app renders has a bundled asset', () {
+    const required = [
+      'Geist-Regular', // w400, body
+      'Geist-Medium', // w500
+      'Geist-SemiBold', // w600
+      'Geist-Bold', // w700, the heaviest weight any widget asks for
+      'GeistMono-Regular',
+      'GeistMono-Bold',
+    ];
+    for (final name in required) {
+      expect(
+        File('google_fonts/$name.ttf').existsSync(),
+        isTrue,
+        reason:
+            'google_fonts/$name.ttf is missing — google_fonts will fall back '
+            'to the platform default without failing.',
+      );
+    }
+  });
+
+  test('the theme and monoStyle resolve to Geist', () {
+    final theme = buildAppTheme(brightness: Brightness.light);
+    expect(theme.textTheme.bodyMedium?.fontFamily, contains('Geist'));
+    expect(GoogleFonts.geistMono().fontFamily, contains('GeistMono'));
+    // Ink-only accent (D4): primary is a near-black neutral, never a hue. If
+    // someone reintroduces a tinted accent, the semantic four stop being the
+    // only saturated colour in the app and audit verdicts lose their punch.
+    final primary = theme.colorScheme.primary;
+    expect(primary.computeLuminance(), lessThan(0.05), reason: 'not near-black');
+    // Ink is a slightly cool near-black and sits at 0.25; any real accent hue
+    // is far higher (the rejected teal is 0.84, cobalt 0.81). 0.5 splits them
+    // with margin rather than sitting on ink's exact value.
+    expect(
+      HSVColor.fromColor(primary).saturation,
+      lessThan(0.5),
+      reason: 'primary picked up a hue',
+    );
+  });
+
   testWidgets('telemetry keeps a bounded window without resetting its cursor', (
     tester,
   ) async {

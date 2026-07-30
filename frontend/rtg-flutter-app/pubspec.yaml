@@ -64,8 +64,10 @@ flutter:
   uses-material-design: true
 
   assets:
-    # Bundled Inter + JetBrains Mono so typography works fully offline;
-    # google_fonts checks this folder before fetching from the network.
+    # Bundled Geist + Geist Mono so typography works fully offline;
+    # google_fonts checks this folder before fetching from the network. Files
+    # must be named <Family>-<Weight>.ttf (Geist-SemiBold.ttf, GeistMono-Bold
+    # .ttf) or the lookup misses and silently falls back to a network fetch.
     - google_fonts/
 
   # An image asset can refer to one or more resolution-specific "variants", see

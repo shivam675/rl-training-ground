@@ -63,14 +63,8 @@ class _EasyRtgAppState extends ConsumerState<EasyRtgApp> {
       title: 'EasyRTG',
       debugShowCheckedModeBanner: false,
       themeMode: theme.mode,
-      theme: buildAppTheme(
-        brightness: Brightness.light,
-        seed: theme.accent.seed,
-      ),
-      darkTheme: buildAppTheme(
-        brightness: Brightness.dark,
-        seed: theme.accent.seed,
-      ),
+      theme: buildAppTheme(brightness: Brightness.light),
+      darkTheme: buildAppTheme(brightness: Brightness.dark),
       home: const EasyRtgHome(),
     );
   }
