@@ -6,6 +6,7 @@ import '../app_state.dart';
 import '../nav.dart';
 import '../theme/app_theme.dart';
 import '../theme/easy_colors.dart';
+import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import 'dashboard_panel.dart';
 import 'training_panel.dart';
@@ -47,7 +48,11 @@ class _HomeSidebar extends ConsumerStatefulWidget {
 
 class _HomeSidebarState extends ConsumerState<_HomeSidebar>
     with SingleTickerProviderStateMixin {
-  static const _collapsed = 58.0;
+  // Collapsed Training: the panel's own chrome plus one line of blocker
+  // banner. Derived from Panel.chromeHeight rather than a literal — the old
+  // hardcoded 58.0 was tuned to a previous header size and silently became an
+  // overflow the moment the panel's padding changed.
+  static const _collapsed = Panel.chromeHeight + 76;
   static const _expandedFraction = 0.55;
 
   late final AnimationController _controller = AnimationController(
@@ -162,36 +167,43 @@ class _TrainingControlCardState extends ConsumerState<TrainingControlCard> {
     void go(AppPage page) => ref.read(navIndexProvider.notifier).state = page;
 
     if (blockers.isNotEmpty) {
-      return Padding(
+      // ListView, not Column: this panel is given a fixed height by
+      // _HomeSidebar, so anything that can grow must be able to scroll.
+      return ListView(
         padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                color: colors.warning.withValues(alpha: 0.08),
-                border: Border.all(
-                  color: colors.warning.withValues(alpha: 0.35),
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.lock_outline, size: 18, color: colors.warning),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Finish setup to start training. Next: ${blockers.first}.',
-                      style: const TextStyle(fontSize: 12.5, height: 1.35),
-                    ),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(Radii.md),
+              color: colors.warning.withValues(alpha: 0.08),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.lock_outline, size: 18, color: colors.warning),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Finish setup to start training. Next: ${blockers.first}.',
+                    style: const TextStyle(fontSize: 12.5, height: 1.35),
                   ),
-                ],
+                ),
+              ],
+            ),
+          ),
+          if (state.configProblems.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => go(AppPage.rewards),
+                icon: const Icon(Icons.arrow_forward, size: 15),
+                label: const Text('Review the reward'),
               ),
             ),
           ],
-        ),
+        ],
       );
     }
 

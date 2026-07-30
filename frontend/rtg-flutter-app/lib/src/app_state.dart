@@ -765,13 +765,28 @@ class AppState extends ChangeNotifier {
     (item) => item is Map && item['enabled'] == true,
   );
 
+  /// Short, actionable next-steps — never the validator's prose.
+  ///
+  /// Every caller renders these inline ("Next: …", a rail-lock snackbar, a
+  /// status line), so each entry has to fit on one line. A `configProblems`
+  /// entry is a full compiler rejection that runs to several hundred
+  /// characters — splicing those in here overflowed the Training panel by 250
+  /// pixels. The detail is not lost: [configProblems] is rendered in full, and
+  /// scrollably, by the Setup & Status panel and beside the offending reward
+  /// term.
   List<String> trainingBlockers() {
     final blockers = <String>[];
     if (!hasRobot) blockers.add('load a robot');
     if (!hasEnabledObservations) blockers.add('enable observations');
     if (!hasEnabledActions) blockers.add('enable actions');
     if (!hasEnabledRewards) blockers.add('set a reward');
-    blockers.addAll(configProblems);
+    if (configProblems.isNotEmpty) {
+      blockers.add(
+        configProblems.length == 1
+            ? 'fix 1 configuration problem'
+            : 'fix ${configProblems.length} configuration problems',
+      );
+    }
     return blockers;
   }
 

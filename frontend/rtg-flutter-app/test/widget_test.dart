@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:rtg_flutter_app/main.dart';
 import 'package:rtg_flutter_app/src/api_client.dart';
 import 'package:rtg_flutter_app/src/app_state.dart';
+import 'package:rtg_flutter_app/src/panels/home_panel.dart';
 import 'package:rtg_flutter_app/src/panels/reward_panel.dart';
 import 'package:rtg_flutter_app/src/theme/app_theme.dart';
 
@@ -129,6 +130,63 @@ void main() {
     // beside the Setup & Status + Training sidebar.
     expect(find.text('Assistant'), findsWidgets);
     expect(find.text('Setup & Status'), findsOneWidget);
+  });
+
+  testWidgets('Home survives a robot loaded with a long validator problem', (
+    tester,
+  ) async {
+    // The state the app is actually in most of the time, and the one the
+    // shell-renders test never reaches: a robot is loaded, so the sidebar shows
+    // real content, and the config has a problem whose text is a full compiler
+    // rejection. That combination overflowed the Training panel by 250px in the
+    // running app while every test here stayed green — the panel has a fixed
+    // height, so anything that can grow has to scroll.
+    const longProblem =
+        'Reward expression rejected — rotation_reward: Subscript is not allowed '
+        'in an expression. Use arithmetic, comparisons, and the built-in '
+        'functions only. Per-element state is reduced with mean(), sum(), max() '
+        'or norm() — never indexed — and a single component has its own name '
+        '(yaw_rate not base_angular_velocity[2], base_vz not '
+        'base_linear_velocity[2]).';
+    final state = AppState(EmptyApi())
+      ..robotInfo = {'name': 'go1', 'joint_count': 45, 'path': 'go1.urdf'}
+      ..envConfig = {
+        'observations': const [
+          {'key': 'base_position', 'enabled': true},
+        ],
+        'actions': const [
+          {'joint_name': 'FR_hip_joint', 'enabled': true},
+        ],
+        'rewards': const [
+          {'key': 'rotation_reward', 'enabled': true},
+        ],
+      }
+      ..configProblems = [longProblem];
+
+    // Not the 1600x1000 of the shell test: 1280x720 is what main.cpp opens.
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: MaterialApp(
+          theme: buildAppTheme(brightness: Brightness.light),
+          home: const Scaffold(body: HomePanel(urdfPath: 'go1.urdf')),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // A RenderFlex overflow is reported as an exception, not a failed finder.
+    expect(tester.takeException(), isNull, reason: 'Home overflowed');
+    // The blocker line must stay short enough to render; the full text belongs
+    // in the scrollable problems list, not spliced into "Next: …".
+    expect(find.textContaining('fix 1 configuration problem'), findsWidgets);
+    // No state.dispose() — the ChangeNotifierProvider owns it and disposing
+    // here double-disposes.
   });
 
   testWidgets('RewardPanel renders structured reward test output', (

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/easy_colors.dart';
+import '../theme/tokens.dart';
 
 /// Copies [text] and confirms with a floating snackbar.
 Future<void> copyToClipboard(
@@ -91,7 +92,13 @@ class _CopyIconButtonState extends State<CopyIconButton> {
   }
 }
 
-/// Card-style panel with an icon, title and optional trailing actions.
+/// The main content surface: a floating card with a title bar.
+///
+/// Not a [Card] — [Shadows.lg] is the designed elevation and Material's
+/// `elevation:` only approximates it. The card has no outline at all; depth is
+/// the only thing separating it from the canvas. The hairline *under the
+/// header* stays, though: it separates two regions of the same surface, which
+/// is a different job from outlining the surface itself.
 class Panel extends StatelessWidget {
   const Panel({
     super.key,
@@ -106,42 +113,89 @@ class Panel extends StatelessWidget {
   final Widget child;
   final List<Widget> actions;
 
+  /// Height of the header bar.
+  static const double headerHeight = 54;
+
+  /// Total height the panel spends on its own chrome (outer padding + header).
+  /// A caller giving a Panel a fixed height must leave at least this much, or
+  /// there is no room left for [child]. Derive from this instead of hardcoding
+  /// a number that silently rots the next time the padding changes.
+  static const double chromeHeight = Insets.md + headerHeight + Insets.lg;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(Radii.lg);
     return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-              child: Row(
+      // Roomier than the old all(8): shadow-lg reaches 18px down with a 44px
+      // blur, and a tight gutter clips it into a smudge.
+      padding: const EdgeInsets.fromLTRB(
+        Insets.lg,
+        Insets.md,
+        Insets.lg,
+        Insets.lg,
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLow,
+          borderRadius: radius,
+          boxShadow: Shadows.lg,
+        ),
+        // A Material ancestor, which [Card] used to provide for free. Without
+        // it every InkWell inside a panel loses its ripple and ListTile throws
+        // "background color or ink splashes may be invisible" — silently, in
+        // debug only. transparency: the DecoratedBox above already paints.
+        child: Material(
+          type: MaterialType.transparency,
+          child: ClipRRect(
+            borderRadius: radius,
+            child: LayoutBuilder(
+              builder: (context, constraints) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 17, color: scheme.primary),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(
-                    child: Text(
-                      title,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13.5,
-                        letterSpacing: 0.2,
+                  Container(
+                    // Clamp so a Panel squeezed below its own chrome clips the
+                    // header instead of asserting. Cheap insurance: an animated
+                    // or fractional height can land under 54 for a frame.
+                    height: constraints.hasBoundedHeight
+                        ? (constraints.maxHeight < headerHeight
+                              ? constraints.maxHeight
+                              : headerHeight)
+                        : headerHeight,
+                    padding: const EdgeInsets.symmetric(horizontal: Insets.xl),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: scheme.outlineVariant),
                       ),
                     ),
+                    child: Row(
+                      children: [
+                        if (icon != null) ...[
+                          // Neutral, not primary: an icon is a signpost, not a
+                          // status, and ink-only reserves colour for meaning.
+                          Icon(icon, size: 17, color: scheme.onSurfaceVariant),
+                          const SizedBox(width: Insets.sm),
+                        ],
+                        Expanded(
+                          child: Text(
+                            title,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                              letterSpacing: -0.15,
+                            ),
+                          ),
+                        ),
+                        ...actions,
+                      ],
+                    ),
                   ),
-                  ...actions,
+                  Expanded(child: child),
                 ],
               ),
             ),
-            const Divider(),
-            Expanded(child: child),
-          ],
+          ),
         ),
       ),
     );
@@ -159,7 +213,7 @@ class SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 8),
+      padding: const EdgeInsets.only(top: Insets.md, bottom: Insets.sm),
       child: Row(
         children: [
           Flexible(
@@ -167,17 +221,23 @@ class SectionHeader extends StatelessWidget {
               title.toUpperCase(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              // Grey, not primary. A section label is the quietest thing on
+              // the page; it was previously the loudest.
               style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 11.5,
-                letterSpacing: 1.1,
-                color: scheme.primary,
+                fontWeight: FontWeight.w600,
+                fontSize: 11,
+                letterSpacing: 0.9,
+                color: scheme.onSurfaceVariant,
               ),
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(child: Divider(color: scheme.outlineVariant)),
-          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+          // The trailing rule is gone — whitespace already groups these, and
+          // the rule was drawing a line across every panel for no information.
+          const Spacer(),
+          if (trailing != null) ...[
+            const SizedBox(width: Insets.sm),
+            trailing!,
+          ],
         ],
       ),
     );
@@ -202,18 +262,23 @@ class StatChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final accent = color ?? scheme.primary;
+    // [color] is for a *semantic* value (a success-green mean reward), not
+    // decoration. Unset means ink — the tile carries no tint of its own.
+    final valueColor = color ?? scheme.onSurface;
     return Tooltip(
       message: 'Click to copy',
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(Radii.md),
         onTap: () => copyToClipboard(context, value, label: 'Copied "$value"'),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Insets.lg,
+            vertical: Insets.md,
+          ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: scheme.outlineVariant),
-            color: accent.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(Radii.md),
+            color: scheme.surfaceContainerLow,
+            boxShadow: Shadows.sm,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,25 +288,29 @@ class StatChip extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (icon != null) ...[
-                    Icon(icon, size: 13, color: accent),
+                    Icon(icon, size: 13, color: scheme.onSurfaceVariant),
                     const SizedBox(width: 5),
                   ],
                   Text(
-                    label,
+                    label.toUpperCase(),
                     style: TextStyle(
-                      fontSize: 11,
-                      color: scheme.onSurface.withValues(alpha: 0.65),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.7,
+                      color: scheme.onSurfaceVariant,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 4),
               Text(
                 value,
                 style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: accent,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.3,
+                  color: valueColor,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ],
@@ -272,52 +341,112 @@ class EmptyState extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: scheme.primary.withValues(alpha: 0.08),
-              ),
-              child: Icon(
-                icon,
-                size: 34,
-                color: scheme.primary.withValues(alpha: 0.8),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 14.5,
-              ),
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 360),
-                child: Text(
-                  subtitle!,
+        padding: const EdgeInsets.all(Insets.xl),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: DottedBorderBox(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    // Rounded square, not a circle: it reads as a placeholder
+                    // slot rather than an avatar.
+                    borderRadius: BorderRadius.circular(Radii.lg),
+                    color: scheme.surfaceContainerHighest,
+                  ),
+                  child: Icon(icon, size: 24, color: scheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: Insets.lg),
+                Text(
+                  title,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.4,
-                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 17,
+                    letterSpacing: -0.2,
                   ),
                 ),
-              ),
-            ],
-            if (action != null) ...[const SizedBox(height: 16), action!],
-          ],
+                if (subtitle != null) ...[
+                  const SizedBox(height: Insets.sm),
+                  Text(
+                    subtitle!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                if (action != null) ...[
+                  const SizedBox(height: Insets.xl),
+                  action!,
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+/// A dashed rounded rectangle, for drop targets and empty slots. Flutter has no
+/// dashed [BorderSide], so the dashes are painted; everything else in the app
+/// uses a solid hairline or a shadow.
+class DottedBorderBox extends StatelessWidget {
+  const DottedBorderBox({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _DashedRectPainter(
+        color: Theme.of(context).colorScheme.outline,
+        radius: 16,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 44),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _DashedRectPainter extends CustomPainter {
+  const _DashedRectPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    );
+    // Walk the rounded-rect path and stroke alternating 6px on / 5px off.
+    for (final metric in (Path()..addRRect(rrect)).computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        final end = (d + 6).clamp(0.0, metric.length);
+        canvas.drawPath(metric.extractPath(d, end), paint);
+        d = end + 5;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedRectPainter old) =>
+      old.color != color || old.radius != radius;
 }
 
 /// Monospace value with a copy affordance, used for paths, JSON and IDs.
@@ -339,9 +468,10 @@ class CopyableValue extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.only(left: 10),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: scheme.onSurface.withValues(alpha: 0.05),
-        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(Radii.sm),
+        // Sunken fill, no outline — a recessed field reads as inset without
+        // adding another rectangle to the page.
+        color: scheme.surfaceContainerHighest,
       ),
       child: Row(
         children: [
@@ -369,6 +499,7 @@ class StatusDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final color = online ? context.colors.success : context.colors.danger;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -381,10 +512,12 @@ class StatusDot extends StatelessWidget {
             padding: compact
                 ? const EdgeInsets.all(5)
                 : const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            // Neutral pill, coloured dot. The dot already carries the state;
+            // tinting the whole chip (and its border, and its text) made a
+            // routine "Connected" as loud as a real warning.
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              color: color.withValues(alpha: 0.1),
-              border: Border.all(color: color.withValues(alpha: 0.35)),
+              borderRadius: BorderRadius.circular(Radii.pill),
+              color: scheme.surfaceContainerHighest,
             ),
             child: compact
                 ? _PulsingDot(color: color, animate: online)
@@ -400,8 +533,8 @@ class StatusDot extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: color,
+                            fontWeight: FontWeight.w500,
+                            color: scheme.onSurfaceVariant,
                           ),
                         ),
                       ),

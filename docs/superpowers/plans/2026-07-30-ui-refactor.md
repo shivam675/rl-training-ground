@@ -8,13 +8,17 @@ always visible beside the conversation.
 
 ## START HERE — state as of 2026-07-30
 
-**P1 (tokens) is landed.** P2 onward not started. Design is settled and the mockups are committed.
+**P1 (tokens) and P2 (shared components) are landed.** P3 onward not started. Design is settled and
+the mockups are committed.
+
+**Read P2's Status section before writing any UI test here.** P2 shipped with three visible bugs
+while the whole suite was green, because every test rendered Home from an empty `AppState`.
 
 Baseline to hold green at the end of every phase (measured 2026-07-30, before any change):
 
 ```
 cd frontend/rtg-flutter-app && flutter analyze && flutter test
-# No issues found!  ·  12 tests passed
+# No issues found!  ·  15 tests passed  (was 12 before this refactor)
 ```
 
 **The target is `docs/ui/mock.html`** — three screens (first run · reward authored · training
@@ -106,6 +110,22 @@ surfaces barely read on dark, so a good dark theme needs borders back and is its
 The 8-preset accent picker (`accentPresets`, `ThemeController.setAccent`, its Settings section and
 the `theme_accent` pref) is **deleted**, because D4 makes it meaningless.
 
+### D9 — The setup checklist becomes a persistent stepper in the app bar
+
+Decided 2026-07-30 after seeing P2 running. The 5 steps (Robot · Observations · Actions · Reward ·
+Train) compress to a thin always-visible strip in the app bar, each step clickable. This differs
+from `mock.html`, which puts the stepper inside the canvas card — there it scrolls away with the
+content, and "where am I in this workflow" is exactly the thing that should never scroll away. It
+also costs no canvas height. Per-item detail lives in the tab each step links to.
+
+### D10 — Reward-authoring errors stay out of this refactor
+
+The first real run rejected a reward because the agent wrote `base_angular_velocity[2]` instead of
+`yaw_rate` — the observation-name trap CLAUDE.md calls the single most likely authoring mistake. It
+is **not** this plan's job. Invariant 2 holds: presentation only. The rejection already surfaces in
+three places, and a real fix belongs in the agent prompt or the compiler, tracked separately. Do not
+let it creep in here.
+
 ---
 
 ## Design tokens — the concrete values P1 implements
@@ -192,13 +212,26 @@ Findings worth not re-deriving:
 - **`Radii` was dead** before this phase (105 `Insets.` uses, zero `Radii.`), so rescaling it to
   8/12/14/999 was free.
 
-**Screenshotting the Flutter Windows window** — worth keeping, it cost a dozen attempts. `PrintWindow`
-(even `PW_RENDERFULLCONTENT`) returns the frame with a **blank client area**, because Flutter renders
-to a GPU swapchain. `SetForegroundWindow` is *refused* for a background caller, so `CopyFromScreen`
-silently captures whatever is actually on top. What works: `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE)`
-**plus a 2px resize to force a repaint**, then `CopyFromScreen`, then restore `HWND_NOTOPMOST`. Without
-the resize you get a stale surface that reads as pure white — which looks exactly like a crashed app
-and is not one.
+**Do not try to screenshot this app from a script.** Four independent things defeat it, and chasing
+them burned most of a session across P1 and P2:
+
+1. `PrintWindow` (even `PW_RENDERFULLCONTENT`) returns the window frame with a **blank client area** —
+   Flutter renders to a GPU swapchain the GDI path cannot read.
+2. `SetForegroundWindow` is **refused** for a background caller, so `CopyFromScreen` silently grabs
+   whatever is actually on top. It will happily hand you a screenshot of the user's browser.
+3. This box runs at **200% display scaling** (native 3840×2160, desktop reports 1920×1080). A
+   DPI-*unaware* caller reads virtualized rects, so `GetWindowRect` says `1280×720` for a window that
+   is really `2560×1440`. Call `SetProcessDpiAwarenessContext(-4)` **before** any window/screen API or
+   every coordinate lies. With it, the app correctly opens at 2560×1440 real px — the runner's
+   `Scale(size, dpi/96)` in `win32_window.cpp:139` is fine, contrary to first appearances.
+4. **`SetWindowPos` on this window minimizes it** — reproducibly, at several sizes, with
+   `SWP_NOACTIVATE` set. Once minimized it will not come back via `ShowWindow(SW_RESTORE)` or
+   `SW_MAXIMIZE`; the process stays alive and `Responding`, and `EnumWindows` shows the only visible
+   top-level window stuck at the minimized rect. Restart the app.
+
+A stale unpainted surface also reads as **pure white**, which looks exactly like a crashed app and is
+not one. If you need to see a change, **run the app and look at it yourself** — that is cheaper and
+more honest than automating this.
 
 ### Status: NOT STARTED
 
@@ -220,6 +253,66 @@ and is not one.
 
 `flutter test` — the two RewardPanel tests exercise this path and must stay green.
 
+### Status: LANDED 2026-07-30
+
+`flutter analyze` clean, **15 tests pass**.
+
+**P2 shipped broken and the test suite said it was fine.** Running the app surfaced three faults that
+14 green tests missed. This is the most important thing in this document: *green tests were not
+evidence.* The suite only ever rendered Home with an **empty** `AppState` at 1600×1000, which is the
+one state where none of these bugs appear.
+
+1. **`Panel` lost its `Material` ancestor** — `Card` provided one for free; a `DecoratedBox` does not.
+   Seven `ListTile background color or ink splashes may be invisible` assertions, and silently every
+   `InkWell` ripple inside a panel stopped rendering. Fixed with
+   `Material(type: MaterialType.transparency)` between the shadow and the clip.
+2. **`RenderFlex overflowed by 250 pixels`** in the collapsed Training panel, plus a second 131px
+   overflow. Root cause was **not** layout: `trainingBlockers()` spliced `configProblems` in verbatim,
+   and a config problem is a full expression-compiler rejection running to several hundred
+   characters. Rendered into `'Next: ${blockers.first}'` inside a fixed-height panel, it could not
+   fit. `trainingBlockers()` now returns *short actionable steps only* — `fix 1 configuration
+   problem` — and the full text stays where it is actionable and scrollable (Setup & Status, and
+   beside the offending term in Rewards). Nothing is hidden.
+3. The blocked branch of `TrainingControlCard` was a `Padding + Column`. `_HomeSidebar` gives it a
+   **fixed** height, so anything that can grow must scroll: it is a `ListView` now, matching the
+   unlocked branch, plus a "Review the reward" link so the problem is one click from its fix.
+
+**The regression test that should have existed** is now `widget_test.dart` → *"Home survives a robot
+loaded with a long validator problem"*: robot loaded, obs/actions/rewards enabled, one realistic
+several-hundred-character `configProblems` entry, at **1280×720** (what `main.cpp` actually opens) —
+and it asserts `tester.takeException()` is null, because a `RenderFlex` overflow surfaces as an
+exception rather than a failed finder. Verified it genuinely catches the bug: reverting
+`trainingBlockers()` to the splicing version makes it fail. **When adding UI tests, populate the
+state — an empty AppState exercises almost none of the layout.**
+
+What changed, and the one that mattered:
+
+- **`Panel` is no longer a `Card`.** It is a `DecoratedBox` carrying `Shadows.lg`, because Material's
+  `elevation:` only approximates the designed shadow. `Card` and `cardTheme` remain for
+  `evaluation_panel.dart:306` and `robot_panel.dart:277`.
+- **The header hairline stays**, contradicting this plan's original wording. `mock.html`'s `.chead`
+  has one, and it does a different job from the outline that was removed: it separates two regions of
+  the *same* surface rather than separating the surface from the canvas.
+- **`SectionHeader` lost its trailing rule** and went grey — it was drawing a line across every panel
+  carrying no information, in the accent colour, making the quietest element the loudest.
+- **`StatusDot` is a neutral pill with a coloured dot.** Previously the fill, border and text were all
+  tinted, so a routine "Connected" was as loud as a real warning. The dot alone carries the state.
+- **`StatChip` lost its accent tint**; its `color` parameter now means *semantic* (one caller passes
+  `colors.success` for mean reward) and unset means ink.
+- `EmptyState` became the dashed drop-zone from the mock, which needed `DottedBorderBox` — Flutter has
+  no dashed `BorderSide`, so it walks the `RRect` path with `computeMetrics()` and strokes 6-on/5-off.
+- `CopyableValue` dropped its outline for a sunken fill.
+
+**The one real bug this surfaced.** Raising `Panel`'s padding from `all(8)` broke
+`widget_test.dart:63` with `RenderFlex overflowed by 24 pixels` — exactly the 12px-per-panel increase
+across the two panels in `_HomeSidebar`. Root cause was **not** the padding: `_HomeSidebar._collapsed`
+was a hardcoded `58.0` tuned to a previous header size, so the collapsed Training panel could no
+longer fit its own chrome. Fixed at the root — `Panel.chromeHeight` is now a derived constant and
+`_collapsed` is expressed in terms of it, so the next padding change cannot silently repeat this.
+`Panel` also clamps its header to the available height, so a squeezed panel clips instead of
+asserting. That guard is cheap and worth keeping: `_HomeSidebar` animates the height, so it passes
+through small values every time it opens or closes.
+
 ### Status: NOT STARTED
 
 ---
@@ -231,6 +324,11 @@ and is not one.
 ### Steps
 
 - `lib/src/nav.dart`: `AppPage` 9 → 5. Settings / Logs / Diagnostics leave the enum.
+- Build the app-bar stepper (D9) from `DashboardPanel`'s existing `_SetupStep` list — the data and
+  the per-step `AppPage` links already exist, only the presentation changes.
+- Add the dot-grid canvas painter deferred from P1: `Canvas.drawPoints` with `PointMode.points`,
+  `strokeCap: round`, one draw call. Wrap in a `RepaintBoundary` — it is a static backdrop behind a
+  pane that repaints on every telemetry tick.
 - `lib/src/home.dart` (603 → ~300): delete `_Header` and `_StatusBar`, add the app bar, restructure
   the body from `Row(rail, Column(header, page, status), dock)` to `Row(chat, canvas)`.
 - **Delete** `lib/src/widgets/app_rail.dart` (355) — rehome `_AppMenuButton` into the app bar logo.
