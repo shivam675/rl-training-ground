@@ -50,53 +50,65 @@ class _EasyRtgHomeState extends ConsumerState<EasyRtgHome> {
   @override
   void dispose() {
     toastSubscription?.cancel();
+    _toastTimer?.cancel();
     super.dispose();
   }
+
+  Timer? _toastTimer;
 
   void showToast(AgentNotification notification) {
     if (!mounted) return;
     final color = severityColor(context, notification.severity);
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 4),
-          content: Row(
-            children: [
-              Icon(severityIcon(notification.severity), color: color, size: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+    final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
+    final controller = messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 4),
+        content: Row(
+          children: [
+            Icon(severityIcon(notification.severity), color: color, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    notification.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  if (notification.body.isNotEmpty)
                     Text(
-                      notification.title,
-                      maxLines: 1,
+                      notification.body,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontSize: 12),
                     ),
-                    if (notification.body.isNotEmpty)
-                      Text(
-                        notification.body,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                  ],
-                ),
+                ],
               ),
-            ],
-          ),
-          action: SnackBarAction(
-            label: 'View',
-            onPressed: () {
-              ref.read(notificationCenterProvider).markAllRead();
-              scaffoldKey.currentState?.openEndDrawer();
-            },
-          ),
+            ),
+          ],
         ),
-      );
+        action: SnackBarAction(
+          label: 'View',
+          onPressed: () {
+            ref.read(notificationCenterProvider).markAllRead();
+            scaffoldKey.currentState?.openEndDrawer();
+          },
+        ),
+      ),
+    );
+    // Own the dismissal. The framework's auto-dismiss timer is created inside
+    // ScaffoldMessengerState.build (scaffold.dart) and only when the entry
+    // animation has completed, the route is current, and accessibleNavigation
+    // is off — miss any of those and the toast sits there until it is clicked,
+    // which is exactly what happened. close() on an already-closed controller
+    // is a no-op, so this is safe alongside the framework timer.
+    _toastTimer?.cancel();
+    _toastTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) controller.close();
+    });
   }
 
   // Training stays locked until the environment setup is valid. Evaluation is
@@ -321,18 +333,36 @@ class _EasyRtgHomeState extends ConsumerState<EasyRtgHome> {
                         ),
                         Expanded(
                           child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 220),
+                            // A shared-axis feel, hand-rolled: the incoming page
+                            // rises and scales up from just under full size
+                            // while the outgoing one fades. 0.012 of a slide over
+                            // 220ms was imperceptible — it read as a flicker
+                            // rather than a transition.
+                            duration: const Duration(milliseconds: 300),
+                            reverseDuration: const Duration(milliseconds: 180),
                             switchInCurve: Curves.easeOutCubic,
-                            switchOutCurve: Curves.easeInCubic,
+                            switchOutCurve: Curves.easeIn,
+                            // Outgoing pages leave in place instead of shoving
+                            // the incoming one down the stack.
+                            layoutBuilder: (current, previous) => Stack(
+                              alignment: Alignment.topLeft,
+                              children: [...previous, ?current],
+                            ),
                             transitionBuilder: (child, animation) {
                               return FadeTransition(
                                 opacity: animation,
                                 child: SlideTransition(
                                   position: Tween<Offset>(
-                                    begin: const Offset(0, 0.012),
+                                    begin: const Offset(0, 0.035),
                                     end: Offset.zero,
                                   ).animate(animation),
-                                  child: child,
+                                  child: ScaleTransition(
+                                    scale: Tween<double>(
+                                      begin: 0.985,
+                                      end: 1,
+                                    ).animate(animation),
+                                    child: child,
+                                  ),
                                 ),
                               );
                             },

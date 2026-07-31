@@ -9,6 +9,7 @@ import 'package:rtg_flutter_app/main.dart';
 import 'package:rtg_flutter_app/src/api_client.dart';
 import 'package:rtg_flutter_app/src/app_state.dart';
 import 'package:rtg_flutter_app/src/panels/home_panel.dart';
+import 'package:rtg_flutter_app/src/panels/robot_panel.dart';
 import 'package:rtg_flutter_app/src/panels/reward_panel.dart';
 import 'package:rtg_flutter_app/src/theme/app_theme.dart';
 
@@ -86,7 +87,11 @@ void main() {
     // someone reintroduces a tinted accent, the semantic four stop being the
     // only saturated colour in the app and audit verdicts lose their punch.
     final primary = theme.colorScheme.primary;
-    expect(primary.computeLuminance(), lessThan(0.05), reason: 'not near-black');
+    expect(
+      primary.computeLuminance(),
+      lessThan(0.05),
+      reason: 'not near-black',
+    );
     // Ink is a slightly cool near-black and sits at 0.25; any real accent hue
     // is far higher (the rejected teal is 0.84, cobalt 0.81). 0.5 splits them
     // with margin rather than sitting on ink's exact value.
@@ -189,6 +194,59 @@ void main() {
     // here double-disposes.
   });
 
+  testWidgets('Robot Setup keeps reference detail collapsed until asked', (
+    tester,
+  ) async {
+    // The page used to render all 45 joint rows, the world physics knobs and
+    // the URDF warning list the moment a robot loaded. Everything that is
+    // reference rather than action now sits behind a disclosure.
+    final state = AppState(EmptyApi())
+      ..robotInfo = {
+        'name': 'go1',
+        'joint_count': 45,
+        'path': 'go1.urdf',
+        'warnings': const ['link FR_foot has near-zero mass'],
+        'joints': [
+          for (var i = 0; i < 45; i++)
+            {
+              'index': i,
+              'name': 'joint_$i',
+              'type': i.isEven ? 'revolute' : 'fixed',
+              'lower_limit': -1.0,
+              'upper_limit': 1.0,
+            },
+        ],
+      };
+
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: MaterialApp(
+          theme: buildAppTheme(brightness: Brightness.light),
+          home: const Scaffold(body: RobotPanel()),
+        ),
+      ),
+    );
+
+    // Identity is up front...
+    expect(find.text('go1'), findsWidgets);
+    expect(find.text('45'), findsWidgets);
+    // ...but none of the reference material is.
+    expect(find.text('joint_0'), findsNothing);
+    expect(find.text('Gravity Z (m/s²)'), findsNothing);
+    expect(find.textContaining('near-zero mass'), findsNothing);
+
+    await tester.tap(find.text('Joints'));
+    await tester.pumpAndSettle();
+    expect(find.text('joint_0'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('RewardPanel renders structured reward test output', (
     tester,
   ) async {
@@ -264,7 +322,10 @@ void main() {
     expect(api.patches, hasLength(1));
     final rewards = (api.patches.single['patch'] as Map)['rewards'] as List;
     expect((rewards.single as Map)['key'], 'flight_phase');
-    expect(((rewards.single as Map)['params'] as Map)['expr'], 'mean(air_time)');
+    expect(
+      ((rewards.single as Map)['params'] as Map)['expr'],
+      'mean(air_time)',
+    );
   });
 }
 

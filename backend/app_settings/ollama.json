@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "provider_name": "Local/Remote Ollama",
-  "base_url": "https://gpupc2.office.intelimek.com",
-  "bearer_token": "TOK123",
-  "model_name": "qwen3.5:35b-a3b",
+  "base_url": "https://ollama.com",
+  "bearer_token": "24ebcebfc30545f5a765c3124e809ecb.CfeShvWGkTmEiCeHySCzrmz5",
+  "model_name": "gpt-oss:120b",
   "temperature": 0.2,
   "top_p": 0.9,
   "num_predict": 640,

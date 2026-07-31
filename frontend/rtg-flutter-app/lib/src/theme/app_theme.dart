@@ -28,6 +28,11 @@ class _Neutrals {
   static const sunken = Color(0xffF1F2F4);
   static const line = Color(0xffE7E9EC);
   static const line2 = Color(0xffDCE0E4);
+
+  /// Control outlines. Deliberately darker than [line2]: a hairline that is
+  /// right for separating regions disappears entirely as a button edge, and an
+  /// outlined button nobody can see is not a button.
+  static const controlBorder = Color(0xffC5CBD3);
   static const ink = Color(0xff15181C);
   static const txt = Color(0xff2B3138);
   static const txt2 = Color(0xff69717B);
@@ -124,8 +129,13 @@ ThemeData buildAppTheme({required Brightness brightness}) {
         foregroundColor: onSurface,
         backgroundColor: surface,
         shape: const StadiumBorder(),
-        side: BorderSide(color: dark ? _Neutrals.dLine : _Neutrals.line2),
+        side: BorderSide(
+          color: dark ? _Neutrals.dTxt3 : _Neutrals.controlBorder,
+        ),
+        elevation: 1,
+        shadowColor: Shadows.materialCast,
         padding: const EdgeInsets.symmetric(horizontal: Insets.lg),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
@@ -142,7 +152,10 @@ ThemeData buildAppTheme({required Brightness brightness}) {
         color: dark ? _Neutrals.dLine : _Neutrals.ink,
         borderRadius: BorderRadius.circular(Radii.sm),
       ),
-      textStyle: TextStyle(color: dark ? _Neutrals.dTxt : Colors.white, fontSize: 12),
+      textStyle: TextStyle(
+        color: dark ? _Neutrals.dTxt : Colors.white,
+        fontSize: 12,
+      ),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,

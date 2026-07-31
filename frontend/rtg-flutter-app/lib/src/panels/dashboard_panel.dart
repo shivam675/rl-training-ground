@@ -66,6 +66,11 @@ class DashboardPanel extends ConsumerWidget {
 
     final unlocked = state.canStartTraining;
     final doneCount = steps.where((s) => s.done).length;
+    final basicsDone =
+        hasRobot &&
+        state.hasEnabledObservations &&
+        state.hasEnabledActions &&
+        state.hasEnabledRewards;
 
     void askGoal(String goal) {
       ref.read(chatControllerProvider).sendChat('Make this robot $goal.');
@@ -168,7 +173,12 @@ class DashboardPanel extends ConsumerWidget {
         const SizedBox(height: 8),
         for (final step in steps)
           _SetupRow(step: step, onTap: () => go(step.tab)),
-        if (state.configProblems.isNotEmpty) ...[
+        // While the basics are incomplete, every configProblem is just the
+        // checklist restated in prose ("No observation sources enabled" beside
+        // an unticked "Observations enabled"). Only once the four basics are
+        // done is a remaining problem substantive — a rejected expression, an
+        // unknown observation key — and worth the space.
+        if (basicsDone && state.configProblems.isNotEmpty) ...[
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -194,7 +204,7 @@ class DashboardPanel extends ConsumerWidget {
             ),
           ),
         ],
-        if (state.configWarnings.isNotEmpty) ...[
+        if (basicsDone && state.configWarnings.isNotEmpty) ...[
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -211,10 +221,7 @@ class DashboardPanel extends ConsumerWidget {
                 for (final warning in state.configWarnings)
                   Text(
                     'Review: $warning',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: context.colors.info,
-                    ),
+                    style: TextStyle(fontSize: 12, color: context.colors.info),
                   ),
               ],
             ),

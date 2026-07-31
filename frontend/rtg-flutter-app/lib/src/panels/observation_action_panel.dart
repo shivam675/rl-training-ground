@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app_state.dart';
 import '../theme/app_theme.dart';
-import '../theme/easy_colors.dart';
 import '../widgets/common.dart';
 
 class ObservationActionPanel extends ConsumerWidget {
@@ -37,7 +36,11 @@ class ObservationActionPanel extends ConsumerWidget {
       for (final entry in configObs)
         sources.firstWhere(
           (item) => item['key'] == entry['key'],
-          orElse: () => {'key': entry['key'], 'label': '${entry['key']}', 'size': '?'},
+          orElse: () => {
+            'key': entry['key'],
+            'label': '${entry['key']}',
+            'size': '?',
+          },
         ),
     ];
 
@@ -53,58 +56,12 @@ class ObservationActionPanel extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
-        if (state.configProblems.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: context.colors.warning.withValues(alpha: 0.08),
-              border: Border.all(
-                color: context.colors.warning.withValues(alpha: 0.4),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final problem in state.configProblems)
-                  Text(
-                    '⚠ $problem',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: context.colors.warning,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (state.configWarnings.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: context.colors.info.withValues(alpha: 0.08),
-              border: Border.all(
-                color: context.colors.info.withValues(alpha: 0.35),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final warning in state.configWarnings)
-                  Text(
-                    'Review: $warning',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: context.colors.info,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
+        // The config problems/warnings banners used to sit here. They said
+        // exactly what the Home checklist already says ("No actions enabled"
+        // beside an unticked "Actions enabled"), and a page whose whole job is
+        // enabling things does not need to be told nothing is enabled. Anything
+        // substantive surfaces on Home once the basics are done, and beside the
+        // offending term in Rewards.
         SectionHeader(
           'Observations',
           trailing: StatChip(
@@ -138,31 +95,31 @@ class ObservationActionPanel extends ConsumerWidget {
         else
           for (final item in configuredObsSources)
             SwitchListTile(
-            dense: true,
-            title: Text('${item['label']}'),
-            subtitle: Text(
-              item['placeholder'] == true
-                  ? 'Not yet supported'
-                  : 'Size: ${item['size']}',
-              style: TextStyle(
-                fontSize: 11.5,
-                color: scheme.onSurface.withValues(alpha: 0.55),
+              dense: true,
+              title: Text('${item['label']}'),
+              subtitle: Text(
+                item['placeholder'] == true
+                    ? 'Not yet supported'
+                    : 'Size: ${item['size']}',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: scheme.onSurface.withValues(alpha: 0.55),
+                ),
               ),
+              secondary: CopyIconButton(
+                text: '${item['key']}',
+                tooltip: 'Copy key "${item['key']}"',
+                size: 14,
+              ),
+              value: obsEnabled('${item['key']}'),
+              onChanged: item['placeholder'] == true
+                  ? null
+                  : (value) => state.patchConfig({
+                      'observations': [
+                        {'key': item['key'], 'enabled': value},
+                      ],
+                    }),
             ),
-            secondary: CopyIconButton(
-              text: '${item['key']}',
-              tooltip: 'Copy key "${item['key']}"',
-              size: 14,
-            ),
-            value: obsEnabled('${item['key']}'),
-            onChanged: item['placeholder'] == true
-                ? null
-                : (value) => state.patchConfig({
-                    'observations': [
-                      {'key': item['key'], 'enabled': value},
-                    ],
-                  }),
-          ),
         const SizedBox(height: 16),
         SectionHeader(
           'Actions',

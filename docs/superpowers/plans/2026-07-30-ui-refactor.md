@@ -8,7 +8,7 @@ always visible beside the conversation.
 
 ## START HERE — state as of 2026-07-30
 
-**P1 (tokens) and P2 (shared components) are landed.** P3 onward not started. Design is settled and
+**P1 (tokens), P2 (shared components) and P2.5 (four fixes from first real use) are landed.** P3 onward not started. Design is settled and
 the mockups are committed.
 
 **Read P2's Status section before writing any UI test here.** P2 shipped with three visible bugs
@@ -18,7 +18,7 @@ Baseline to hold green at the end of every phase (measured 2026-07-30, before an
 
 ```
 cd frontend/rtg-flutter-app && flutter analyze && flutter test
-# No issues found!  ·  15 tests passed  (was 12 before this refactor)
+# No issues found!  ·  16 tests passed  (was 12 before this refactor)
 ```
 
 **The target is `docs/ui/mock.html`** — three screens (first run · reward authored · training
@@ -314,6 +314,65 @@ asserting. That guard is cheap and worth keeping: `_HomeSidebar` animates the he
 through small values every time it opens or closes.
 
 ### Status: NOT STARTED
+
+---
+
+# P2.5 — Six fixes from the first real use
+
+### Status: LANDED 2026-07-30
+
+`flutter analyze` clean, **16 tests pass**. Every one of these was found by *using* the app. None
+were found by the test suite, which was green throughout.
+
+**1 · Robot Setup was an information dump.** Loading a robot rendered 45 joint rows, the world
+physics knobs and the URDF warning list, all expanded, before the user had done anything. Restructured
+around progressive disclosure: what stays open is what is *actionable* or answers "did the right robot
+load?" — the name/joints/movable tiles, the resolved path, the dynamics banner (it has an auto-fix
+button). Everything else sits behind a `_Disclosure` (an `ExpansionTile`, no new dependency): Joints,
+URDF warnings, World, Load-from-path. The no-robot state is now an `EmptyState` with **Browse files**
+wired to browse-then-load as one gesture — picking a file and then hunting for a separate Load button
+was the step everyone forgot.
+
+Also killed `_JointTypeBadge`'s four hardcoded hues (blue/violet/green/grey for revolute/prismatic/
+continuous/fixed). That is colour as decoration, which D4 forbids. The only distinction that matters
+is *can the policy drive this joint*, and weight carries it.
+
+**2 · Toasts never dismissed.** Not a duration bug — `duration` was already 4s. Flutter creates the
+auto-dismiss timer **inside `ScaffoldMessengerState.build`** (`scaffold.dart:617`) and only when the
+entry animation has completed, `route.isCurrent`, and `snackBar.persist` is false; `accessibleNavigation`
+also changes the transition path so the controller may never report completed. Rather than guess which
+precondition fails on this machine, `home.dart` now owns the dismissal with its own `Timer` calling
+`controller.close()`. `close()` on an already-closed controller is a no-op, so it is safe alongside
+the framework's timer.
+
+**3 · The yellow banners restated the checklist.** "No observation sources enabled" sat directly under
+an unticked "Observations enabled". On Home they are now gated on `basicsDone` — while the four basics
+are incomplete every `configProblem` *is* the checklist in prose; once complete, a remaining problem is
+substantive (a rejected expression, an unknown observation key) and earns its space. On
+`observation_action_panel.dart` both banners are **deleted**: a page whose entire job is enabling things
+does not need to announce that nothing is enabled.
+
+**4 · Page transitions were imperceptible.** 220ms with a 0.035-of-a-pixel slide read as a flicker.
+Now a hand-rolled shared-axis feel — 300ms in / 180ms out, fade + a 0.035 rise + a 0.985→1 scale, with
+a `layoutBuilder` that stacks the outgoing page underneath instead of shoving the incoming one down.
+No `animations` package needed.
+
+**New guard:** *"Robot Setup keeps reference detail collapsed until asked"* — asserts the 45 joint
+rows, the gravity field and the warning text are **absent** on first render, then present after
+tapping Joints.
+
+**5 · Robot Setup went two-column** (second pass, from a target layout the user drew). Identity on
+the left — name / joints / **movable** tiles, the resolved path, and the swap button — against the
+drillable detail on the right. *Movable* was added because it is the number that actually matters:
+go1 reports 45 joints and only 12 of them move, and the policy can only drive those 12. Below 880px
+the columns stack; that threshold is roughly where the joint table stops fitting beside a 340px
+identity column. The four disclosures are grouped into one `_DisclosureGroup` surface with hairlines
+between them, so they read as a list rather than four floating cards.
+
+**6 · Outlined buttons were invisible.** They used `line2` (`#DCE0E4`) — a hairline that is correct
+for separating regions and vanishes as a button edge. Added `_Neutrals.controlBorder` (`#C5CBD3`)
+plus a 1dp lift and w600 label, in the **theme**, so every outlined button in the app gains it rather
+than just the one that prompted the complaint.
 
 ---
 
