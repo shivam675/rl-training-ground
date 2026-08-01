@@ -111,9 +111,27 @@ ThemeData buildAppTheme({required Brightness brightness}) {
       isDense: true,
       filled: true,
       fillColor: sunken,
+      // UnderlineInputBorder, not OutlineInputBorder — and that is a bug fix,
+      // not a style preference. `InputDecorator` reads `border.isOutline` to
+      // decide where a floating label goes: with an *outline* border it parks
+      // the label ON the top edge (half outside the box, notching the stroke),
+      // reserving no vertical room for it. Paired with `filled: true` there is
+      // no stroke to notch, so the label just hung outside the grey box and got
+      // clipped by the parent row — that is what sliced "Gravity Z (m/s²)" in
+      // half on Robot Setup, and it hit all 18 `labelText` fields in the app.
+      // A non-outline border floats the label *inside* the fill and grows the
+      // container to fit it, which is what a filled Material field is designed
+      // to do. The rounded rect is preserved via `borderRadius`; the accent
+      // focus ring becomes an accent underline.
       border: _inputBorder(Colors.transparent),
       enabledBorder: _inputBorder(Colors.transparent),
       focusedBorder: _inputBorder(accent, width: 1.6),
+      // Explicit, because `isDense: true` alone leaves the label and the text
+      // sharing too little room once the label floats inside.
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: Insets.md,
+        vertical: Insets.sm,
+      ),
       hintStyle: TextStyle(color: dark ? _Neutrals.dTxt3 : _Neutrals.txt3),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -188,8 +206,8 @@ ThemeData buildAppTheme({required Brightness brightness}) {
   );
 }
 
-OutlineInputBorder _inputBorder(Color color, {double width = 1}) {
-  return OutlineInputBorder(
+UnderlineInputBorder _inputBorder(Color color, {double width = 1}) {
+  return UnderlineInputBorder(
     borderRadius: BorderRadius.circular(Radii.sm),
     borderSide: BorderSide(color: color, width: width),
   );

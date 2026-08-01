@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:rtg_flutter_app/src/api_client.dart';
 import 'package:rtg_flutter_app/src/app_state.dart';
+import 'package:rtg_flutter_app/src/agent/chat_controller.dart';
 import 'package:rtg_flutter_app/src/agent/chat_view.dart';
 
 /// Emits a fast burst of chunks the way Ollama does, plus a tool round.
@@ -185,6 +186,29 @@ class PendingConfirmationApi extends BackendApi {
 }
 
 void main() {
+  test('the conversation belongs to the project, not the app', () async {
+    // A new project used to inherit the previous one's transcript, so the next
+    // message shipped stale cross-project context to the model.
+    final state = AppState(RoutedApi());
+    final chat = ChatController(state);
+    expect(identical(state.chatController, chat), isTrue);
+
+    chat.messages.add(ChatMessage(kind: ChatKind.user, text: 'make it walk'));
+    final saved = chat.chatJson();
+    expect(saved.map((m) => m['text']), contains('make it walk'));
+
+    await state.newProject();
+    expect(chat.messages.length, 1); // welcome only
+
+    await state.openProjectConfig(const {}, r'X:\p\demo.rtg', chatHistory: saved);
+    expect(chat.messages.map((m) => m.text), contains('make it walk'));
+
+    // A .rtg written before chats were stored opens on a fresh conversation
+    // rather than keeping whatever was on screen.
+    await state.openProjectConfig(const {}, r'X:\p\old.rtg');
+    expect(chat.messages.length, 1);
+  });
+
   testWidgets('chat survives a rapid streaming burst with tool events', (
     tester,
   ) async {

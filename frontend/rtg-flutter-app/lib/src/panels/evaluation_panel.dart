@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../nav.dart';
 import '../theme/app_theme.dart';
 import '../theme/easy_colors.dart';
+import '../theme/tokens.dart';
 import '../widgets/common.dart';
 
 class EvaluationPanel extends ConsumerStatefulWidget {
@@ -41,7 +42,7 @@ class _EvaluationPanelState extends ConsumerState<EvaluationPanel> {
         : (state.currentProjectName ?? 'This project');
 
     return ListView(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Insets.page),
       children: [
         SectionHeader(
           'Training runs (${state.runs.length}) · $scopeLabel',

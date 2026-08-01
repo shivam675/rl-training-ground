@@ -220,6 +220,49 @@ def test_isaac_worker_rejects_failure_telemetry_with_salvaged_model(tmp_path):
     assert any(e["type"] == "training_failed" for e in worker.drain_events())
 
 
+def test_isaac_child_never_inherits_the_app_python_env(tmp_path, monkeypatch):
+    """isaaclab.bat picks its interpreter from VIRTUAL_ENV/CONDA_PREFIX before Isaac
+    Sim's bundled Python, so inheriting ours launched isaac_train under `.venv` —
+    which has no isaaclab. It died at `from isaaclab.app import AppLauncher`, above
+    its own try/except: exit 1, empty telemetry, no training_log.txt.
+
+    The stub proves both halves: the vars are gone, and whatever the child prints
+    lands in training_log.txt and in the failure message.
+    """
+    from backend.rl.isaac import isaac_worker as mod
+
+    monkeypatch.setenv("VIRTUAL_ENV", r"X:\somewhere\.venv")
+    monkeypatch.setenv("PYTHONPATH", r"C:\ros\python3.14\site-packages")
+    assert "VIRTUAL_ENV" not in mod.isaac_child_env()
+    assert "PYTHONPATH" not in mod.isaac_child_env()
+
+    stub = tmp_path / "stub_train.py"
+    stub.write_text(
+        "import os, sys\n"
+        "print('VIRTUAL_ENV=' + repr(os.environ.get('VIRTUAL_ENV')))\n"
+        "print('ModuleNotFoundError: boom', file=sys.stderr)\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+    worker = mod.IsaacTrainingWorker(tmp_path)
+    worker.launcher_cmd = [sys.executable]
+    worker.train_script = stub
+    worker.start(TrainingStartRequest(sim_backend="isaac", num_envs=8, total_timesteps=300))
+    for _ in range(100):
+        if not worker.status.active:
+            break
+        time.sleep(0.1)
+
+    log = Path(worker.status.run_dir) / mod.TRAIN_LOG_NAME
+    assert "VIRTUAL_ENV=None" in log.read_text(encoding="utf-8")
+    # The error reaches the UI instead of a bare "failed (exit 1)".
+    assert "ModuleNotFoundError: boom" in worker.status.message
+    assert any(
+        e["type"] == "training_failed" and "boom" in e["error"]
+        for e in worker.drain_events()
+    )
+
+
 class _FakeProc:
     """poll() -> None on the first call (alive), 0 afterwards (exited)."""
 

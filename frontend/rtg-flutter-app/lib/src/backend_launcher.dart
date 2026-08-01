@@ -75,11 +75,13 @@ class BackendLauncher {
     if (override != null && File(override).existsSync()) {
       final lower = override.toLowerCase();
       if (Platform.isWindows && lower.endsWith('.ps1')) {
-        return Process.start(
-          'powershell',
-          ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', override],
-          environment: env,
-        );
+        return Process.start('powershell', [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          override,
+        ], environment: env);
       }
       if (lower.endsWith('.sh')) {
         return Process.start('bash', [override], environment: env);
@@ -111,7 +113,15 @@ class BackendLauncher {
       // Run uvicorn directly: no bash, no PowerShell execution-policy hurdles.
       return Process.start(
         _windowsPython(root),
-        ['-m', 'uvicorn', 'backend.main:app', '--host', '127.0.0.1', '--port', '8000'],
+        [
+          '-m',
+          'uvicorn',
+          'backend.main:app',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          '8000',
+        ],
         workingDirectory: root,
         environment: env,
       );

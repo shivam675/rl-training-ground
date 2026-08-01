@@ -5,11 +5,19 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
+import 'agent/chat_controller.dart';
 import 'api_client.dart';
 
 final appStateProvider = ChangeNotifierProvider<AppState>((ref) {
   return AppState(BackendApi())..refreshAll();
 });
+
+/// The one-click sample robot. Unlike pybullet's bundled `r2d2.urdf` this is a
+/// path into the local Unitree library checkout, so the button only works on a
+/// box that has it — elsewhere the load fails with a plain "file not found".
+const kSampleRobotPath =
+    'X:/workspace/unitree_ros/robots/go1_description/urdf/go1.urdf';
+const kSampleRobotName = 'Go1';
 
 class AppState extends ChangeNotifier {
   static const _maxTelemetryPoints = 2000;
@@ -86,8 +94,14 @@ class AppState extends ChangeNotifier {
   }
 
   // --- Projects (.rtg) ------------------------------------------------------
-  // A project bundles the loaded robot + observation/action/reward config.
+  // A project bundles the loaded robot, the observation/action/reward config
+  // and the agent conversation that produced them.
   String? currentProjectPath;
+
+  /// Registered by [ChatController] when it is built, so project new/open/save
+  /// can reset and carry the transcript. The shell builds it at startup even
+  /// with the dock collapsed, so this is non-null after the first frame.
+  ChatController? chatController;
 
   String? get currentProjectName {
     final path = currentProjectPath;
@@ -119,10 +133,13 @@ class AppState extends ChangeNotifier {
     loadRuns();
   }
 
-  /// Fresh workspace: unload the robot and clear the saved config server-side.
+  /// Fresh workspace: unload the robot, clear the saved config server-side and
+  /// start a new conversation — a new project the agent has never seen should
+  /// not inherit the last one's transcript as context.
   Future<void> newProject() async {
     await guard(() async {
       await api.postJson('/project/new', {});
+      chatController?.clearChat();
       currentProjectPath = null;
       telemetry.clear();
       _telemetryCursor = 0;
@@ -140,16 +157,23 @@ class AppState extends ChangeNotifier {
     return api.getJson('/project/export$query');
   }
 
-  /// Apply a project payload read from a .rtg file (loads its URDF + config).
+  /// Apply a project payload read from a .rtg file (loads its URDF + config,
+  /// and restores the conversation it was saved with — `null` for a file from
+  /// before chats were stored, which opens on a blank one).
   Future<List<String>> openProjectConfig(
     Map<String, dynamic> config,
-    String path,
-  ) async {
+    String path, {
+    List<dynamic>? chatHistory,
+  }) async {
     final problems = <String>[];
     final label = path
         .split(RegExp(r'[\\/]'))
         .last
         .replaceAll(RegExp(r'\.rtg$'), '');
+    // Before the load, so the proactive "Loaded <robot>" prompt that fires off
+    // robotLoadRevision lands after the restored turns (and skips itself when
+    // they already cover this robot).
+    chatController?.restoreChat(chatHistory);
     await guard(() async {
       final res = await api.postJson('/project/open', {
         'config': config,
@@ -178,6 +202,7 @@ class AppState extends ChangeNotifier {
       // the backend stamps it (plus a stable id) into the saved file.
       currentProjectPath = path;
       final payload = await exportProject();
+      payload['chat'] = chatController?.chatJson() ?? const [];
       const encoder = JsonEncoder.withIndent('  ');
       await File(path).writeAsString(encoder.convert(payload));
       await loadEnvConfig(notify: false); // pick up the freshly-stamped id

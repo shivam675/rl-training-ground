@@ -115,158 +115,174 @@ class _AssistantChatState extends ConsumerState<AssistantChat> {
     final itemCount =
         controller.messages.length + (controller.showTyping ? 1 : 0);
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 6, 6),
-          child: Row(
-            children: [
-              if (widget.onCollapse != null)
+    // Opaque. This widget used to return a bare Column, so it had no background
+    // of its own and simply showed whatever was behind it — which stopped being
+    // a flat canvas the moment the page grew a dot grid, and the grid showed
+    // straight through the conversation. Filling with `surface` (the canvas
+    // colour) keeps the pane looking exactly as it did before the grid existed
+    // while making it a real surface rather than a hole.
+    return ColoredBox(
+      color: scheme.surface,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 6, 6),
+            child: Row(
+              children: [
+                if (widget.onCollapse != null)
+                  IconButton(
+                    tooltip: 'Collapse assistant',
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 18,
+                    onPressed: widget.onCollapse,
+                    icon: const Icon(Icons.chevron_right),
+                  ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 14,
+                        backgroundColor: scheme.primary.withValues(alpha: 0.15),
+                        child: Icon(
+                          Icons.smart_toy_outlined,
+                          size: 16,
+                          color: scheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Flexible(
+                        child: Text(
+                          'Assistant',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Tooltip(
+                          message: state.agentConnectionDetail,
+                          child: StatusDot(
+                            label: connected ? 'Connected' : 'Offline',
+                            online: connected,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 IconButton(
-                  tooltip: 'Collapse assistant',
+                  tooltip: 'Copy conversation',
                   visualDensity: VisualDensity.compact,
                   iconSize: 18,
-                  onPressed: widget.onCollapse,
-                  icon: const Icon(Icons.chevron_right),
+                  onPressed: controller.hasHistory
+                      ? () => copyToClipboard(
+                          context,
+                          controller.transcript(),
+                          label: 'Copied conversation',
+                        )
+                      : null,
+                  icon: const Icon(Icons.copy_all),
                 ),
-              Expanded(
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 14,
-                      backgroundColor: scheme.primary.withValues(alpha: 0.15),
-                      child: Icon(
-                        Icons.smart_toy_outlined,
-                        size: 16,
-                        color: scheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    const Flexible(
-                      child: Text(
-                        'Assistant',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Tooltip(
-                        message: state.agentConnectionDetail,
-                        child: StatusDot(
-                          label: connected ? 'Connected' : 'Offline',
-                          online: connected,
-                        ),
-                      ),
-                    ),
-                  ],
+                IconButton(
+                  tooltip: 'Clear chat',
+                  visualDensity: VisualDensity.compact,
+                  iconSize: 18,
+                  onPressed: controller.hasHistory
+                      ? controller.clearChat
+                      : null,
+                  icon: const Icon(Icons.delete_sweep_outlined),
                 ),
-              ),
-              IconButton(
-                tooltip: 'Copy conversation',
-                visualDensity: VisualDensity.compact,
-                iconSize: 18,
-                onPressed: controller.hasHistory
-                    ? () => copyToClipboard(
-                        context,
-                        controller.transcript(),
-                        label: 'Copied conversation',
-                      )
-                    : null,
-                icon: const Icon(Icons.copy_all),
-              ),
-              IconButton(
-                tooltip: 'Clear chat',
-                visualDensity: VisualDensity.compact,
-                iconSize: 18,
-                onPressed: controller.hasHistory ? controller.clearChat : null,
-                icon: const Icon(Icons.delete_sweep_outlined),
-              ),
-              IconButton(
-                tooltip: 'Refresh backend + agent connection',
-                visualDensity: VisualDensity.compact,
-                iconSize: 18,
-                onPressed: () {
-                  state.refreshAll();
-                  state.refreshAgentHealth();
-                },
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
+                IconButton(
+                  tooltip: 'Refresh backend + agent connection',
+                  visualDensity: VisualDensity.compact,
+                  iconSize: 18,
+                  onPressed: () {
+                    state.refreshAll();
+                    state.refreshAgentHealth();
+                  },
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
           ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView.builder(
-            controller: scrollController,
-            padding: const EdgeInsets.all(12),
-            itemCount: itemCount,
-            itemBuilder: (context, index) {
-              if (index >= controller.messages.length) {
-                return const _TypingRow();
-              }
-              final message = controller.messages[index];
-              return switch (message.kind) {
-                ChatKind.tool => _ConfigToolActivityRow(
-                  message: message,
-                  onConfirm: () => controller.confirmTool(message),
-                  onUndo: () => controller.undoConfigChange(message),
-                ),
-                ChatKind.notice => _NoticeRow(
-                  text: message.text,
-                  onDiagnose: message.diagnoseError == null
-                      ? null
-                      : () => controller.diagnoseTrainingFailure(
-                          message.diagnoseError!,
-                        ),
-                ),
-                _ => _MessageBubble(message: message),
-              };
-            },
-          ),
-        ),
-        const Divider(),
-        Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: inputController,
-                  focusNode: focusNode,
-                  minLines: 1,
-                  maxLines: 4,
-                  textInputAction: TextInputAction.send,
-                  decoration: InputDecoration(
-                    hintText: connected
-                        ? _connectedPlaceholders[_placeholderIndex]
-                        : 'Backend offline — messages will fail',
-                    prefixIcon: const Icon(Icons.chat_bubble_outline, size: 18),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              controller: scrollController,
+              padding: const EdgeInsets.all(12),
+              itemCount: itemCount,
+              itemBuilder: (context, index) {
+                if (index >= controller.messages.length) {
+                  return const _TypingRow();
+                }
+                final message = controller.messages[index];
+                return switch (message.kind) {
+                  ChatKind.tool => _ConfigToolActivityRow(
+                    message: message,
+                    onConfirm: () => controller.confirmTool(message),
+                    onUndo: () => controller.undoConfigChange(message),
                   ),
-                  onSubmitted: (_) => _send(controller),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                tooltip: 'Send (Enter)',
-                onPressed: controller.sending ? null : () => _send(controller),
-                icon: controller.sending
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.send_rounded),
-              ),
-            ],
+                  ChatKind.notice => _NoticeRow(
+                    text: message.text,
+                    onDiagnose: message.diagnoseError == null
+                        ? null
+                        : () => controller.diagnoseTrainingFailure(
+                            message.diagnoseError!,
+                          ),
+                  ),
+                  _ => _MessageBubble(message: message),
+                };
+              },
+            ),
           ),
-        ),
-      ],
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: inputController,
+                    focusNode: focusNode,
+                    minLines: 1,
+                    maxLines: 4,
+                    textInputAction: TextInputAction.send,
+                    decoration: InputDecoration(
+                      hintText: connected
+                          ? _connectedPlaceholders[_placeholderIndex]
+                          : 'Backend offline — messages will fail',
+                      prefixIcon: const Icon(
+                        Icons.chat_bubble_outline,
+                        size: 18,
+                      ),
+                    ),
+                    onSubmitted: (_) => _send(controller),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  tooltip: 'Send (Enter)',
+                  onPressed: controller.sending
+                      ? null
+                      : () => _send(controller),
+                  icon: controller.sending
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send_rounded),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

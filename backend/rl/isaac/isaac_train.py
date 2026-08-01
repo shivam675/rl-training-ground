@@ -495,7 +495,11 @@ def main() -> int:
         import traceback
 
         _write_point(telemetry, {"timestep": 0, "message": f"isaac training failed: {exc}"})
-        (run_dir / "training_log.txt").write_text(traceback.format_exc(), encoding="utf-8")
+        # stderr, not a file: IsaacTrainingWorker now captures the whole console into
+        # training_log.txt, and two writers on one path race. This also puts the
+        # traceback in the same stream as a pre-`try` import failure, which is the
+        # case that used to leave no evidence at all.
+        traceback.print_exc()
         try:  # keep whatever was learned before the crash, if the runner exists
             _save_final()
         except Exception:

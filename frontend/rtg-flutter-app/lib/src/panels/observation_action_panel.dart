@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app_state.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import '../widgets/common.dart';
 
 class ObservationActionPanel extends ConsumerWidget {
@@ -54,7 +55,7 @@ class ObservationActionPanel extends ConsumerWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Insets.page),
       children: [
         // The config problems/warnings banners used to sit here. They said
         // exactly what the Home checklist already says ("No actions enabled"

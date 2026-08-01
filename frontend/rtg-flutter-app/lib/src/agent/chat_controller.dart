@@ -112,6 +112,7 @@ final chatControllerProvider = ChangeNotifierProvider<ChatController>((ref) {
 class ChatController extends ChangeNotifier {
   ChatController(this._state) {
     _seenRobotLoadRevision = _state.robotLoadRevision;
+    _state.chatController = this;
     _state.addListener(_onAppStateChanged);
     unawaited(_loadChatHistory());
   }
@@ -326,10 +327,33 @@ class ChatController extends ChangeNotifier {
     _persistChat();
   }
 
-  void clearChat() {
+  void clearChat() => _replaceMessages(const []);
+
+  /// The transcript in the shape a project file stores it — the same subset
+  /// that survives a restart, so reopening a project reads like relaunching.
+  List<Map<String, dynamic>> chatJson() => [
+    for (final m in messages)
+      if (!m.streaming && m.kind != ChatKind.tool) m.toJson(),
+  ];
+
+  /// Adopt the conversation carried by a project file. `null` or empty (a file
+  /// saved before chats were stored) starts a fresh one rather than leaving the
+  /// previous project's turns in place.
+  void restoreChat(List<dynamic>? stored) {
+    _replaceMessages(stored ?? const []);
+  }
+
+  void _replaceMessages(List<dynamic> stored) {
+    final loaded = [
+      for (final item in stored)
+        if (item is Map) ChatMessage.fromJson(item.cast<String, dynamic>()),
+    ].whereType<ChatMessage>().toList();
     messages
       ..clear()
-      ..add(welcomeMessage());
+      ..addAll(loaded.isEmpty ? [welcomeMessage()] : loaded);
+    // A project's transcript wins over whatever the startup read is about to
+    // find in prefs, and unblocks _persistChat if it has not finished yet.
+    _historyLoaded = true;
     notifyListeners();
     _persistChat();
   }
@@ -389,6 +413,8 @@ class ChatController extends ChangeNotifier {
   Future<void> _loadChatHistory() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      // A project opened while this was in flight already set the transcript.
+      if (_historyLoaded) return;
       final raw = prefs.getString(_chatPrefsKey);
       if (raw == null || raw.isEmpty) {
         _historyLoaded = true;
@@ -416,15 +442,9 @@ class ChatController extends ChangeNotifier {
 
   Future<void> _persistChat() async {
     if (!_historyLoaded) return;
-    final stableMessages = messages
-        .where((m) => !m.streaming && m.kind != ChatKind.tool)
-        .toList();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _chatPrefsKey,
-        jsonEncode(stableMessages.map((m) => m.toJson()).toList()),
-      );
+      await prefs.setString(_chatPrefsKey, jsonEncode(chatJson()));
     } catch (_) {}
   }
 

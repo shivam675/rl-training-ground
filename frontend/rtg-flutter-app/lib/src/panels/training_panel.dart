@@ -6,6 +6,7 @@ import '../app_state.dart';
 import '../nav.dart';
 import '../theme/app_theme.dart';
 import '../theme/easy_colors.dart';
+import '../theme/tokens.dart';
 import '../widgets/common.dart';
 
 class TrainingPanel extends ConsumerStatefulWidget {
@@ -107,7 +108,7 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
         netArchError == null;
 
     return ListView(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Insets.page),
       children: [
         if (blockers.isNotEmpty) ...[
           _SetupGateCard(blockers: blockers),

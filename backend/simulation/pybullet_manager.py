@@ -39,6 +39,18 @@ DEFAULT_TINY_RENDERER_MIN_WIDTH = 512
 # step) don't deadlock.
 _PYBULLET_LOCK = threading.RLock()
 
+#: Angular resolution of the default-stance scan, radians (~1.7 degrees). Fine
+#: enough that the residual is far inside what the policy's +-0.6 rad offset window
+#: corrects, and cheap because the scan is forward kinematics only — no stepping.
+#: The cap keeps a joint with a very wide range from blowing the sample count up.
+_STANCE_SCAN_RESOLUTION = 0.03
+_STANCE_SCAN_MAX_STEPS = 200
+
+
+def _decode(value: Any) -> str:
+    """PyBullet returns joint/link names as bytes on some builds, str on others."""
+    return value.decode() if isinstance(value, bytes) else str(value)
+
 OBSERVATION_CATALOG = [
     {"key": "base_position", "label": "Base position", "size": 3},
     {"key": "base_orientation", "label": "Base orientation", "size": 4},
@@ -298,6 +310,7 @@ class PyBulletManager:
                 physicsClientId=self.cid,
             )
             self._reset_joints_within_limits()
+            self._tune_default_stance(prepared_path)
             if req.auto_spawn_height and not req.fixed_base:
                 self._snap_robot_above_plane(req.spawn_clearance)
             pos, _ = p.getBasePositionAndOrientation(
@@ -357,10 +370,18 @@ class PyBulletManager:
         )
 
     def _reset_joints_within_limits(self, pose: dict[str, float] | None = None) -> None:
-        """Seed every movable joint from ``pose`` (by joint name), defaulting to
-        zero, clamped into the URDF limits. Records the applied pose so it can be
-        read back as the robot's nominal stance."""
+        """Seed every movable joint from ``pose`` (by joint name), clamped into the
+        URDF limits. Records the applied pose so it can be read back as the robot's
+        nominal stance.
+
+        A joint absent from ``pose`` falls back to ``nominal_joint_angle`` rather
+        than a bare zero-clamp — see that function for why zero-clamping is a
+        straight-legged splay on any legged robot. An angle that IS given is applied
+        as asked (clamped only into the limits): an explicit stance is a tuning
+        knob, not a suggestion."""
         assert self.cid is not None and self.robot_body is not None
+        from backend.rl.goal_rewards import nominal_joint_angle
+
         applied: dict[str, float] = {}
         for joint_index in range(
             p.getNumJoints(self.robot_body, physicsClientId=self.cid)
@@ -370,10 +391,13 @@ class PyBulletManager:
             )
             if info[2] == p.JOINT_FIXED:
                 continue
-            name = info[1].decode() if isinstance(info[1], bytes) else str(info[1])
-            wanted = float((pose or {}).get(name, 0.0))
+            name = _decode(info[1])
             lower, upper = float(info[8]), float(info[9])
-            position = min(max(wanted, lower), upper) if lower <= upper else wanted
+            if pose and name in pose:
+                wanted = float(pose[name])
+                position = min(max(wanted, lower), upper) if lower <= upper else wanted
+            else:
+                position = nominal_joint_angle(lower, upper)
             applied[name] = position
             p.resetJointState(
                 self.robot_body,
@@ -383,6 +407,90 @@ class PyBulletManager:
                 physicsClientId=self.cid,
             )
         self._joint_pose = applied
+
+    def _tune_default_stance(self, urdf_path: str) -> None:
+        """Swing each ground-reaching limb's upper joint to the angle that puts its
+        foot LOWEST — i.e. hanging directly under the hip.
+
+        ``nominal_joint_angle`` unfolds the knee off its limit but leaves every
+        other joint at zero, so GO1's thighs hang vertically and each foot trails
+        behind its hip: a rearward crouch grounding the base at 0.26 m against a
+        hand-tuned 0.31 m. With the knee held at its inset, rotating the joint
+        above it swings the foot on a circle about the hip, and the foot is lowest
+        exactly when it hangs straight down — so the right angle is *measured* from
+        this robot's own kinematics. No joint names, no per-robot table, no
+        assumption about which sign means "forward" or how long the segments are.
+
+        Only the default stance goes through here; ``apply_joint_pose`` (an
+        explicit stance) does not, because that is someone's decision to keep.
+        Best-effort throughout: a URDF we cannot analyze keeps the knee-only pose.
+
+        ponytail: scans one joint per limb over a fixed grid. The remaining joints
+        (hip abduction, and any limb with more than 3 DOF) stay at their inset
+        default — moving those trades stance width for height, which needs a
+        criterion this does not have.
+        """
+        assert self.cid is not None
+        if self.robot_body is None:
+            return
+        from backend.rl.goal_rewards import usable_stance_range
+        from backend.rl.morphology import analyze
+
+        try:
+            morph = analyze(urdf_path)
+        except Exception:
+            return
+        joint_index: dict[str, int] = {}
+        link_index: dict[str, int] = {}
+        for index in range(p.getNumJoints(self.robot_body, physicsClientId=self.cid)):
+            info = p.getJointInfo(self.robot_body, index, physicsClientId=self.cid)
+            joint_index[_decode(info[1])] = index
+            link_index[_decode(info[12])] = index
+        pose = dict(self._joint_pose)
+        for group in morph.ground_groups:
+            for chain_index in morph.groups[group]:
+                chain = morph.chains[chain_index]
+                if chain.dof < 2:
+                    continue  # nothing above the knee to swing
+                swing = chain.movable[-2]
+                index, foot = joint_index.get(swing), link_index.get(chain.leaf)
+                if index is None or foot is None:
+                    continue
+                info = p.getJointInfo(self.robot_body, index, physicsClientId=self.cid)
+                low, high = usable_stance_range(float(info[8]), float(info[9]))
+                if high <= low:
+                    continue
+                steps = min(
+                    _STANCE_SCAN_MAX_STEPS, int((high - low) / _STANCE_SCAN_RESOLUTION) + 2
+                )
+                best_angle, best_z = pose.get(swing, 0.0), math.inf
+                for step in range(steps):
+                    angle = low + (high - low) * step / (steps - 1)
+                    p.resetJointState(
+                        self.robot_body,
+                        index,
+                        targetValue=angle,
+                        targetVelocity=0.0,
+                        physicsClientId=self.cid,
+                    )
+                    state = p.getLinkState(
+                        self.robot_body,
+                        foot,
+                        computeForwardKinematics=1,
+                        physicsClientId=self.cid,
+                    )
+                    z = float(state[0][2])
+                    if z < best_z:
+                        best_angle, best_z = angle, z
+                p.resetJointState(
+                    self.robot_body,
+                    index,
+                    targetValue=best_angle,
+                    targetVelocity=0.0,
+                    physicsClientId=self.cid,
+                )
+                pose[swing] = best_angle
+        self._joint_pose = pose
 
     def apply_joint_pose(self, pose: dict[str, float]) -> float | None:
         """Re-seed the joints from ``pose``, re-ground the base, and return the

@@ -313,6 +313,46 @@ def _all_action_patches(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return patches
 
 
+def usable_stance_range(lower: float, upper: float) -> tuple[float, float]:
+    """The band a DEFAULT stance angle may sit in: the URDF limits inset by the
+    position-action half-window, so the policy's whole offset window stays
+    reachable from wherever the stance lands. ``(0.0, 0.0)`` when the joint has no
+    usable travel (continuous joints, missing limits)."""
+    if not (math.isfinite(lower) and math.isfinite(upper)) or lower >= upper:
+        return 0.0, 0.0
+    # Same cap as _position_action_range: on a short-travel joint the window
+    # shrinks to the half-span, so the inset degenerates to the mid-point rather
+    # than inverting.
+    half = min(POSITION_ACTION_HALF_WINDOW, (upper - lower) / 2.0)
+    return lower + half, upper - half
+
+
+def nominal_joint_angle(lower: float, upper: float) -> float:
+    """One joint's DEFAULT stance angle: zero, held far enough inside the URDF
+    limits that its whole position-action window stays reachable.
+
+    A plain clamp into ``[lower, upper]`` is what produced the straight-legged
+    splay. GO1's calf limits are [-2.818, -0.888], so zero lands on -0.888 —
+    *exactly* the upper limit. Half the +-0.6 rad offset window is then clamped
+    away (``config_service._position_window_warnings`` already flags this, but only
+    as advice to a human), the knee can only bend one way, and the robot spawns
+    with its legs locked straight at 0.377 m instead of standing in a crouch.
+    Insetting by the same half-window puts the calf at -1.488, against a
+    hand-tuned GO1 value of -1.5; A1 lands on -1.516 against -1.5.
+
+    Not a per-robot table: the inset comes from the joint's own limits and the
+    action window, so it holds for any URDF. An explicit ``initial_joint_pose``
+    still wins — this is a floor on stance quality, not a replacement for a
+    measured stance.
+
+    This only unfolds the joints the clamp pins (the knee). Swinging the limb so
+    the foot ends up under the hip is measured, not derived — see
+    ``PyBulletManager._tune_default_stance``.
+    """
+    low, high = usable_stance_range(lower, upper)
+    return min(max(0.0, low), high)
+
+
 def _position_action_range(action: dict[str, Any]) -> tuple[float, float]:
     """Symmetric OFFSET window around the robot's nominal stance.
 

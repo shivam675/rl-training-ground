@@ -35,85 +35,44 @@ class HomePanel extends StatelessWidget {
   }
 }
 
-/// Setup checklist + Training, where Training's height animates with the setup
-/// state: a thin bar until the environment is valid, then it opens.
-class _HomeSidebar extends ConsumerStatefulWidget {
+/// Setup checklist + Training, each exactly as tall as its own content, in one
+/// scrolling column.
+///
+/// This replaced an `AnimationController` that interpolated the two panels
+/// between a fixed collapsed height and 55% of the viewport. Every fixed height
+/// here was a guess about content it could not see, and the guess was wrong in
+/// both directions: too much while Training was locked (a void under the goal
+/// chips) and too little for the checklist once the "No robot loaded" empty
+/// state was on screen, which clipped a checklist row in half. Content sizing
+/// gets the collapse-while-locked behaviour for free — a locked Training panel
+/// IS just its one-line banner — so the controller, the two magic fractions and
+/// the ticker mixin all went with it.
+class _HomeSidebar extends StatelessWidget {
   const _HomeSidebar({required this.urdfPath});
 
   final String? urdfPath;
 
   @override
-  ConsumerState<_HomeSidebar> createState() => _HomeSidebarState();
-}
-
-class _HomeSidebarState extends ConsumerState<_HomeSidebar>
-    with SingleTickerProviderStateMixin {
-  // Collapsed Training: the panel's own chrome plus one line of blocker
-  // banner. Derived from Panel.chromeHeight rather than a literal — the old
-  // hardcoded 58.0 was tuned to a previous header size and silently became an
-  // overflow the moment the panel's padding changed.
-  static const _collapsed = Panel.chromeHeight + 76;
-  static const _expandedFraction = 0.55;
-
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 360),
-    value: ref.read(appStateProvider).canStartTraining ? 1.0 : 0.0,
-  );
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final unlocked = ref.watch(appStateProvider).canStartTraining;
-    // Drive the open/close animation toward the current setup state. forward()/
-    // reverse() are no-ops once at the target, so calling every build is safe.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (unlocked) {
-        _controller.forward();
-      } else {
-        _controller.reverse();
-      }
-    });
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final height = constraints.maxHeight;
-        return AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            final t = Curves.easeOutCubic.transform(_controller.value);
-            final trainingH =
-                _collapsed + (height * _expandedFraction - _collapsed) * t;
-            final setupH = (height - trainingH).clamp(0.0, height);
-            return Column(
-              children: [
-                SizedBox(
-                  height: setupH,
-                  child: const Panel(
-                    title: 'Setup & Status',
-                    icon: Icons.checklist_rounded,
-                    child: DashboardPanel(),
-                  ),
-                ),
-                SizedBox(
-                  height: trainingH,
-                  child: Panel(
-                    title: 'Training',
-                    icon: Icons.school_outlined,
-                    child: TrainingControlCard(urdfPath: widget.urdfPath),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    // Scrolls as ONE column. Each Panel is content-sized, so the pair can
+    // exceed the viewport (a live telemetry chart plus a long warning list) and
+    // the user scrolls past both instead of hunting for which of two nested
+    // scrollers has the row they want.
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          const Panel(
+            title: 'Setup & Status',
+            icon: Icons.checklist_rounded,
+            child: DashboardPanel(),
+          ),
+          Panel(
+            title: 'Training',
+            icon: Icons.school_outlined,
+            child: TrainingControlCard(urdfPath: urdfPath),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -167,10 +126,13 @@ class _TrainingControlCardState extends ConsumerState<TrainingControlCard> {
     void go(AppPage page) => ref.read(navIndexProvider.notifier).state = page;
 
     if (blockers.isNotEmpty) {
-      // ListView, not Column: this panel is given a fixed height by
-      // _HomeSidebar, so anything that can grow must be able to scroll.
+      // shrinkWrap + no physics: _HomeSidebar owns the scroll now, so this list
+      // reports its content height and hands the gesture up instead of nesting
+      // a second scroller inside the first.
       return ListView(
-        padding: const EdgeInsets.all(14),
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(Insets.page),
         children: [
           Container(
             padding: const EdgeInsets.all(12),
@@ -213,7 +175,9 @@ class _TrainingControlCardState extends ConsumerState<TrainingControlCard> {
         !state.tuningActive &&
         !state.evaluationActive;
     return ListView(
-      padding: const EdgeInsets.all(14),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(Insets.page),
       children: [
         Row(
           children: [

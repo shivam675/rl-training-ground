@@ -113,7 +113,7 @@ def _position_window_warnings(config, action, label: str, low: float, high: floa
     return out
 
 
-def _compile_or_raise(expr: str, what: str, allowed: set[str]) -> None:
+def _compile_or_raise(expr: str, what: str, allowed: set[str], hint: str = "") -> None:
     """Reject an uncompilable expression as a patch error, keeping ExprError's text —
     it already names every available state entry and function, which is what lets the
     agent fix it inside the same turn instead of shipping a broken run."""
@@ -122,7 +122,23 @@ def _compile_or_raise(expr: str, what: str, allowed: set[str]) -> None:
     try:
         compile_expr(expr, allowed)
     except ExprError as exc:
-        raise ValueError(f"{what}: {exc}") from exc
+        raise ValueError(f"{what}: {exc}{hint}") from exc
+
+
+#: ``terminations.expr`` sits in the same flat dict as the two NUMERIC termination
+#: fields, and every description lists the three together — so an author reaches for
+#: a field NAME as the expression. Observed on a GO1 walk goal:
+#: ``{"expr": "min_base_height", "min_base_height": 0.3}``. The bare compiler error
+#: ("Unknown name 'min_base_height'") reads as if the state vocabulary were missing
+#: something, and because a patch is atomic it took twelve perfectly valid reward
+#: terms down with it.
+_TERMINATION_EXPR_HINT = (
+    " NOTE: terminations.expr is a BOOLEAN EXPRESSION over robot state, never the "
+    'name of a termination — write {"expr": "upright < 0.2"} or '
+    '{"expr": "height_ratio < 0.4"}. The step limit and the fall floor are the '
+    "separate NUMERIC fields max_steps and min_base_height; set those as numbers and "
+    "omit expr entirely if a height floor is all you want."
+)
 
 
 def _contact_links(urdf_path: str | None) -> list[str]:
@@ -294,7 +310,10 @@ class ConfigService:
             term_expr = data["terminations"].get("expr")
             if isinstance(term_expr, str) and term_expr.strip():
                 _compile_or_raise(
-                    term_expr.strip(), "terminations.expr", self._allowed_names(config)
+                    term_expr.strip(),
+                    "terminations.expr",
+                    self._allowed_names(config),
+                    _TERMINATION_EXPR_HINT,
                 )
 
         if isinstance(patch.get("domain_randomization"), dict):
@@ -442,7 +461,7 @@ class ConfigService:
             try:
                 TermSet([Term(name="terminations.expr", expr=term_expr.strip())], allowed)
             except ExprError as exc:
-                problems.append(f"terminations.expr: {exc}")
+                problems.append(f"terminations.expr: {exc}{_TERMINATION_EXPR_HINT}")
 
         if not terms:
             return problems, []

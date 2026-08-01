@@ -18,8 +18,9 @@ class ProjectIO {
       context,
       title: 'Start a new project?',
       body:
-          'This unloads the current robot and clears the observation, action '
-          'and reward setup. Save first if you want to keep it.',
+          'This unloads the current robot, clears the observation, action and '
+          'reward setup, and starts a new assistant chat. Save first if you '
+          'want to keep it.',
       confirmLabel: 'New project',
     );
     if (!confirmed) return false;
@@ -53,7 +54,11 @@ class ProjectIO {
       if (context.mounted) _toast(context, 'Project file has no config.');
       return false;
     }
-    await state.openProjectConfig(rawConfig.cast<String, dynamic>(), path);
+    await state.openProjectConfig(
+      rawConfig.cast<String, dynamic>(),
+      path,
+      chatHistory: doc['chat'] is List ? doc['chat'] as List : null,
+    );
     return true;
   }
 

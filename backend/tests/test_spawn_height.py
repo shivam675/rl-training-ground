@@ -61,7 +61,7 @@ def test_spawn_height_is_recorded_after_collision_grounding():
         manager.disconnect()
 
 
-def test_spawn_clamps_zero_joint_pose_into_urdf_limits(tmp_path):
+def test_spawn_holds_the_default_pose_off_the_urdf_limits(tmp_path):
     urdf = tmp_path / "negative_joint.urdf"
     urdf.write_text(
         """<robot name="negative-joint">
@@ -86,7 +86,97 @@ def test_spawn_clamps_zero_joint_pose_into_urdf_limits(tmp_path):
         position = p.getJointState(
             manager.robot_body, 0, physicsClientId=manager.cid
         )[0]
-        assert position == pytest.approx(-0.2)
+        # Inside the limits, as always — but no longer clamped ONTO one. Zero used
+        # to land on -0.2 exactly, and a stance pinned against a limit is what gave
+        # every legged robot a straight-legged splay (GO1's calf limits are
+        # [-2.818, -0.888]) and cost it half its offset window. This joint's 0.3 rad
+        # span is narrower than twice the 0.6 rad half-window, so the inset
+        # degenerates to the mid-point rather than inverting.
+        assert position == pytest.approx(-0.35)
+    finally:
+        manager.disconnect()
+
+
+def _four_legged_urdf(path: Path) -> Path:
+    """Synthetic quadruped: base + 4 legs of hip/thigh/calf/foot, 0.2 m segments.
+
+    Deliberately generic (no `FR_`/`thigh` naming that anything could key off) and
+    given the same calf limits as A1/GO1, whose upper bound is what a zero-clamp
+    used to pin the knee against.
+    """
+    links = ['<link name="base"><collision><geometry><box size="0.4 0.2 0.1"/>'
+             "</geometry></collision></link>"]
+    joints = []
+    for i, (x, y) in enumerate(((0.2, 0.1), (0.2, -0.1), (-0.2, 0.1), (-0.2, -0.1))):
+        for part in ("upper", "lower", "tip"):
+            links.append(
+                f'<link name="l{i}_{part}"><collision><geometry>'
+                '<box size="0.04 0.04 0.2"/></geometry></collision></link>'
+            )
+        joints.append(
+            f'<joint name="j{i}_a" type="revolute"><parent link="base"/>'
+            f'<child link="l{i}_upper"/><origin xyz="{x} {y} 0"/><axis xyz="0 1 0"/>'
+            '<limit lower="-0.686" upper="4.501" effort="30" velocity="20"/></joint>'
+        )
+        joints.append(
+            f'<joint name="j{i}_b" type="revolute"><parent link="l{i}_upper"/>'
+            f'<child link="l{i}_lower"/><origin xyz="0 0 -0.2"/><axis xyz="0 1 0"/>'
+            '<limit lower="-2.818" upper="-0.888" effort="30" velocity="20"/></joint>'
+        )
+        joints.append(
+            f'<joint name="j{i}_c" type="fixed"><parent link="l{i}_lower"/>'
+            f'<child link="l{i}_tip"/><origin xyz="0 0 -0.2"/></joint>'
+        )
+    path.write_text(
+        '<robot name="quad">' + "".join(links) + "".join(joints) + "</robot>",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_default_stance_unfolds_the_knee_and_swings_the_foot_under_the_hip(tmp_path):
+    """The two halves of the derived stance, on a robot with no recognisable names.
+
+    Zero-clamping put the knee on -0.888, its own upper limit: legs locked straight
+    and half the +-0.6 rad offset window clamped away. The inset moves it to -1.488,
+    and the measured swing then rotates the joint above it until the foot hangs
+    under the hip — which is what recovers the standing height the fold costs.
+    """
+    manager = PyBulletManager()
+    manager.connect()
+    try:
+        manager.load_urdf(LoadUrdfRequest(path=str(_four_legged_urdf(tmp_path / "q.urdf"))))
+        pose = manager.joint_pose()
+        knees = [v for k, v in pose.items() if k.endswith("_b")]
+        swings = [v for k, v in pose.items() if k.endswith("_a")]
+        assert len(knees) == 4 and len(swings) == 4
+
+        # Knee: off its limit by the full half-window, so the policy can drive it
+        # both ways. (Old behaviour: -0.888, hard against the limit.)
+        assert knees == pytest.approx([-1.488] * 4)
+        # Swing: with 0.2 m segments folded by 1.488 rad, the foot hangs under the
+        # hip at roughly half that. Measured, so the exact value is the robot's.
+        assert swings == pytest.approx([1.488 / 2] * 4, abs=0.05)
+        # Mirrored limbs share a signature, so they must agree.
+        assert len(set(round(v, 6) for v in swings)) == 1
+    finally:
+        manager.disconnect()
+
+
+def test_explicit_stance_is_applied_as_asked(tmp_path):
+    """An explicit initial_joint_pose is a tuning knob, not a suggestion: it is
+    clamped into the URDF limits and otherwise left exactly alone."""
+    manager = PyBulletManager()
+    manager.connect()
+    try:
+        manager.load_urdf(LoadUrdfRequest(path=str(_four_legged_urdf(tmp_path / "q.urdf"))))
+        manager.apply_joint_pose({"j0_a": 0.25, "j0_b": -2.0, "j1_b": -99.0})
+        pose = manager.joint_pose()
+        assert pose["j0_a"] == pytest.approx(0.25)
+        assert pose["j0_b"] == pytest.approx(-2.0)
+        assert pose["j1_b"] == pytest.approx(-2.818)  # clamped to the lower limit
+        # Untouched joints fall back to the derived default, not to zero.
+        assert pose["j2_b"] == pytest.approx(-1.488)
     finally:
         manager.disconnect()
 

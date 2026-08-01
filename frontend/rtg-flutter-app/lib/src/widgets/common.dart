@@ -116,12 +116,6 @@ class Panel extends StatelessWidget {
   /// Height of the header bar.
   static const double headerHeight = 54;
 
-  /// Total height the panel spends on its own chrome (outer padding + header).
-  /// A caller giving a Panel a fixed height must leave at least this much, or
-  /// there is no room left for [child]. Derive from this instead of hardcoding
-  /// a number that silently rots the next time the padding changes.
-  static const double chromeHeight = Insets.md + headerHeight + Insets.lg;
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -152,6 +146,16 @@ class Panel extends StatelessWidget {
             child: LayoutBuilder(
               builder: (context, constraints) => Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
+                // min + Flexible (not max + Expanded) so a Panel whose [child]
+                // shrink-wraps — a `shrinkWrap: true` ListView — sizes to its
+                // content instead of stretching to the height it was offered.
+                // A child that fills (every other page body is a plain
+                // ListView) still fills, so this is a no-op for them.
+                mainAxisSize: MainAxisSize.min,
+                // ...and no Flexible at all when the height is unbounded: a
+                // non-zero flex under an unbounded main axis is a RenderFlex
+                // assertion, which is what a Panel inside a scroll view gives
+                // you. See the [child] entry below.
                 children: [
                   Container(
                     // Clamp so a Panel squeezed below its own chrome clips the
@@ -191,7 +195,10 @@ class Panel extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Expanded(child: child),
+                  if (constraints.hasBoundedHeight)
+                    Flexible(child: child)
+                  else
+                    child,
                 ],
               ),
             ),
@@ -216,7 +223,14 @@ class SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(top: Insets.md, bottom: Insets.sm),
       child: Row(
         children: [
-          Flexible(
+          // Expanded, and NO Spacer beside it. `Flexible` + `Spacer` both took
+          // flex 1, so the Spacer only ever got *half* the free space and the
+          // loose Flexible's unclaimed half was dropped at the row's right
+          // edge — which parked every trailing action (Test reward, the runs
+          // refresh, the vector-size chip, the checklist progress) mid-row
+          // instead of against the right margin. Expanded is tight: the label
+          // takes the whole gap and ellipsizes, [trailing] sits flush right.
+          Expanded(
             child: Text(
               title.toUpperCase(),
               maxLines: 1,
@@ -231,11 +245,8 @@ class SectionHeader extends StatelessWidget {
               ),
             ),
           ),
-          // The trailing rule is gone — whitespace already groups these, and
-          // the rule was drawing a line across every panel for no information.
-          const Spacer(),
           if (trailing != null) ...[
-            const SizedBox(width: Insets.sm),
+            const SizedBox(width: Insets.md),
             trailing!,
           ],
         ],
@@ -271,8 +282,11 @@ class StatChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(Radii.md),
         onTap: () => copyToClipboard(context, value, label: 'Copied "$value"'),
         child: Container(
+          // md, not lg: three of these share a 340px column, and 16px of gutter
+          // on each side left too little for "MOVABLE" — the label ellipsised
+          // to "MOVA…", which is worse than a tighter tile.
           padding: const EdgeInsets.symmetric(
-            horizontal: Insets.lg,
+            horizontal: Insets.md,
             vertical: Insets.md,
           ),
           decoration: BoxDecoration(
@@ -284,6 +298,9 @@ class StatChip extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Flexible + ellipsis on both lines: these tiles are laid out in
+              // fixed-width Row slots (three across a 340px column), so a long
+              // robot name must clip rather than overflow the tile.
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -291,20 +308,26 @@ class StatChip extends StatelessWidget {
                     Icon(icon, size: 13, color: scheme.onSurfaceVariant),
                     const SizedBox(width: 5),
                   ],
-                  Text(
-                    label.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.7,
-                      color: scheme.onSurfaceVariant,
+                  Flexible(
+                    child: Text(
+                      label.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.7,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: Insets.xs),
               Text(
                 value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,

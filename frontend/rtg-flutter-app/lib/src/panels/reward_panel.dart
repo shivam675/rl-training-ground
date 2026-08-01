@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../app_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/easy_colors.dart';
+import '../theme/tokens.dart';
 import '../widgets/common.dart';
 
 class RewardPanel extends ConsumerWidget {
@@ -27,7 +28,7 @@ class RewardPanel extends ConsumerWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Insets.page),
       children: [
         SectionHeader(
           'Reward components',
@@ -116,19 +117,13 @@ class _RewardResultCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          SelectableText(
-            formula,
-            style: monoStyle(context, fontSize: 11.5),
-          ),
+          SelectableText(formula, style: monoStyle(context, fontSize: 11.5)),
           if (warnings.isNotEmpty) ...[
             const SizedBox(height: 8),
             for (final warning in warnings)
               Text(
                 'Review: $warning',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: context.colors.warning,
-                ),
+                style: TextStyle(fontSize: 12, color: context.colors.warning),
               ),
           ],
           if (terms.isNotEmpty) ...[
@@ -282,10 +277,7 @@ class _RewardEditorState extends State<_RewardEditor> {
                 tooltip: expanded ? 'Hide expression' : 'Edit expression',
                 visualDensity: VisualDensity.compact,
                 onPressed: () => setState(() => expanded = !expanded),
-                icon: Icon(
-                  expanded ? Icons.expand_less : Icons.tune,
-                  size: 18,
-                ),
+                icon: Icon(expanded ? Icons.expand_less : Icons.tune, size: 18),
               ),
             ],
           ),

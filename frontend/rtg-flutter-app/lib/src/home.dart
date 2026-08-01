@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'agent/assistant_dock.dart';
+import 'agent/chat_controller.dart';
 import 'app_state.dart';
 import 'nav.dart';
 import 'notifications.dart';
@@ -19,6 +20,7 @@ import 'panels/training_panel.dart';
 import 'panels/viewer_3d_page.dart';
 import 'project_io.dart';
 import 'theme/theme_controller.dart';
+import 'theme/tokens.dart';
 import 'widgets/app_rail.dart';
 import 'widgets/command_palette.dart';
 import 'widgets/common.dart';
@@ -44,6 +46,10 @@ class _EasyRtgHomeState extends ConsumerState<EasyRtgHome> {
           .read(notificationCenterProvider)
           .toasts
           .listen(showToast);
+      // Build the chat up front (it registers itself on AppState) so saving or
+      // opening a project carries the transcript even when the dock has never
+      // been expanded — its widget is the only other thing that would build it.
+      ref.read(chatControllerProvider);
     });
   }
 
@@ -56,11 +62,29 @@ class _EasyRtgHomeState extends ConsumerState<EasyRtgHome> {
 
   Timer? _toastTimer;
 
+  /// Show a snackbar and own its dismissal.
+  ///
+  /// The framework's auto-dismiss timer is created inside
+  /// ScaffoldMessengerState.build (scaffold.dart) and only when the entry
+  /// animation has completed, the route is current, and accessibleNavigation is
+  /// off — miss any of those and the toast sits there until it is clicked. Every
+  /// snackbar raised from this shell goes through here, because the one that
+  /// did NOT (the training-locked toast) is exactly the one that stayed on
+  /// screen past 10s. close() on an already-closed controller is a no-op, so
+  /// this is safe alongside the framework timer.
+  void _showSnack(SnackBar snack) {
+    final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
+    final controller = messenger.showSnackBar(snack);
+    _toastTimer?.cancel();
+    _toastTimer = Timer(snack.duration, () {
+      if (mounted) controller.close();
+    });
+  }
+
   void showToast(AgentNotification notification) {
     if (!mounted) return;
     final color = severityColor(context, notification.severity);
-    final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
-    final controller = messenger.showSnackBar(
+    _showSnack(
       SnackBar(
         duration: const Duration(seconds: 4),
         content: Row(
@@ -99,16 +123,6 @@ class _EasyRtgHomeState extends ConsumerState<EasyRtgHome> {
         ),
       ),
     );
-    // Own the dismissal. The framework's auto-dismiss timer is created inside
-    // ScaffoldMessengerState.build (scaffold.dart) and only when the entry
-    // animation has completed, the route is current, and accessibleNavigation
-    // is off — miss any of those and the toast sits there until it is clicked,
-    // which is exactly what happened. close() on an already-closed controller
-    // is a no-op, so this is safe alongside the framework timer.
-    _toastTimer?.cancel();
-    _toastTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted) controller.close();
-    });
   }
 
   // Training stays locked until the environment setup is valid. Evaluation is
@@ -140,31 +154,35 @@ class _EasyRtgHomeState extends ConsumerState<EasyRtgHome> {
   void _onDestinationSelected(AppPage page, AppState state) {
     if (_isLocked(page, state)) {
       final blockers = state.trainingBlockers();
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            duration: const Duration(seconds: 4),
-            content: Row(
-              children: [
-                const Icon(Icons.lock_outline, size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    blockers.isEmpty
-                        ? '${page.label} is locked.'
-                        : '${page.label} unlocks once you: ${blockers.join(', ')}.',
-                  ),
+      _showSnack(
+        SnackBar(
+          duration: const Duration(seconds: 6),
+          content: Row(
+            children: [
+              const Icon(Icons.lock_outline, size: 18),
+              const SizedBox(width: Insets.md),
+              Expanded(
+                child: Text(
+                  blockers.isEmpty
+                      ? '${page.label} is locked.'
+                      : '${page.label} unlocks once you: ${blockers.join(', ')}.',
+                  // Four blockers wrapped to three lines in a 380px toast. Two
+                  // lines and an ellipsis: the checklist on Home is the full
+                  // list, this is a nudge toward it.
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, height: 1.35),
                 ),
-              ],
-            ),
-            action: SnackBarAction(
-              label: 'Robot Setup',
-              onPressed: () =>
-                  ref.read(navIndexProvider.notifier).state = AppPage.robot,
-            ),
+              ),
+            ],
           ),
-        );
+          action: SnackBarAction(
+            label: 'Robot Setup',
+            onPressed: () =>
+                ref.read(navIndexProvider.notifier).state = AppPage.robot,
+          ),
+        ),
+      );
       return;
     }
     ref.read(navIndexProvider.notifier).state = page;
@@ -261,11 +279,11 @@ class _EasyRtgHomeState extends ConsumerState<EasyRtgHome> {
         run: () => setDockExpanded(ref, true),
       ),
       PaletteCommand(
-        label: 'Load sample robot (R2D2)',
+        label: 'Load sample robot ($kSampleRobotName)',
         hint: 'Action',
         icon: Icons.bolt,
         run: () => state.loadUrdf(
-          path: 'r2d2.urdf',
+          path: kSampleRobotPath,
           basePosition: const [0.0, 0.0, 0.5],
           fixedBase: false,
           addPlane: true,
@@ -331,44 +349,52 @@ class _EasyRtgHomeState extends ConsumerState<EasyRtgHome> {
                           onOpenCommandPalette: () =>
                               _showCommandPalette(state),
                         ),
+                        // Dot grid behind the page, not inside it: every page
+                        // body is a Panel painting an opaque surface, so the
+                        // texture only shows through the gutters and around the
+                        // cards — which is what makes them read as floating.
                         Expanded(
-                          child: AnimatedSwitcher(
-                            // A shared-axis feel, hand-rolled: the incoming page
-                            // rises and scales up from just under full size
-                            // while the outgoing one fades. 0.012 of a slide over
-                            // 220ms was imperceptible — it read as a flicker
-                            // rather than a transition.
-                            duration: const Duration(milliseconds: 300),
-                            reverseDuration: const Duration(milliseconds: 180),
-                            switchInCurve: Curves.easeOutCubic,
-                            switchOutCurve: Curves.easeIn,
-                            // Outgoing pages leave in place instead of shoving
-                            // the incoming one down the stack.
-                            layoutBuilder: (current, previous) => Stack(
-                              alignment: Alignment.topLeft,
-                              children: [...previous, ?current],
-                            ),
-                            transitionBuilder: (child, animation) {
-                              return FadeTransition(
-                                opacity: animation,
-                                child: SlideTransition(
-                                  position: Tween<Offset>(
-                                    begin: const Offset(0, 0.035),
-                                    end: Offset.zero,
-                                  ).animate(animation),
-                                  child: ScaleTransition(
-                                    scale: Tween<double>(
-                                      begin: 0.985,
-                                      end: 1,
+                          child: DotGrid(
+                            child: AnimatedSwitcher(
+                              // A shared-axis feel, hand-rolled: the incoming page
+                              // rises and scales up from just under full size
+                              // while the outgoing one fades. 0.012 of a slide over
+                              // 220ms was imperceptible — it read as a flicker
+                              // rather than a transition.
+                              duration: const Duration(milliseconds: 300),
+                              reverseDuration: const Duration(
+                                milliseconds: 180,
+                              ),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeIn,
+                              // Outgoing pages leave in place instead of shoving
+                              // the incoming one down the stack.
+                              layoutBuilder: (current, previous) => Stack(
+                                alignment: Alignment.topLeft,
+                                children: [...previous, ?current],
+                              ),
+                              transitionBuilder: (child, animation) {
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(0, 0.035),
+                                      end: Offset.zero,
                                     ).animate(animation),
-                                    child: child,
+                                    child: ScaleTransition(
+                                      scale: Tween<double>(
+                                        begin: 0.985,
+                                        end: 1,
+                                      ).animate(animation),
+                                      child: child,
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
-                            child: KeyedSubtree(
-                              key: ValueKey(selected),
-                              child: _pageFor(selected, urdfPath),
+                                );
+                              },
+                              child: KeyedSubtree(
+                                key: ValueKey(selected),
+                                child: _pageFor(selected, urdfPath),
+                              ),
                             ),
                           ),
                         ),

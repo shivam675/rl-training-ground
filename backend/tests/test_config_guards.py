@@ -106,6 +106,45 @@ def test_a_bad_termination_expression_is_rejected_at_patch_time(client):
         config_service.apply_patch(config, {"terminations": {"expr": "base_orientation < 0.2"}})
 
 
+def test_a_termination_field_name_used_as_the_expression_says_so(client):
+    """Observed on a GO1 walk goal: {"expr": "min_base_height", "min_base_height": 0.3}.
+
+    `min_base_height` is a real termination field, so the bare compiler error
+    ("Unknown name") reads as if the state vocabulary were missing something — and
+    because the patch is atomic it took twelve valid reward terms with it.
+    """
+    config = config_service.current_or_default(sim)
+    with pytest.raises(ValueError) as excinfo:
+        config_service.apply_patch(
+            config, {"terminations": {"expr": "min_base_height", "min_base_height": 0.3}}
+        )
+    message = str(excinfo.value)
+    assert "never the name of a termination" in message
+    assert 'upright < 0.2' in message
+
+
+def test_a_rejected_patch_reports_that_nothing_was_saved(client):
+    """The tool result is the only thing the model reads back. A bare {"error": ...}
+    let it report success and tell the user to click Run on a config that stayed
+    empty."""
+    from backend.main import toolbox
+
+    result = toolbox._patch_env_config(
+        {
+            "rewards": [
+                {"key": "forward", "enabled": True, "weight": 1.5,
+                 "params": {"expr": "min(base_vx, 1.0)"}}
+            ],
+            "terminations": {"expr": "min_base_height"},
+        }
+    )
+    assert result["ok"] is False and result["applied"] is False
+    assert "NOTHING was saved" in result["next_step"]
+    # ...and it really wasn't: the valid reward term went down with the bad field.
+    saved = config_service.current_or_default(sim)
+    assert not any(r.key == "forward" for r in saved.rewards)
+
+
 def test_the_vocabulary_maps_observation_names_onto_expression_names():
     """The two spellings are the same physical quantities, so the vocabulary listing
     alone did not stop the confusion — the mapping has to be spelled out."""

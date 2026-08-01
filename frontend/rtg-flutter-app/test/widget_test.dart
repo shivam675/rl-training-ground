@@ -12,6 +12,7 @@ import 'package:rtg_flutter_app/src/panels/home_panel.dart';
 import 'package:rtg_flutter_app/src/panels/robot_panel.dart';
 import 'package:rtg_flutter_app/src/panels/reward_panel.dart';
 import 'package:rtg_flutter_app/src/theme/app_theme.dart';
+import 'package:rtg_flutter_app/src/widgets/common.dart';
 
 class EmptyApi extends BackendApi {
   @override
@@ -245,6 +246,148 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('joint_0'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  // The four layout regressions the 2026-08-01 pass fixed. Each was invisible
+  // to `flutter analyze` and to every assertion above — they render fine, just
+  // in the wrong place — so they are pinned by geometry, not by finding text.
+  testWidgets('a section header parks its action against the right margin', (
+    tester,
+  ) async {
+    // SectionHeader paired `Flexible(flex: 1)` with `Spacer(flex: 1)`. Both
+    // claimed one flex unit, so the Spacer only ever got HALF the free space
+    // and the loose Flexible's unclaimed half was dropped past the trailing
+    // widget — parking Test reward / the runs refresh / the vector-size chip
+    // around 65% of the row instead of flush right.
+    final state = AppState(EmptyApi())..envConfig = {'rewards': const []};
+
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: MaterialApp(
+          theme: buildAppTheme(brightness: Brightness.light),
+          home: const Scaffold(body: RewardPanel()),
+        ),
+      ),
+    );
+
+    final header = tester.getRect(find.byType(SectionHeader).first);
+    final action = tester.getRect(find.byType(FilledButton).first);
+    expect(
+      header.right - action.right,
+      lessThan(1.0),
+      reason:
+          'the header action should end at the header\'s right edge; it ended '
+          '${(header.right - action.right).toStringAsFixed(0)}px short, which '
+          'is the Flexible-plus-Spacer bug back again',
+    );
+  });
+
+  testWidgets('the three robot identity tiles stay on one line', (
+    tester,
+  ) async {
+    // Three StatChips want 327px in a Wrap and the identity column offers ~308,
+    // so MOVABLE dropped to a second row. They are equal thirds of a Row now.
+    final state = AppState(EmptyApi())
+      ..robotInfo = {
+        'name': 'go1',
+        'joint_count': 45,
+        'path': 'go1.urdf',
+        'joints': [
+          for (var i = 0; i < 45; i++)
+            {
+              'index': i,
+              'name': 'joint_$i',
+              'type': i < 12 ? 'revolute' : 'fixed',
+              'lower_limit': -1.0,
+              'upper_limit': 1.0,
+            },
+        ],
+      };
+
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: MaterialApp(
+          theme: buildAppTheme(brightness: Brightness.light),
+          home: const Scaffold(body: RobotPanel()),
+        ),
+      ),
+    );
+
+    final tiles = tester
+        .widgetList<StatChip>(find.byType(StatChip))
+        .toList(growable: false);
+    expect(tiles.length, 3);
+    final tops = <double>{
+      for (var i = 0; i < 3; i++)
+        tester.getTopLeft(find.byType(StatChip).at(i)).dy,
+    };
+    expect(tops.length, 1, reason: 'a tile wrapped onto a second line');
+    // Movable counts the 12 revolute joints, not all 45.
+    expect(find.text('12'), findsOneWidget);
+  });
+
+  testWidgets('World puts its field left, its controls right, with a gap', (
+    tester,
+  ) async {
+    // Two fixes at once: the disclosure had bottom-only childrenPadding, so its
+    // content butted against the title that opened it; and the field sat
+    // *between* two toggles in one Wrap, so nothing lined up.
+    final state = AppState(EmptyApi())
+      ..robotInfo = {'name': 'go1', 'joint_count': 0, 'joints': const []};
+
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: MaterialApp(
+          theme: buildAppTheme(brightness: Brightness.light),
+          home: const Scaffold(body: RobotPanel()),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('World'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    final title = tester.getRect(find.text('World'));
+    final field = tester.getRect(find.byType(TextField).first);
+    final reset = tester.getRect(find.text('Reset world'));
+
+    expect(
+      field.top - title.bottom,
+      greaterThan(8.0),
+      reason: 'the expanded form needs air under the title that opened it',
+    );
+    expect(
+      field.right,
+      lessThan(reset.left),
+      reason: 'the input belongs left of every button and toggle',
+    );
+    // Every floating label must render inside the filled box. With an outline
+    // border it straddled the top edge and got clipped in half.
+    final label = tester.getRect(find.text('Gravity Z (m/s²)'));
+    expect(
+      label.top,
+      greaterThanOrEqualTo(field.top),
+      reason: 'the label is hanging outside the field and will be clipped',
+    );
   });
 
   testWidgets('RewardPanel renders structured reward test output', (

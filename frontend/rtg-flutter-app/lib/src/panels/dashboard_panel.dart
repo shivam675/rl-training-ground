@@ -6,6 +6,7 @@ import '../agent/chat_controller.dart';
 import '../app_state.dart';
 import '../nav.dart';
 import '../theme/easy_colors.dart';
+import '../theme/tokens.dart';
 import '../widgets/common.dart';
 
 /// Compact dashboard summary: a one-glance robot snapshot + a setup checklist
@@ -78,7 +79,12 @@ class DashboardPanel extends ConsumerWidget {
     }
 
     return ListView(
-      padding: const EdgeInsets.all(14),
+      // shrinkWrap so the Setup & Status panel is as tall as this checklist and
+      // no taller. Unwrapped it stretched to whatever height the sidebar handed
+      // it, leaving several hundred px of empty white card under the goal chips.
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(Insets.page),
       children: [
         const SectionHeader('Robot'),
         if (!hasRobot)
@@ -94,13 +100,13 @@ class DashboardPanel extends ConsumerWidget {
                   onPressed: state.busy
                       ? null
                       : () => state.loadUrdf(
-                          path: 'r2d2.urdf',
+                          path: kSampleRobotPath,
                           basePosition: const [0.0, 0.0, 0.5],
                           fixedBase: false,
                           addPlane: true,
                         ),
                   icon: const Icon(Icons.bolt, size: 16),
-                  label: const Text('Try a sample robot (R2D2)'),
+                  label: const Text('Try a sample robot ($kSampleRobotName)'),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app_state.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import '../widgets/common.dart';
 
 class LogsPanel extends ConsumerStatefulWidget {
@@ -69,7 +70,7 @@ class _LogsPanelState extends ConsumerState<LogsPanel> {
     ).convert(state.trainingStatus ?? {});
 
     return ListView(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(Insets.page),
       children: [
         SectionHeader(
           'Backend log',

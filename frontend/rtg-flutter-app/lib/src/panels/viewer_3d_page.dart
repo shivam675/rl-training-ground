@@ -59,10 +59,10 @@ class _LiveStreamPanelState extends ConsumerState<_LiveStreamPanel> {
     setState(() => _launching = true);
     String? error;
     try {
-      await ref.read(appStateProvider).api.postJson(
-        '/isaac/stream_client/launch',
-        {},
-      );
+      await ref
+          .read(appStateProvider)
+          .api
+          .postJson('/isaac/stream_client/launch', {});
     } catch (e) {
       error = e.toString();
     }
@@ -204,7 +204,11 @@ class _IsaacVideoViewState extends State<_IsaacVideoView> {
     return ColoredBox(
       color: Colors.black,
       child: Center(
-        child: Image.memory(_frame!, gaplessPlayback: true, fit: BoxFit.contain),
+        child: Image.memory(
+          _frame!,
+          gaplessPlayback: true,
+          fit: BoxFit.contain,
+        ),
       ),
     );
   }

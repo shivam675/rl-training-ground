@@ -65,11 +65,11 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
           final identity = _identityColumn(state, info, joints, loadedPath);
           final detail = _detailChildren(state, scheme, joints, warnings);
           // Below this the two columns are narrower than their own content, so
-          // stack them instead. 880 is roughly where the joint table stops
-          // fitting beside a 340px identity column.
-          if (constraints.maxWidth < 880) {
+          // stack them instead. 920 is roughly where the joint table stops
+          // fitting beside the identity column.
+          if (constraints.maxWidth < 920) {
             return ListView(
-              padding: const EdgeInsets.all(Insets.lg),
+              padding: const EdgeInsets.all(Insets.page),
               children: [
                 identity,
                 const SizedBox(height: Insets.xl),
@@ -81,16 +81,19 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SizedBox(
-                width: 340,
+                // 380, not 340: three identity tiles across 340 minus the page
+                // gutter gave each one 97px, which is under what "MOVABLE" and
+                // its icon need. The path line below reads better wider too.
+                width: 380,
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(Insets.xl),
+                  padding: const EdgeInsets.all(Insets.page),
                   child: identity,
                 ),
               ),
               VerticalDivider(width: 1, color: scheme.outlineVariant),
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.all(Insets.xl),
+                  padding: const EdgeInsets.all(Insets.page),
                   children: detail,
                 ),
               ),
@@ -102,7 +105,7 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
 
     // Nothing loaded: one full-width invitation, no columns to fill.
     return ListView(
-      padding: const EdgeInsets.all(Insets.lg),
+      padding: const EdgeInsets.all(Insets.page),
       children: [
         EmptyState(
           icon: Icons.precision_manufacturing_outlined,
@@ -124,11 +127,11 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
                 onPressed: state.busy
                     ? null
                     : () {
-                        pathController.text = 'r2d2.urdf';
+                        pathController.text = kSampleRobotPath;
                         _load(state);
                       },
                 icon: const Icon(Icons.bolt, size: 16),
-                label: const Text('Sample robot'),
+                label: const Text('Sample robot ($kSampleRobotName)'),
               ),
             ],
           ),
@@ -161,27 +164,37 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
+        // Row of equal thirds, not a Wrap. Three tiles want 327px and this
+        // column offers 292, so Wrap dropped MOVABLE onto a second line —
+        // which read as a layout accident, because it is one. Expanded thirds
+        // stay on one line at any column width; StatChip ellipsizes.
+        Row(
           children: [
-            StatChip(
-              label: 'Name',
-              value: '${info['name']}',
-              icon: Icons.smart_toy_outlined,
-            ),
-            StatChip(
-              label: 'Joints',
-              value: '${info['joint_count'] ?? joints.length}',
-              icon: Icons.device_hub,
-            ),
-            // The number that actually matters for training: how many joints a
-            // policy could drive. go1 reports 45 joints and only 12 move.
-            StatChip(
-              label: 'Movable',
-              value: '${_movableCount(joints)}',
-              icon: Icons.settings_input_component,
-            ),
+            for (final chip in [
+              StatChip(
+                label: 'Name',
+                value: '${info['name']}',
+                icon: Icons.smart_toy_outlined,
+              ),
+              StatChip(
+                label: 'Joints',
+                value: '${info['joint_count'] ?? joints.length}',
+                icon: Icons.device_hub,
+              ),
+              // The number that actually matters for training: how many joints
+              // a policy could drive. go1 reports 45 joints and only 12 move.
+              StatChip(
+                label: 'Movable',
+                value: '${_movableCount(joints)}',
+                icon: Icons.settings_input_component,
+              ),
+            ].indexed)
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: chip.$1 == 0 ? 0 : Insets.sm),
+                  child: chip.$2,
+                ),
+              ),
           ],
         ),
         if (loadedPath != null && loadedPath.isNotEmpty) ...[
@@ -328,6 +341,7 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
             label: const Text('Copy as CSV'),
           ),
         ),
+        const SizedBox(height: Insets.sm),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
@@ -378,27 +392,27 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
     );
   }
 
+  /// Input left, controls right — the same split as [_worldForm].
   Widget _loadForm(AppState state) {
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: pathController,
-            style: monoStyle(context, fontSize: 13),
-            decoration: const InputDecoration(
-              labelText: 'URDF path',
-              prefixIcon: Icon(Icons.description_outlined, size: 18),
-            ),
-            onSubmitted: (_) => _load(state),
-          ),
+    return _InputsThenControls(
+      inputs: TextField(
+        controller: pathController,
+        style: monoStyle(context, fontSize: 13),
+        decoration: const InputDecoration(
+          labelText: 'URDF path',
+          prefixIcon: Icon(Icons.description_outlined, size: 18),
         ),
-        const SizedBox(width: 8),
+        onSubmitted: (_) => _load(state),
+      ),
+      // The field is the whole point of this form, so let it take the slack
+      // instead of sizing it and leaving a gap.
+      inputsFlex: true,
+      controls: [
         IconButton.filledTonal(
           tooltip: 'Browse for a .urdf file',
           icon: const Icon(Icons.folder_open),
           onPressed: _browse,
         ),
-        const SizedBox(width: 8),
         FilledButton.icon(
           onPressed: state.busy ? null : () => _load(state),
           icon: const Icon(Icons.play_arrow),
@@ -409,11 +423,16 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
   }
 
   Widget _worldForm(AppState state) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
+    return _InputsThenControls(
+      inputs: SizedBox(
+        width: 150,
+        child: TextField(
+          controller: gravityController,
+          style: monoStyle(context, fontSize: 13),
+          decoration: const InputDecoration(labelText: 'Gravity Z (m/s²)'),
+        ),
+      ),
+      controls: [
         FilterChip(
           label: const Text('Fixed base'),
           tooltip: 'Anchor the robot base so it cannot move',
@@ -425,14 +444,6 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
           tooltip: 'Add a flat ground plane to the world',
           selected: addPlane,
           onSelected: (v) => setState(() => addPlane = v),
-        ),
-        SizedBox(
-          width: 130,
-          child: TextField(
-            controller: gravityController,
-            style: monoStyle(context, fontSize: 13),
-            decoration: const InputDecoration(labelText: 'Gravity Z (m/s²)'),
-          ),
         ),
         OutlinedButton.icon(
           onPressed: () => state.setGravity(
@@ -474,6 +485,46 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
       basePosition: const [0.0, 0.0, 0.5],
       fixedBase: fixedBase,
       addPlane: addPlane,
+    );
+  }
+}
+
+/// One form row: everything you type on the left, everything you click on the
+/// right. Chips, toggles and buttons were previously interleaved with the
+/// fields in a single [Wrap], so "Gravity Z" sat between two toggles and a
+/// button — nothing lined up between the two disclosures.
+class _InputsThenControls extends StatelessWidget {
+  const _InputsThenControls({
+    required this.inputs,
+    required this.controls,
+    this.inputsFlex = false,
+  });
+
+  final Widget inputs;
+  final List<Widget> controls;
+
+  /// Let the input soak up the free width instead of the gap doing it.
+  final bool inputsFlex;
+
+  @override
+  Widget build(BuildContext context) {
+    // Wrap for the controls, not a Row: the disclosure is 340px narrower on a
+    // stacked layout and four buttons must be able to take a second line
+    // rather than overflow. WrapAlignment.end keeps them on the right edge.
+    final trailing = Wrap(
+      alignment: WrapAlignment.end,
+      spacing: Insets.sm,
+      runSpacing: Insets.sm,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: controls,
+    );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (inputsFlex) Expanded(child: inputs) else inputs,
+        const SizedBox(width: Insets.lg),
+        if (inputsFlex) trailing else Expanded(child: trailing),
+      ],
     );
   }
 }
@@ -525,8 +576,14 @@ class _Disclosure extends StatelessWidget {
       // ExpansionTile draws its own divider lines; the surface is shadow-only.
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: 12),
+        tilePadding: const EdgeInsets.symmetric(vertical: Insets.xs),
+        // `top` is the fix: with bottom-only padding the expanded content
+        // butted straight up against the title/subtitle, so World's toggles and
+        // the URDF field looked welded to the heading that opened them.
+        childrenPadding: const EdgeInsets.only(
+          top: Insets.md,
+          bottom: Insets.lg,
+        ),
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
         shape: const Border(),
         collapsedShape: const Border(),

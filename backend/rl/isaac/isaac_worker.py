@@ -32,6 +32,59 @@ STREAM_HINT = (
 )
 
 
+#: Name of the captured child log inside a run dir. `run_registry` already ships
+#: it in the run bundle; nothing else was ever writing it for this lane.
+TRAIN_LOG_NAME = "training_log.txt"
+PLAY_LOG_NAME = "eval_log.txt"
+
+#: Environment variables that must NOT reach an Isaac subprocess.
+#:
+#: `isaaclab.bat` chooses its interpreter from VIRTUAL_ENV, then CONDA_PREFIX, and
+#: only then falls back to Isaac Sim's bundled Python (isaaclab.bat lines 15-24).
+#: The backend runs from the app venv, so whenever it is started from an activated
+#: shell those are inherited straight through Popen — and Isaac Lab then launches
+#: isaac_train.py under `.venv`, which has no isaaclab. It dies at
+#: `from isaaclab.app import AppLauncher` ("No module named 'lazy_loader'"), which
+#: is *above* the try/except that records a failure: exit 1, zero-byte
+#: telemetry.jsonl, no training_log.txt, no usd/. An empty run dir plus
+#: "failed (exit 1)" is that signature.
+#:
+#: PYTHONPATH/PYTHONHOME go for the same reason — the ROS 2 leak documented in
+#: CLAUDE.md shadows Isaac's 3.12 site-packages, and isaaclab.bat builds its own
+#: PYTHONPATH on top of whatever it inherits. Isaac Sim's Python is deliberately
+#: separate from this venv, so none of these have any business crossing over.
+_APP_PYTHON_ENV_KEYS = (
+    "VIRTUAL_ENV",
+    "CONDA_PREFIX",
+    "CONDA_DEFAULT_ENV",
+    "PYTHONPATH",
+    "PYTHONHOME",
+)
+
+
+def isaac_child_env() -> dict[str, str]:
+    """Our environment minus everything that would hijack Isaac Lab's interpreter."""
+    env = os.environ.copy()
+    for key in _APP_PYTHON_ENV_KEYS:
+        env.pop(key, None)
+    return env
+
+
+def _log_tail(path: Path, max_lines: int = 3) -> str:
+    """Last few non-blank lines of a captured child log.
+
+    Goes into the failure status the UI already renders: without it a launch that
+    dies before the child can write telemetry says only "failed (exit 1)", and the
+    advice to check the Logs tab is a dead end (that tab reads the *backend's* log,
+    which never saw the child's stderr)."""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    meaningful = [line.strip() for line in lines if line.strip()]
+    return " | ".join(meaningful[-max_lines:])[:500]
+
+
 def isaaclab_bat_path() -> Path:
     override = os.environ.get("EASYRTG_ISAACLAB_BAT")
     return Path(override) if override else _DEFAULT_ISAACLAB_BAT
@@ -93,6 +146,7 @@ class IsaacTrainingWorker:
         self.runs_dir = runs_dir
         self._thread: threading.Thread | None = None
         self._proc: subprocess.Popen | None = None
+        self._log = None  # open handle the child writes its console output into
         self._stop = threading.Event()
         self.events: deque[dict[str, Any]] = deque(maxlen=MAX_EVENT_BACKLOG)
         self.telemetry: list[dict[str, Any]] = []
@@ -146,7 +200,19 @@ class IsaacTrainingWorker:
             self.status.stream_url = webrtc_client_url()  # for the in-app 3D view
         # New process group so the whole Kit tree can be reaped on stop().
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        self._proc = subprocess.Popen(cmd, creationflags=creationflags)
+        # Capture the child's console output. It used to be inherited, and the
+        # backend's own stdout is a pipe the Flutter launcher drains to nothing —
+        # so anything Kit or the Python import machinery printed was simply gone,
+        # including the traceback for every failure that happens before the child
+        # can write telemetry.
+        self._log = (run_dir / TRAIN_LOG_NAME).open("w", encoding="utf-8", errors="replace")
+        self._proc = subprocess.Popen(
+            cmd,
+            creationflags=creationflags,
+            env=isaac_child_env(),
+            stdout=self._log,
+            stderr=subprocess.STDOUT,
+        )
         self._thread = threading.Thread(target=self._monitor, args=(run_dir,), daemon=True)
         self._thread.start()
         return {"ok": True, "run_dir": str(run_dir), "backend": "isaac"}
@@ -208,25 +274,35 @@ class IsaacTrainingWorker:
                             {"type": "training_complete", "run_dir": str(run_dir)}
                         )
                     else:
+                        # The child's own telemetry line is the best message when it
+                        # got far enough to write one; otherwise fall back to what it
+                        # printed before dying, which for a launch failure is the only
+                        # evidence there is.
+                        tail = "" if failure is not None else _log_tail(run_dir / TRAIN_LOG_NAME)
                         if failure is not None:
                             self.status.message = failure.replace(
                                 "isaac training failed:", "failed:", 1
                             )
                         else:
-                            self.status.message = (
+                            base = (
                                 f"failed (exit {code})" if code else "failed (no model saved)"
                             )
+                            self.status.message = f"{base}: {tail}" if tail else base
                         self.events.append(
                             {
                                 "type": "training_failed",
                                 "run_dir": str(run_dir),
                                 "exit_code": code,
+                                "error": tail,
                             }
                         )
                     break
                 time.sleep(0.3)
         finally:
             self.status.active = False
+            if self._log is not None:
+                self._log.close()
+                self._log = None
 
     def _drain_file(self, path: Path | None, pos: int, buf: str) -> tuple[int, str]:
         if path is None:
@@ -314,6 +390,7 @@ class IsaacPlayJob:
 
     def __init__(self) -> None:
         self._proc: subprocess.Popen | None = None
+        self._log = None
         self._run_dir: Path | None = None
         self._record = False
         self._reaping = False
@@ -350,7 +427,16 @@ class IsaacPlayJob:
         if record:
             cmd.append("--record")
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        self._proc = subprocess.Popen(cmd, creationflags=creationflags)
+        # Same env scrub and output capture as training — this Popen inherits the
+        # app venv exactly the same way, and playback failures were just as silent.
+        self._log = (run_dir / PLAY_LOG_NAME).open("w", encoding="utf-8", errors="replace")
+        self._proc = subprocess.Popen(
+            cmd,
+            creationflags=creationflags,
+            env=isaac_child_env(),
+            stdout=self._log,
+            stderr=subprocess.STDOUT,
+        )
         if record:
             # Recording runs headless (no WebRTC stream) — the mp4 is the view.
             message = (
@@ -413,10 +499,13 @@ class IsaacPlayJob:
         """Sync status with the real process state (it exits on its own errors)."""
         if self.status.get("active") and not self.active:
             code = self._proc.returncode if self._proc else None
-            self.status = {
-                "active": False,
-                "message": "playback ended" if code == 0 else f"playback failed (exit {code})",
-            }
+            message = "playback ended"
+            if code != 0:
+                tail = _log_tail(self._run_dir / PLAY_LOG_NAME) if self._run_dir else ""
+                message = f"playback failed (exit {code})"
+                if tail:
+                    message = f"{message}: {tail}"
+            self.status = {"active": False, "message": message}
             self._fire_ended()  # crash/natural exit — replay whatever got recorded
         return self.status
 
@@ -424,6 +513,9 @@ class IsaacPlayJob:
         if self._ended_fired:
             return
         self._ended_fired = True
+        if self._log is not None:
+            self._log.close()
+            self._log = None
         callback, run_dir = self.on_ended, self._run_dir
         if callback and run_dir:
             try:

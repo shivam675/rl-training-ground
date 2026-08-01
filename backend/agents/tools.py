@@ -258,8 +258,13 @@ class AgentToolbox:
                 "SUMMED, so do not double-count the same objective. Reduce per-joint "
                 "and per-limb values yourself with mean() — sum() scales with DOF count "
                 "and silently mis-weights when ported between robots. "
-                "terminations also takes an \"expr\" (a boolean expression, ORed with "
-                "the height floor), e.g. {\"terminations\": {\"expr\": \"upright < 0.2\"}}. "
+                "terminations also takes an \"expr\" — a BOOLEAN EXPRESSION over robot "
+                "state, ORed with the height floor, e.g. "
+                "{\"terminations\": {\"expr\": \"upright < 0.2\"}}. It is never the NAME "
+                "of a termination: max_steps and min_base_height are separate NUMERIC "
+                "fields (already set by apply_behavior_goal), so omit terminations "
+                "entirely unless you are adding a real boolean condition. THE PATCH IS "
+                "ATOMIC — one bad field rejects every reward term in the same call. "
                 "The response carries `warnings` from an automatic AUDIT of your weights "
                 "(penalty exceeding the positive budget, DOF-dependent sum(), an "
                 "all-penalty reward) and `problems` for anything that will not compile — "
@@ -601,12 +606,30 @@ class AgentToolbox:
     def _patch_env_config(self, patch: dict[str, Any]) -> dict[str, Any]:
         if self.config_service is None:
             return {"error": "Config service unavailable."}
-        result = self.config_service.patch_current(
-            self.sim,
-            patch or {},
-            source="agent",
-            reason="patch_env_config",
-        )
+        try:
+            result = self.config_service.patch_current(
+                self.sim,
+                patch or {},
+                source="agent",
+                reason="patch_env_config",
+            )
+        except Exception as exc:
+            # A patch is atomic, so one bad field discards everything in it. The
+            # generic {"error": ...} _dispatch would return reads as a footnote:
+            # observed, a rejected terminations.expr threw away twelve valid reward
+            # terms and the agent still told the user the reward was configured and
+            # to click Run. Say plainly that nothing was saved.
+            return {
+                "ok": False,
+                "applied": False,
+                "error": str(exc),
+                "next_step": (
+                    "NOTHING was saved — the whole patch was rejected, including "
+                    "every reward term in it. Fix what the error names and call "
+                    "patch_env_config again with the SAME rewards. Do not tell the "
+                    "user the configuration is set."
+                ),
+            }
         if self.notifier is not None:
             self.notifier.notify_threadsafe(
                 title="Agent updated the environment config",
