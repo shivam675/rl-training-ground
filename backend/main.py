@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import ValidationError
 
 from backend.agents.evaluation_agent import EvaluationAgent
@@ -60,7 +60,7 @@ from backend.rl.tuner import TunerWorker
 from backend.run_registry import RunRegistry
 from backend.simulation.dynamics_check import check_dynamics, fix_dynamics
 from backend.simulation.pybullet_manager import PyBulletManager
-from backend.streaming import FrameBroadcast, VideoPlayback
+from backend.streaming import FrameBroadcast
 
 ROOT = Path(__file__).resolve().parent
 PROJECT_CONFIG_DIR = ROOT / "project_configs"
@@ -80,16 +80,6 @@ registry = RunRegistry(RUNS_DIR)
 broadcast = FrameBroadcast()
 evaluation_worker = EvaluationWorker(registry, notifier, broadcast)
 tuner_worker = TunerWorker(config_service, sim, notifier)
-video_playback = VideoPlayback(broadcast)
-
-
-def _replay_isaac_recording(run_dir: Path, recorded: bool) -> None:
-    """After a recorded Isaac playback ends, show the video in the viewport."""
-    if recorded:
-        video_playback.play(run_dir / IsaacPlayJob.VIDEO_NAME, f"Recording · {run_dir.name}")
-
-
-isaac_play_job.on_ended = _replay_isaac_recording
 
 
 def start_training_request(req: TrainingStartRequest) -> dict[str, Any]:
@@ -104,6 +94,14 @@ def start_training_request(req: TrainingStartRequest) -> dict[str, Any]:
     return training_worker.start(req)
 
 
+#: Which lane the last evaluation went to, so ``/evaluation/status`` keeps reporting
+#: it after it finishes. Isaac's TERMINAL status is the interesting one — it carries
+#: the recorded-video keys the 3D page waits on — and falling back to the SB3 worker's
+#: idle status the moment `active` went false is what made a finished recording
+#: invisible to the app.
+_eval_lane = "sb3"
+
+
 def start_evaluation_request(
     run_name: str,
     episodes: int = 3,
@@ -114,11 +112,14 @@ def start_evaluation_request(
     """Route an evaluation to the right lane, for both ``/evaluation/start`` and
     the agent tool. Isaac-lane runs (rsl_rl ``model_final.pt``) play back in an
     Isaac subprocess — streamed over WebRTC, or recorded to ``eval_video.mp4``
-    when ``record``. Legacy SB3 runs use the in-process evaluation worker."""
-    video_playback.stop()  # a new evaluation takes the viewport back
+    when ``record`` (served afterwards from ``/runs/{name}/video``). Legacy SB3
+    runs use the in-process evaluation worker."""
+    global _eval_lane
     run_dir = registry.run_dir(run_name)
     if run_dir is not None and (run_dir / "model_final.pt").exists():
+        _eval_lane = "isaac"
         return isaac_play_job.start(run_dir, record=bool(record))
+    _eval_lane = "sb3"
     return evaluation_worker.start(
         run_name=run_name,
         episodes=int(episodes),
@@ -810,15 +811,12 @@ async def evaluation_start(payload: dict[str, Any]) -> dict[str, Any]:
 async def evaluation_stop() -> dict[str, Any]:
     if isaac_play_job.active:
         return isaac_play_job.stop()
-    if video_playback.active:  # second Stop while the recording plays = dismiss it
-        video_playback.stop()
-        return {"ok": True, "message": "Recording playback stopped."}
     return evaluation_worker.stop()
 
 
 @app.get("/evaluation/status")
 async def evaluation_status() -> dict[str, Any]:
-    if isaac_play_job.status.get("active"):
+    if isaac_play_job.status.get("active") or _eval_lane == "isaac":
         return isaac_play_job.refresh()
     return evaluation_worker.status
 
@@ -877,6 +875,30 @@ async def run_details(name: str) -> dict[str, Any]:
     if details is None:
         raise fail(f"Unknown run: {name}", code="unknown_run", status_code=404)
     return details
+
+
+@app.get("/runs/{name}/video")
+async def run_video(name: str) -> FileResponse:
+    """The run's recorded evaluation mp4, for the 3D page's player.
+
+    Served as a plain file rather than decoded into JPEG frames: the player then owns
+    play/pause/seek/duration, which a frame push cannot offer, and there is no decode
+    thread to spin up before the first frame appears. ``FileResponse`` answers Range
+    requests, which is what makes dragging the seekbar work.
+
+    ``registry.run_dir`` is the path guard — it resolves and rejects anything that
+    escapes the runs directory, so a traversal in ``name`` gets a 404 here.
+    """
+    run_dir = registry.run_dir(name)
+    video = None if run_dir is None else run_dir / IsaacPlayJob.VIDEO_NAME
+    if video is None or not video.exists():
+        raise fail(
+            f"No recorded video for run {name}.",
+            code="no_run_video",
+            status_code=404,
+            hint="Evaluate the run with 'Record video' to produce one.",
+        )
+    return FileResponse(video, media_type="video/mp4", filename=f"{name}.mp4")
 
 
 @app.post("/runs/{name}/export")

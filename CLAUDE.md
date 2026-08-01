@@ -24,11 +24,16 @@ is verified on ANYmal. **Evaluation has two modes** the user picks per-run: *Wat
 is a Docker web viewer they support only on Ubuntu/DGX (Isaac Sim 6.0 docs), so live view launches
 NVIDIA's standalone desktop **Isaac Sim WebRTC Streaming Client** (connects to `127.0.0.1:49100`;
 the 3D page has a Launch button → `POST /isaac/stream_client/launch`, path via
-`EASYRTG_ISAAC_STREAM_CLIENT`). *Record video* runs headless and replays `eval_video.mp4` on the 3D
+`EASYRTG_ISAAC_STREAM_CLIENT`). *Record video* runs headless and plays `eval_video.mp4` on the 3D
 page (also on cancel, up to that point) — **this is the fully in-app 3D view**. Recording uses a
-**chase camera attached to the robot** at a fixed distance. The 3D page (`viewer_3d_page.dart`)
-never renders PyBullet — `/ws/simulation` is broadcast-only (relays the recorded mp4; PyBullet is
-headless, never a viewport). Progress tracker: `docs/isaac_setup.md`. The old **brax/MJX + MuJoCo
+**chase camera attached to the robot** at a fixed distance. **The mp4 is served whole from
+`GET /runs/{name}/video`** (Range-served) and played by a real **media_kit** player with
+play/pause/seek plus Save-a-copy; it is NOT decoded into frames server-side (that path,
+`streaming.VideoPlayback`, was deleted 2026-08-01 — a frame push has no timeline to seek on).
+Because the file lives in `runs/<ts>/` beside the model, **every past recording stays replayable**
+from the Evaluate tab (`has_video` on each run summary). The 3D page (`viewer_3d_page.dart`) never
+renders PyBullet — `/ws/simulation` now relays only the legacy SB3 evaluation lane's frames.
+Progress tracker: `docs/isaac_setup.md`. The old **brax/MJX + MuJoCo
 lanes were removed 2026-07-12** — recover from git history if ever needed.
 
 `docs/APP_RECON.md` is a deep, source-verified catalog of bugs, security findings, and
@@ -39,7 +44,14 @@ so its MJX sections are historical.)
 ## Environment & commands
 
 The app Python env is **`.venv` (Python 3.12, managed with `uv`)** — FastAPI, PyBullet, SB3,
-torch `cu130`. GPU is an **RTX 5000 (16 GB)**. Isaac Sim uses its **own bundled Python 3.12** at
+torch `cu130`. **It has NO `pip` module** (uv installs into it from outside), so
+`.venv\Scripts\python.exe -m pip ...` fails with "No module named pip" — use
+`uv pip install --python .\.venv\Scripts\python.exe <pkg>`. That is what silently broke
+`scripts/build_app.ps1`, which reported "CUDA Torch installation failed" for what was
+really a missing pip; it now routes installs through uv when uv is on PATH.
+**matplotlib and pandas are deliberately NOT installed** — SB3 2.9.0 only references
+`matplotlib.figure` under `if TYPE_CHECKING:` and no app code imports either, so don't
+add them back to satisfy a stale comment. GPU is an **RTX 5000 (16 GB)**. Isaac Sim uses its **own bundled Python 3.12** at
 `C:/isaacsim` (reached via `C:\isaacsim\python.bat`), kept entirely separate from `.venv`.
 
 **ROS PYTHONPATH leak (critical):** if ROS 2 / Gazebo is sourced in the shell, it injects a
@@ -118,7 +130,7 @@ Unitree library at `X:/workspace/unitree_ros/robots`), `test_spawn_height` (URDF
 lanes agree on it), `test_contact_state` (what a contact expression MEANS, on a synthetic
 quadruped and a synthetic fixed-base arm), `test_agent_authoring` (the vocabulary the agent
 authors against), `test_config_guards`, `test_episode_clock`.
-Full suite is **231 passed, 1 skipped** (~3m). **Never run two pytest invocations concurrently** —
+Full suite is **253 passed, 1 skipped** (~3.5m). **Never run two pytest invocations concurrently** —
 they share `--basetemp=.pytest_tmp` and collide into hundreds of PermissionError collection errors.
 
 ### Key environment variables (`EASYRTG_*`)
@@ -170,9 +182,10 @@ out-of-process lane will be surfaced to status/stop/telemetry.
   history), `app_settings/` (prefs, agent settings, prepared URDFs, logs),
   `runs/<timestamp>/` (config.json, telemetry.jsonl, model.zip, checkpoints, vecnormalize.pkl,
   normalization.json). `RunRegistry` and `ConfigService` are the accessors.
-- `backend/streaming.py` (`FrameBroadcast`) lets a background job (evaluation playback) take
-  over the viewport: `/ws/simulation` streams the broadcast's frames instead of the live sim
-  while active, forwarding camera commands to the broadcaster's own camera.
+- `backend/streaming.py` (`FrameBroadcast`) lets a background job take over the viewport:
+  `/ws/simulation` streams the broadcast's frames instead of the live sim while active,
+  forwarding camera commands to the broadcaster's own camera. **Its only producer is the legacy
+  SB3 `EvaluationWorker`** — Isaac recordings ship as a whole mp4 over `/runs/{name}/video`.
 
 ### Simulation — `backend/simulation/`
 
@@ -304,6 +317,14 @@ the 11 catalogue terms could describe a flight phase.
 
 **That is fixed (P1+P2, 2026-07-29) and is the whole payoff of the cutover.** `REWARD_PRIORS["gallop"]`
 drops those two penalties and pays for `1 - max(contact)` — 1 only when every limb is off the ground.
+**`REWARD_PRIORS["gait"]` (added 2026-08-01) is the milder version** for locomotion that must step
+rather than shuffle: it keeps walk's forward objective, drops `vertical_velocity`/`body_rate`, and
+buys the gait with contact TIMING — `swing_phase` (`1 - min(contact)`, paid when any limb is
+airborne), `stance_drag` and `air_hang` (per-limb `contact_time`/`air_time` past 0.3 s), plus
+`foot_slip`. Every term reduces with `mean`/`min`, so it reads identically on 2, 4 or 6 limbs and
+`test_phase1` audits it at all three widths. A diagonal-pair *trot* term is not merely avoided but
+**unparseable** — the grammar has no subscripts — which is why the gait is described by timing
+rather than by naming which feet pair up. Pair it with `min_height_ratio≈0.55`.
 An 8M-step A1 run on it reached a **25% airborne fraction at 1.31 m/s over 411-step episodes**, up
 from 7.8% untrained: the policy actively seeks the flight phase. So a gait reward is now a matter of
 authoring the right terms, not of a missing capability — but the walk penalties and a gait goal remain
@@ -440,10 +461,18 @@ the bug.
 **Goal setup is now two steps, and `apply_behavior_goal` no longer writes a reward.** It CALIBRATES
 (the joints to actuate with control mode and offset window, the six standard observations, the height
 floor) and returns the measured numbers plus this robot's state vocabulary; the agent then authors the
-reward with `patch_env_config`. Its `locomotion` flag replaced `classify_goal`'s 4-keyword enum: it
+reward with `patch_env_config`. Because that second step is easy to not know about, an applied
+`apply_behavior_goal` bubble in the chat offers a **Configure reward** button, gated on the config
+having no enabled reward term — so it retires itself once one exists, whoever wrote it.
+Its `locomotion` flag replaced `classify_goal`'s 4-keyword enum: it
 selects the joints, picks `LOCOMOTION_MIN_HEIGHT_RATIO` (0.70) vs `FALL_MIN_HEIGHT_RATIO` (0.35 — a
 *fell over* floor, since a sit goal legitimately spends the episode low), and is what preserves the
-no-ground-reaching-limbs rejection. The four old templates survive as `goal_rewards.REWARD_PRIORS`,
+no-ground-reaching-limbs rejection. **`min_height_ratio` (added 2026-08-01) overrides that floor
+per goal** as a fraction of measured standing height, rejected outside 0.1–0.95: two constants
+cannot serve both a steady walk (0.70 is what stops crawling) and a gait with a compression phase,
+which 0.70 terminates on the very motion the reward pays for. A prior carries only reward terms, so
+`describe_priors()` ends with `PRIOR_FLOOR_NOTE` pairing the two — that is the one thing a prior
+cannot express its way out of. The four old templates survive as `goal_rewards.REWARD_PRIORS`,
 **expressions kept as data rather than prompt prose so `test_phase1` can compile and `audit` them** —
 which immediately caught a DOF-dependent `sum(contact)` in the gallop prior. `HelperAgent._full_prompt`
 is overridden to inject `describe_vocabulary(...)` + `describe_priors()`, because widths come from the
@@ -493,8 +522,14 @@ endpoint. **`observation_action_panel.dart` was deliberately NOT touched**: obse
   **WebRTC** (TCP 49100 / UDP 47998) to NVIDIA's **desktop** streaming client — **not embeddable
   in-app on Windows** (browser client is Ubuntu/Docker-only), launched via `launch_stream_client()`
   / `POST /isaac/stream_client/launch` (`EASYRTG_ISAAC_STREAM_CLIENT`); *record* runs headless and
-  writes `eval_video.mp4` (fragmented mp4, 960×540@30fps, ≤5 min), which `VideoPlayback`
-  (`streaming.py`) replays on the 3D page via `FrameBroadcast` on stop/cancel. **Recording uses a
+  writes `eval_video.mp4` (fragmented mp4, 960×540@30fps, ≤5 min), served by
+  `GET /runs/{name}/video` to the app's player. **Stop returns before the file is closed** — the
+  child needs seconds more — so `IsaacPlayJob.status` carries `video_pending` → `video_ready` /
+  `video_run`, and `AppState._pollTelemetry` keeps polling while `video_pending` even though the
+  evaluation is already inactive. Without that pair the 3D page went blank for the gap and looked
+  broken. **`/evaluation/status` routes on `main._eval_lane`, not on `active`** — the Isaac lane's
+  TERMINAL status is the one carrying those keys, and falling back to the idle SB3 worker the
+  instant `active` went false made a finished recording invisible. **Recording uses a
   per-frame chase camera** parked at `_CHASE_OFFSET` from the robot base (`isaac_play.py`); live
   view keeps free camera control. Capture perf gotchas (annotator device, visualizer pumping,
   `render_enabled`) are in `docs/isaac_setup.md` Phase 3b. **Physics the `EnvConfig` doesn't
@@ -510,7 +545,12 @@ endpoint. **`observation_action_panel.dart` was deliberately NOT touched**: obse
 (`ollama_client.py` + `openai_client.py`, OpenAI-compatible), a regex `router.py` that picks a
 provider per message, an `AgentToolbox` (`tools.py`) exposing 27 tools (11 `DESTRUCTIVE_TOOLS` + 16
 `READ_TOOLS`; the authoritative list is the `handlers` dict in `_dispatch`) that can drive the whole
-pipeline, and a proactive `notifier.py`. Default autonomy is `"act"`. **`DESTRUCTIVE_TOOLS`** (`tools.py`) is the confirmation gate — config-mutating tools
+pipeline, and a proactive `notifier.py`. Default autonomy is `"act"`. Both clients emit a
+**`usage` stream event per round** (`agents/usage.py` — prompt/completion tokens + tok/s), which
+the chat shows under each reply; Ollama reports its own `eval_duration`, the OpenAI lane needs
+`stream_options.include_usage` and times the round itself. **Neither provider splits reasoning
+from answer tokens**, so the UI shows one generated count rather than an estimate that would
+disagree with its own total. **`DESTRUCTIVE_TOOLS`** (`tools.py`) is the confirmation gate — config-mutating tools
 like `patch_env_config` / `apply_behavior_goal` are gated because they rewrite the training
 config. The extra always-on gate for `custom_python` code injection is gone with the exec
 itself — a reward is now a sandboxed expression. The legacy role agents
@@ -525,6 +565,11 @@ every backend call; panels `ref.watch(appStateProvider)` and rebuild wholesale. 
 almost always means touching that one file — expect it, don't "helpfully" split it mid-task.
 `api_client.dart` is a thin `BackendApi` over `http` hardcoded to `http://127.0.0.1:8000`.
 
+Video playback uses **media_kit** (`media_kit` + `media_kit_video` +
+`media_kit_libs_windows_video`, bundling libmpv), initialised with `MediaKit.ensureInitialized()`
+in `main.dart` before any `Player` is built. `scripts/build_app.ps1` copies the whole runner
+output, so its DLLs are packaged with no script change.
+
 `nav.dart` defines `enum AppPage` (home / robot / obsAction / rewards / training / evaluation /
 **viewer** / settings / logs), 1:1 with `panels/*.dart`; `viewer` is entered *programmatically*
 (training live-view or evaluation) and is not in the rail. Chat lives in `agent/`
@@ -532,7 +577,8 @@ almost always means touching that one file — expect it, don't "helpfully" spli
 `http.Request` streaming), **not** a WebSocket.
 
 **Of the backend's 3 WebSockets the app uses only 2:** `/ws/simulation`
-(`panels/viewer_3d_page.dart`) and `/ws/agent_events` (`notifications.dart`).
+(`panels/viewer_3d_page.dart`, only for legacy SB3 evaluation frames — the Isaac recording is an
+mp4 over plain HTTP) and `/ws/agent_events` (`notifications.dart`).
 **`/ws/training_logs` has no Flutter consumer** — `logs_panel.dart` pulls logs over REST, and
 training progress comes from `AppState`'s telemetry `Timer.periodic` poll (plus a slow 8 s health
 poll). Don't assume live training UI is push-based.

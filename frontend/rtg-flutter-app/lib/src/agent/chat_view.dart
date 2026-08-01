@@ -225,6 +225,11 @@ class _AssistantChatState extends ConsumerState<AssistantChat> {
                     message: message,
                     onConfirm: () => controller.confirmTool(message),
                     onUndo: () => controller.undoConfigChange(message),
+                    // apply_behavior_goal sets no reward on purpose; this is the
+                    // second half. Disappears once a reward term exists.
+                    onConfigureReward: controller.offersRewardStep(message)
+                        ? controller.configureReward
+                        : null,
                   ),
                   ChatKind.notice => _NoticeRow(
                     text: message.text,
@@ -391,11 +396,16 @@ class _ConfigToolActivityRow extends StatelessWidget {
     required this.message,
     required this.onConfirm,
     required this.onUndo,
+    this.onConfigureReward,
   });
 
   final ChatMessage message;
   final VoidCallback onConfirm;
   final VoidCallback onUndo;
+
+  /// Non-null only on an applied `apply_behavior_goal` whose config still has no
+  /// reward — the one step the user otherwise has to know to ask for by hand.
+  final VoidCallback? onConfigureReward;
 
   @override
   Widget build(BuildContext context) {
@@ -549,6 +559,31 @@ class _ConfigToolActivityRow extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ],
+                  if (onConfigureReward != null) ...[
+                    const SizedBox(height: 8),
+                    _ToolDetailLine(
+                      text:
+                          'Observations and actions are set. No reward yet — that '
+                          'is authored separately.',
+                      color: colors.info,
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: 28,
+                      child: FilledButton.tonalIcon(
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: onConfigureReward,
+                        icon: const Icon(Icons.emoji_events_outlined, size: 14),
+                        label: const Text(
+                          'Configure reward',
+                          style: TextStyle(fontSize: 11.5),
+                        ),
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -892,26 +927,37 @@ class _MessageBubbleState extends State<_MessageBubble> {
                     ),
                   SizedBox(
                     height: 22,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 150),
-                      opacity: hovered && !message.streaming ? 1 : 0,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            timeLabel,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              color: scheme.onSurface.withValues(alpha: 0.45),
-                            ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Always visible, unlike the timestamp: the cost of a reply
+                        // is only useful if you can see it without hunting for it.
+                        if (message.hasUsage && !message.streaming)
+                          _UsageTag(message: message),
+                        AnimatedOpacity(
+                          duration: const Duration(milliseconds: 150),
+                          opacity: hovered && !message.streaming ? 1 : 0,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                timeLabel,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: scheme.onSurface.withValues(
+                                    alpha: 0.45,
+                                  ),
+                                ),
+                              ),
+                              CopyIconButton(
+                                text: message.text,
+                                tooltip: 'Copy message',
+                                size: 13,
+                              ),
+                            ],
                           ),
-                          CopyIconButton(
-                            text: message.text,
-                            tooltip: 'Copy message',
-                            size: 13,
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -954,6 +1000,45 @@ class _ProviderTag extends StatelessWidget {
             fontSize: 10.5,
             fontWeight: FontWeight.w700,
             color: scheme.primary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What this reply cost: prompt/generated tokens and generation speed.
+///
+/// One number for generation, not two: providers report reasoning and content
+/// together, so a think-vs-answer split would have to be estimated — and an
+/// estimate sitting next to the exact total it disagrees with is worse than the
+/// total alone. The tooltip spells that out rather than leaving it to be guessed.
+class _UsageTag extends StatelessWidget {
+  const _UsageTag({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tps = message.tps;
+    return Tooltip(
+      message:
+          '${message.promptTokens} prompt + ${message.completionTokens} generated '
+          'tokens (reasoning and answer combined — providers do not separate them)'
+          '${tps == null ? '' : '\n${tps.toStringAsFixed(1)} tokens/sec'}',
+      child: Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Text(
+          [
+            '↑${message.promptTokens}',
+            '↓${message.completionTokens}',
+            if (tps != null) '${tps.toStringAsFixed(0)} tok/s',
+          ].join('  ·  '),
+          style: monoStyle(
+            context,
+            fontSize: 10,
+            color: scheme.onSurface.withValues(alpha: 0.5),
           ),
         ),
       ),

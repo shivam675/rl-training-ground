@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from backend.agents.usage import usage_event
 from backend.models import OpenAISettings
 
 
@@ -114,10 +116,15 @@ class OpenAIClient:
         for _ in range(self.MAX_TOOL_ROUNDS):
             content_parts: list[str] = []
             tool_acc: dict[int, dict[str, Any]] = {}
+            usage: dict[str, Any] | None = None
+            round_started = time.monotonic()
             try:
                 async for delta, _finish in self._stream_round(
                     messages, tools if tools_enabled else None, think
                 ):
+                    if delta.get("usage"):
+                        usage = delta["usage"]
+                        continue
                     content = delta.get("content")
                     if content:
                         content_parts.append(content)
@@ -157,6 +164,15 @@ class OpenAIClient:
                     }
                     continue
                 raise
+
+            if usage:
+                # No provider-reported generation time here, so the round's wall
+                # clock stands in — see usage_event.
+                yield usage_event(
+                    usage.get("prompt_tokens"),
+                    usage.get("completion_tokens"),
+                    time.monotonic() - round_started,
+                )
 
             calls = [tool_acc[i] for i in sorted(tool_acc) if tool_acc[i]["name"]]
             if not calls:
@@ -217,6 +233,9 @@ class OpenAIClient:
             "temperature": self.settings.temperature,
             "top_p": self.settings.top_p,
             "max_tokens": self.settings.max_tokens,
+            # Ask for the token totals in a final chunk. Endpoints that don't know
+            # the option ignore it; none of them reject the request over it.
+            "stream_options": {"include_usage": True},
         }
         if tools:
             payload["tools"] = tools
@@ -272,6 +291,12 @@ class OpenAIClient:
                         continue
                     choices = obj.get("choices") or []
                     if not choices:
+                        # The include_usage totals arrive as a final chunk with no
+                        # choices. Dropping it here is why token counts were invisible.
+                        if obj.get("usage"):
+                            loop.call_soon_threadsafe(
+                                queue.put_nowait, ({"usage": obj["usage"]}, None)
+                            )
                         continue
                     choice = choices[0]
                     delta = choice.get("delta") or {}

@@ -259,6 +259,7 @@ class TrainingWorker:
             total_timesteps=req.total_timesteps,
             message="starting",
             num_envs=req.num_envs,
+            started_at=time.time(),
         )
         self._thread = threading.Thread(target=self._run, args=(req, run_dir), daemon=True)
         self._thread.start()
@@ -506,6 +507,7 @@ class TrainingWorker:
                 episode_length=self.status.episode_length,
                 message=message,
                 device=self.status.device,
+                started_at=self.status.started_at,
             )
             self.events.append({"type": "training_complete", "run_dir": str(run_dir)})
         except Exception as exc:
@@ -528,6 +530,7 @@ class TrainingWorker:
                 total_timesteps=req.total_timesteps,
                 message=f"failed: {exc}{note}",
                 device=self.status.device,
+                started_at=self.status.started_at,
             )
             self.events.append(
                 {"type": "training_error", "error": str(exc), "salvaged": salvaged}

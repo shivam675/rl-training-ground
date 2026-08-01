@@ -17,6 +17,8 @@
 - `POST /training/stop` - stop active training.
 - `GET /training/status` - worker status and events.
 - `POST /evaluation/run` - model path, config, episodes, deterministic flag.
+- `GET /runs/{name}/video` - the run's recorded `eval_video.mp4`. Serves Range requests (the app's
+  player seeks with them); 404 when the run was never recorded.
 - `POST /ollama/test` - optional settings payload.
 - `GET /ollama/models` - model list from saved settings.
 - `POST /ollama/save_settings` - saves local settings.

@@ -23,7 +23,15 @@ Usage:
   scripts\build_app.ps1 -TorchIndexUrl https://download.pytorch.org/whl/cu128
   scripts\build_app.ps1 -SkipBackend          rebuild frontend + repackage only
   scripts\build_app.ps1 -SkipFlutter          rebuild backend + repackage only
-  scripts\build_app.ps1 -Clean                wipe build\ and dist\ first
+  scripts\build_app.ps1 -Clean                wipe build\, dist\ and the Flutter build first
+
+Disk: a CUDA-Torch build is large — the frozen backend lands in build\ and is then
+COPIED into dist\, so budget roughly 2x its size (~12-16 GB transient) plus ~3 GB if
+CUDA Torch has to be downloaded. Check free space before a full build.
+
+Heads-up: with no CUDA Torch in the build venv this script force-reinstalls it
+THERE (see -TorchIndexUrl), i.e. it mutates the venv you develop and run pytest
+with. Pass -Python to point at a separate build env if that matters.
 
 Note: keep the app folder somewhere writable (Desktop, not Program Files) — the
 frozen backend writes config/runs beside itself.
@@ -61,6 +69,38 @@ $flutterRelease = Join-Path $flutterApp 'build\windows\x64\runner\Release'
 
 function Section($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 
+# This repo's venv is uv-managed and ships NO pip module, so `& $py -m pip install`
+# dies with "No module named pip" — and the caller then reports a misleading
+# "CUDA Torch installation failed" that sends you hunting for a wheel problem that
+# is not there. Route installs through uv when it is on PATH (how this project's
+# env is actually managed) and fall back to pip for a plain venv. The one flag that
+# differs is pip's --force-reinstall, which uv spells --reinstall.
+$uvExe = (Get-Command uv -ErrorAction SilentlyContinue).Source
+
+function Install-Package {
+    param(
+        [Parameter(Mandatory)][string]$Py,
+        [Parameter(Mandatory)][string]$Spec,
+        [string]$IndexUrl,
+        # Replace an already-installed build of the same version (the CPU -> CUDA
+        # Torch swap): reinstall, and without deps so a flavour change does not
+        # drag the rest of the environment along with it.
+        [switch]$ReplaceNoDeps
+    )
+    if ($uvExe) {
+        $a = @('pip', 'install', '--python', $Py, $Spec)
+        if ($IndexUrl) { $a += @('--index-url', $IndexUrl) }
+        if ($ReplaceNoDeps) { $a += @('--reinstall', '--no-deps') }
+        & $uvExe @a
+    }
+    else {
+        $a = @('-m', 'pip', 'install', $Spec)
+        if ($IndexUrl) { $a += @('--index-url', $IndexUrl) }
+        if ($ReplaceNoDeps) { $a += @('--force-reinstall', '--no-deps', '--upgrade') }
+        & $Py @a
+    }
+}
+
 # Pick a Python env that has pybullet (the hard miss last time) + torch.
 function Resolve-BuildPython {
     if ($Python) { return (Resolve-Path $Python).Path }
@@ -74,8 +114,15 @@ function Resolve-BuildPython {
 Push-Location $root
 try {
     if ($Clean) {
-        Section "Clean build\ and dist\"
+        Section "Clean build\, dist\ and the Flutter build output"
         Remove-Item -Recurse -Force $buildDir, $distDir -ErrorAction SilentlyContinue
+        # The Flutter output too: Assemble copies that folder WHOLESALE, so a DLL
+        # left behind by a plugin that has since been removed from pubspec.yaml
+        # keeps shipping forever. (Observed: webview_windows_plugin.dll still sat
+        # in build\...\Debug long after the plugin was dropped.) Nothing here is
+        # authored, so removing it only costs a rebuild.
+        Remove-Item -Recurse -Force (Join-Path $flutterApp 'build\windows') `
+            -ErrorAction SilentlyContinue
     }
     New-Item -ItemType Directory -Force -Path $buildDir, $distDir | Out-Null
 
@@ -88,8 +135,10 @@ try {
         & $buildPy -c "import torch,sys; sys.exit(0 if torch.version.cuda and torch.cuda.is_available() else 1)"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Installing CUDA Torch from $TorchIndexUrl ..."
-            & $buildPy -m pip install --upgrade --force-reinstall --no-deps torch --index-url $TorchIndexUrl
-            if ($LASTEXITCODE -ne 0) { throw "CUDA Torch installation failed." }
+            Install-Package -Py $buildPy -Spec 'torch' -IndexUrl $TorchIndexUrl -ReplaceNoDeps
+            if ($LASTEXITCODE -ne 0) {
+                throw "CUDA Torch installation failed (installer: $(if ($uvExe) { 'uv' } else { 'pip' }))."
+            }
         }
 
         Section "Verify GPU deps (pybullet + CUDA torch) and PyInstaller"
@@ -100,16 +149,18 @@ try {
         & $buildPy -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('PyInstaller') else 1)"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Installing PyInstaller..."
-            & $buildPy -m pip install pyinstaller
-            if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed." }
+            Install-Package -Py $buildPy -Spec 'pyinstaller'
+            if ($LASTEXITCODE -ne 0) { throw "Installing pyinstaller failed." }
         }
 
         Section "Freeze backend (PyInstaller, onedir, CUDA)"
-        # Excludes: big libs not used at runtime. Do NOT exclude matplotlib or
-        # pandas: stable_baselines3.common.logger imports both at module top, so
-        # excluding them breaks ALL training/tuning (SB3 is imported lazily, so
-        # a /health check won't catch it — the tuning smoke-test below does).
-        # Also keep sympy/networkx/jinja2/fsspec/filelock/mpmath (torch needs them).
+        # Excludes: big libs not used at runtime. Neither matplotlib nor pandas is
+        # force-collected any more: that dated from an SB3 whose logger imported both
+        # at module top, but SB3 2.9.0 has `matplotlib.figure` behind
+        # `if TYPE_CHECKING:` and no pandas import, and nothing in this backend
+        # references either. They are not excluded either — if a future SB3 does need
+        # them, PyInstaller follows the import and picks them up.
+        # Keep sympy/networkx/jinja2/fsspec/filelock/mpmath (torch needs them).
         $pyiArgs = @(
             '-m', 'PyInstaller', '--noconfirm', '--clean',
             '--name', 'backend',
@@ -124,10 +175,6 @@ try {
             '--collect-all', 'gymnasium',
             '--collect-all', 'uvicorn',
             '--collect-binaries', 'torch',
-            # matplotlib is imported lazily by the Optuna/SB3 tuning path; without
-            # it "Hyperparameter tuning failed: No module named 'matplotlib'".
-            # collect-all grabs its mpl-data + dynamically-loaded backends.
-            '--collect-all', 'matplotlib',
             '--copy-metadata', 'torch',
             '--copy-metadata', 'gymnasium',
             '--copy-metadata', 'stable_baselines3',
@@ -151,8 +198,8 @@ try {
         }
 
         Section "Smoke-test frozen backend"
-        # 1) --selfcheck: imports the lazily-loaded heavy deps (SB3 -> matplotlib
-        #    + pandas, optuna, pybullet). Catches over-aggressive excludes that a
+        # 1) --selfcheck: imports the lazily-loaded heavy deps (SB3, optuna,
+        #    pybullet) and asserts CUDA. Catches over-aggressive excludes that a
         #    /health check would miss (SB3 is imported lazily at train/tune time).
         $beExe = Join-Path $frozenBackend 'backend.exe'
         $env:EASYRTG_REQUIRE_CUDA = '1'

@@ -8,7 +8,7 @@ import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from backend.models import TrainingStartRequest, TrainingStatus
 from backend.rl.training_worker import (
@@ -185,6 +185,7 @@ class IsaacTrainingWorker:
             backend="isaac",
             num_envs=req.num_envs,
             device="cuda",
+            started_at=time.time(),
         )
         cmd = list(self.launcher_cmd) + [
             str(self.train_script),
@@ -381,9 +382,12 @@ class IsaacPlayJob:
     subprocess, stop() drops a STOP sentinel + reaps the tree. Status mimics
     EvaluationWorker.status keys so the UI needs no special casing.
 
-    With ``record=True`` the child also writes ``eval_video.mp4`` into the run
-    dir; ``on_ended`` (wired by main.py) fires once per session after the
-    process is fully gone so the caller can replay that video in the viewport.
+    With ``record=True`` the child also writes ``eval_video.mp4`` into the run dir,
+    and the status carries where that file is up to: ``video_pending`` while the
+    child is still finalizing it, then ``video_ready`` plus ``video_run``. Stop
+    returns immediately but the child needs up to 30s to close the mp4 cleanly, so
+    without those keys "not active" is indistinguishable from "video is ready" and
+    the app can only show a blank viewport while it waits.
     """
 
     VIDEO_NAME = "eval_video.mp4"
@@ -398,7 +402,6 @@ class IsaacPlayJob:
         self.launcher_cmd: list[str] = ["cmd", "/c", str(isaaclab_bat_path()), "-p"]
         self.play_script: Path = _PLAY_SCRIPT
         self.status: dict[str, Any] = {"active": False, "message": "idle"}
-        self.on_ended: Callable[[Path, bool], None] | None = None  # (run_dir, recorded)
 
     @property
     def active(self) -> bool:
@@ -470,7 +473,7 @@ class IsaacPlayJob:
             except OSError:
                 pass
         self._proc = None
-        self.status = {"active": False, "message": "stopped"}
+        self.status = {"active": False, "message": "stopped", **self._video_keys(pending=True)}
         if proc is None or proc.poll() is not None:
             self._fire_ended()
             return {"ok": True, "message": "Playback stopped."}
@@ -505,9 +508,30 @@ class IsaacPlayJob:
                 message = f"playback failed (exit {code})"
                 if tail:
                     message = f"{message}: {tail}"
-            self.status = {"active": False, "message": message}
-            self._fire_ended()  # crash/natural exit — replay whatever got recorded
+            self.status = {
+                "active": False,
+                "message": message,
+                **self._video_keys(pending=True),
+            }
+            self._fire_ended()  # crash/natural exit — the mp4 may still be usable
         return self.status
+
+    def _video_keys(self, *, pending: bool) -> dict[str, Any]:
+        """What the app needs to decide between "still writing" and "play it".
+
+        Empty for a non-recording session, so a live-view playback ending never makes
+        the 3D page think there is a video coming.
+        """
+        if not self._record or self._run_dir is None:
+            return {}
+        video = self._run_dir / self.VIDEO_NAME
+        return {
+            "video_run": self._run_dir.name,
+            "video_pending": pending,
+            # A cancelled recording still leaves a playable fragmented mp4 of what
+            # was captured, so existence is the test — not whether it finished.
+            "video_ready": video.exists(),
+        }
 
     def _fire_ended(self) -> None:
         if self._ended_fired:
@@ -516,9 +540,6 @@ class IsaacPlayJob:
         if self._log is not None:
             self._log.close()
             self._log = None
-        callback, run_dir = self.on_ended, self._run_dir
-        if callback and run_dir:
-            try:
-                callback(run_dir, self._record)
-            except Exception:
-                pass
+        # The child has closed the mp4 by now: re-stamp so `video_pending` drops and
+        # `video_ready` reflects the finished file rather than the mid-write state.
+        self.status.update(self._video_keys(pending=False))

@@ -63,6 +63,10 @@ class RunRegistry:
             "model_saved": (run_dir / "model.zip").exists()
             or (run_dir / "policy_params.pkl").exists()
             or (run_dir / "model_final.pt").exists(),  # Isaac lane (rsl_rl checkpoint)
+            # A recorded evaluation writes eval_video.mp4 into the run dir, so it is
+            # already saved alongside the model — this is what lets the app offer it
+            # for replay later instead of only in the moments after recording.
+            "has_video": (run_dir / "eval_video.mp4").exists(),
         }
         config = self._read_json(run_dir / "config.json")
         if config:

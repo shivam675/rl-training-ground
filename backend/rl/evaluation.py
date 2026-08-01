@@ -50,10 +50,17 @@ def _load_model(model_path: Path):
 
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
+    # Same device policy as training (`build_algo_kwargs` sets this for the train and
+    # tune paths): a small MLP policy runs SLOWER on the GPU, and on this box the GPU
+    # belongs to the Isaac lane. Without it SB3 auto-selects CUDA whenever CUDA Torch
+    # is installed and prints its own "intended to run on the CPU" warning.
+    from backend.rl.training_worker import _torch_training_device
+
+    device = _torch_training_device()
     last_error: Exception | None = None
     for loader in (PPO, SAC, TD3, A2C, DQN):
         try:
-            return loader.load(str(model_path))
+            return loader.load(str(model_path), device=device)
         except Exception as exc:
             last_error = exc
     raise RuntimeError(f"Could not load model: {last_error}")

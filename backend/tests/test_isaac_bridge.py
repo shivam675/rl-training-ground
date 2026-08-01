@@ -347,19 +347,35 @@ def test_evaluation_start_routes_isaac_runs_to_play_job(monkeypatch):
         assert res.status_code == 200 and started["record"] is True
 
 
-def test_play_job_record_flag_and_ended_callback(tmp_path, monkeypatch):
+def test_play_job_record_flag_and_video_status(tmp_path, monkeypatch):
+    """Stop returns at once but the child needs up to 30s to close the mp4, so the
+    status has to distinguish "still writing" from "ready" — otherwise the 3D page
+    cannot tell a finalizing recording from one that produced nothing, and shows an
+    empty viewport either way."""
     from backend.rl.isaac import isaac_worker as mod
+
+    class _SlowProc:
+        """Alive for a few polls, so the reaper actually waits — which is the window
+        the real Kit child uses to finish writing the mp4."""
+
+        pid = 4243
+
+        def __init__(self):
+            self.polls = 0
+            self.returncode = 0
+
+        def poll(self):
+            self.polls += 1
+            return None if self.polls < 6 else 0
 
     captured = {}
     monkeypatch.setattr(
-        mod.subprocess, "Popen", lambda cmd, **kw: captured.update(cmd=cmd) or _FakeProc()
+        mod.subprocess, "Popen", lambda cmd, **kw: captured.update(cmd=cmd) or _SlowProc()
     )
     monkeypatch.setattr(mod, "_kill_tree", lambda proc: captured.update(killed=True))
 
     job = mod.IsaacPlayJob()
     job.launcher_cmd = [sys.executable]
-    ended = []
-    job.on_ended = lambda run_dir, recorded: ended.append((run_dir, recorded))
 
     stale = tmp_path / mod.IsaacPlayJob.VIDEO_NAME
     stale.write_bytes(b"old")  # must not survive into a new recording session
@@ -369,52 +385,94 @@ def test_play_job_record_flag_and_ended_callback(tmp_path, monkeypatch):
     assert job.status["recording"] is True
     assert not stale.exists()
 
-    job.stop()  # _FakeProc is still alive on the first poll -> reaper thread path
+    job.stop()  # child still alive on the first poll -> reaper thread path
+    assert job.status["video_pending"] is True
+    assert job.status["video_ready"] is False  # nothing written yet
+    assert job.status["video_run"] == tmp_path.name
+    # The "child" writes its video while the reaper waits, exactly as Isaac does.
+    (tmp_path / mod.IsaacPlayJob.VIDEO_NAME).write_bytes(b"mp4")
     for _ in range(100):
-        if ended:
+        if job.status.get("video_pending") is False:
             break
         time.sleep(0.05)
-    assert ended == [(tmp_path, True)]
+    assert job.status == {
+        "active": False,
+        "message": "stopped",
+        "video_run": tmp_path.name,
+        "video_pending": False,
+        "video_ready": True,
+    }
     assert (tmp_path / "STOP").exists()
     assert captured.get("killed") is True
 
-    # A crash/natural exit (refresh) must not fire the callback a second time.
-    job.refresh()
-    assert len(ended) == 1
+
+def test_play_job_without_recording_promises_no_video(tmp_path, monkeypatch):
+    """A live-view playback ending must not make the 3D page wait for a video that
+    was never being recorded."""
+    from backend.rl.isaac import isaac_worker as mod
+
+    monkeypatch.setattr(mod.subprocess, "Popen", lambda cmd, **kw: _FakeProc())
+    monkeypatch.setattr(mod, "_kill_tree", lambda proc: None)
+
+    job = mod.IsaacPlayJob()
+    job.launcher_cmd = [sys.executable]
+    job.start(tmp_path, record=False)
+    job.stop()
+    assert "video_run" not in job.status and "video_pending" not in job.status
 
 
-def test_video_playback_round_trip(tmp_path):
-    import imageio.v2 as imageio
-    import numpy as np
+def test_evaluation_status_keeps_reporting_the_isaac_lane_after_it_finishes(monkeypatch):
+    """The interesting Isaac status is the TERMINAL one — it carries video_pending /
+    video_ready. Routing on `active` alone handed the caller the idle SB3 worker's
+    status the instant a recording stopped, so the finished video was invisible."""
+    from fastapi.testclient import TestClient
 
-    from backend.streaming import FrameBroadcast, VideoPlayback
+    from backend import main
 
-    clip = tmp_path / "clip.mp4"
-    writer = imageio.get_writer(str(clip), fps=20, codec="libx264", macro_block_size=1)
-    for i in range(6):
-        writer.append_data(np.full((64, 64, 3), i * 40, dtype=np.uint8))
-    writer.close()
+    monkeypatch.setattr(main, "_eval_lane", "isaac")
+    monkeypatch.setattr(
+        main.isaac_play_job,
+        "status",
+        {"active": False, "message": "stopped", "video_run": "r", "video_ready": True},
+    )
+    with TestClient(main.app) as client:
+        body = client.get("/evaluation/status").json()
+    assert body["video_ready"] is True and body["video_run"] == "r"
 
-    broadcast = FrameBroadcast()
-    player = VideoPlayback(broadcast)
-    assert player.play(tmp_path / "missing.mp4", "nope") is False
-    assert player.play(clip, "clip") is True
 
-    frame = None
-    for _ in range(100):
-        if broadcast.frame is not None:
-            frame = broadcast.frame
-            break
-        time.sleep(0.05)
-    assert frame is not None and frame.startswith(b"\xff\xd8")  # JPEG in the viewport
-    assert broadcast.label == "clip"
+def test_run_video_endpoint_serves_the_recording_and_404s_without_one():
+    """The recording is already saved next to the model, so replaying it later is a
+    matter of serving the file. Range support is what makes the seekbar work, and the
+    404 is what lets the app hide the button instead of offering a dead one."""
+    import shutil
 
-    for _ in range(200):  # 6 frames @20fps — ends on its own, then frees the viewport
-        if not player.active:
-            break
-        time.sleep(0.05)
-    assert not player.active
-    assert not broadcast.active and broadcast.frame is None
+    from fastapi.testclient import TestClient
+
+    from backend import main
+
+    # Use the session registry (conftest already points it at a tmp runs dir) rather
+    # than swapping the global — the suite shares that singleton across files.
+    run = main.registry.runs_dir / "run-video-probe"
+    run.mkdir(parents=True)
+    try:
+        with TestClient(main.app) as client:
+            assert client.get(f"/runs/{run.name}/video").status_code == 404
+            assert client.get("/runs/nope/video").status_code == 404
+            # Traversal is refused by run_dir(), which resolves outside the runs tree.
+            assert client.get("/runs/..%2F..%2Fsecrets/video").status_code == 404
+
+            (run / "eval_video.mp4").write_bytes(bytes(4096))
+            res = client.get(f"/runs/{run.name}/video")
+            assert res.status_code == 200
+            assert res.headers["content-type"] == "video/mp4"
+            ranged = client.get(
+                f"/runs/{run.name}/video", headers={"Range": "bytes=100-199"}
+            )
+            assert ranged.status_code == 206 and len(ranged.content) == 100
+
+            assert main.registry.run_details(run.name)["has_video"] is True
+    finally:
+        shutil.rmtree(run, ignore_errors=True)
 
 
 def test_stream_client_path_and_launch(monkeypatch):

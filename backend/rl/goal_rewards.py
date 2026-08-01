@@ -28,6 +28,10 @@ POSITION_ACTION_HALF_WINDOW = 0.6
 #: ceiling. `gallop` is the one those four penalties FORBID (they punish the vertical
 #: oscillation and pitch rate that define a bound), which is why it trades them for
 #: contact terms and a flight phase — impossible before contacts existed.
+#:
+#: `gait` sits between the two: locomotion that must actually STEP. It keeps walk's
+#: forward objective but replaces the vertical/body-rate penalties (which suppress the
+#: oscillation a gait needs) with per-limb contact TIMING — see its comment below.
 REWARD_PRIORS: dict[str, list[tuple[str, str, float]]] = {
     "walk": [
         ("stay_alive", "1.0", 0.5),
@@ -50,6 +54,39 @@ REWARD_PRIORS: dict[str, list[tuple[str, str, float]]] = {
         ("effort", "mean(action * action)", -0.1),
         ("action_smoothness", "norm(action - prev_action)", -0.01),
         ("joint_jitter", "mean(abs(joint_vel))", -0.02),
+    ],
+    # Locomotion that has to STEP rather than shuffle. Every term reduces a
+    # per-limb vector with mean/min, never a subscript, so it says nothing about
+    # WHICH limbs pair up — it reads the same on a 2-limb biped, a 4-limb
+    # quadruped and a 6-limb hexapod, and the widths come from the robot. (A
+    # diagonal-pair "trot" term is not merely avoided here, it is unparseable:
+    # the grammar has no subscripts, deliberately.)
+    #
+    # Anti-slide duty moves from walk's vertical_velocity/body_rate — which
+    # penalise the body oscillation a gait NEEDS — onto contact timing instead:
+    # `swing_phase` pays only when some limb is off the ground, `stance_drag`
+    # charges for a limb glued down, `air_hang` charges for one held up (a
+    # three-legged limp), and `foot_slip` charges for scuffing while loaded. A
+    # splayed slide scores 0 on the first and worst on the second, so the gait
+    # is described rather than the oscillation forbidden.
+    #
+    # NOTE the height floor: `apply_behavior_goal`'s default 0.70 ratio leaves an
+    # A1-sized robot ~3 cm of headroom, so a gait with a compression phase gets
+    # terminated by it. Pass min_height_ratio (≈0.55) alongside this prior.
+    "gait": [
+        ("stay_alive", "1.0", 0.5),
+        ("forward_velocity", "min(base_vx, 1.5)", 1.0),
+        ("upright", "upright", 0.3),
+        # 1 whenever ANY limb is airborne — a stance/swing alternation detector
+        # that needs no pairing and no limb count.
+        ("swing_phase", "1 - min(contact)", 0.2),
+        ("stance_drag", "mean(clamp((contact_time - 0.3) / 0.3, 0, 1))", -0.3),
+        ("air_hang", "mean(clamp((air_time - 0.3) / 0.3, 0, 1))", -0.3),
+        ("foot_slip", "mean(contact * foot_speed)", -0.2),
+        ("lateral_velocity", "abs(base_vy)", -0.3),
+        ("effort", "mean(action * action)", -0.05),
+        ("action_smoothness", "norm(action - prev_action)", -0.02),
+        ("joint_limit_violation", "mean(clamp((joint_limit_use - 0.9) / 0.1, 0, 1))", -0.5),
     ],
     "gallop": [
         ("stay_alive", "1.0", 0.5),
@@ -88,7 +125,26 @@ def describe_priors() -> str:
     for goal, terms in REWARD_PRIORS.items():
         rendered = "; ".join(f"{name}={weight:+g}*[{expr}]" for name, expr, weight in terms)
         lines.append(f"  {goal}: {rendered}")
-    return "CALIBRATED REWARD PRIORS (starting points, adapt them):\n" + "\n".join(lines)
+    return (
+        "CALIBRATED REWARD PRIORS (starting points, adapt them):\n"
+        + "\n".join(lines)
+        + "\n"
+        + PRIOR_FLOOR_NOTE
+    )
+
+
+#: The one thing a prior CANNOT carry: a prior is reward terms, and the fall floor is
+#: a termination. A gait whose compression phase dips below the floor is terminated by
+#: a number no reward term can reach, so the pairing has to be stated where the priors
+#: are read. Both halves are the agent's to choose — hence `min_height_ratio`.
+PRIOR_FLOOR_NOTE = (
+    "  NOTE — a prior is only the REWARD. Any prior with a flight or compression "
+    f"phase (gait, gallop) also needs a looser fall floor than the default "
+    f"{LOCOMOTION_MIN_HEIGHT_RATIO:.2f}x standing height, or the episode ends on the "
+    "very motion you are paying for: pass min_height_ratio (≈0.55 for a gait, ≈0.45 "
+    "for a gallop) to apply_behavior_goal. It is a fraction of the robot's MEASURED "
+    "standing height, so the same number ports across robot sizes."
+)
 
 
 #: Height floor for a goal that is NOT locomotion, as a fraction of standing height.
@@ -99,7 +155,12 @@ FALL_MIN_HEIGHT_RATIO = 0.35
 
 
 def apply_behavior_goal(
-    goal: str, sim, config_service, *, locomotion: bool = True
+    goal: str,
+    sim,
+    config_service,
+    *,
+    locomotion: bool = True,
+    min_height_ratio: float | None = None,
 ) -> dict[str, Any]:
     """Calibrate the environment for a goal; the REWARD is authored separately.
 
@@ -115,6 +176,15 @@ def apply_behavior_goal(
     ground. It decides which joints get enabled and how strict the height floor is,
     and it is what makes the no-ground-reaching-limbs rejection possible: asking a
     fixed-base arm to walk trains a reward it can never satisfy.
+
+    ``min_height_ratio`` overrides that floor, as a fraction of the robot's measured
+    standing height. Two defaults cannot cover every goal: 0.70 is right for a steady
+    walk (it is what stops forward velocity being farmed by crawling) and wrong for
+    any gait with a compression phase, which it terminates on the very motion the
+    reward pays for. A fraction rather than metres so the number ports between an A1
+    at 0.31 m and a B1 at 0.70 m. Out-of-range values are rejected rather than
+    clamped: 0 disables the fall floor entirely and >1 terminates a standing robot,
+    and both are far more likely a mistake than a request.
     """
     config = config_service.current_or_default(sim)
     if not config.urdf_path:
@@ -143,6 +213,14 @@ def apply_behavior_goal(
 
     base_height = _base_height(sim)
     ratio = LOCOMOTION_MIN_HEIGHT_RATIO if locomotion else FALL_MIN_HEIGHT_RATIO
+    if min_height_ratio is not None:
+        ratio = float(min_height_ratio)
+        if not 0.1 <= ratio <= 0.95:
+            raise ValueError(
+                f"min_height_ratio must be between 0.1 and 0.95 (got {ratio}). It is a "
+                "fraction of the measured standing height: 0.70 is the steady-walk "
+                "default, ~0.55 suits a gait with a compression phase, ~0.35 a sit."
+            )
     patch = {
         "observations": _base_observations()
         + [

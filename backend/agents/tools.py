@@ -301,6 +301,15 @@ class AgentToolbox:
                         "type": "boolean",
                         "description": "Does the goal involve moving over the ground? Default true.",
                     },
+                    "min_height_ratio": {
+                        "type": "number",
+                        "description": "Fall floor as a FRACTION of the robot's measured standing "
+                        "height (0.1-0.95). Omit for the defaults: 0.70 for locomotion (what stops "
+                        "forward speed being farmed by crawling), 0.35 otherwise. Set it lower "
+                        "(~0.55 gait, ~0.45 gallop) whenever the reward pays for a flight or "
+                        "compression phase, or the episode terminates on the exact motion you are "
+                        "rewarding. A fraction, so the same value works on any robot size.",
+                    },
                 },
                 ["goal"],
             ),
@@ -639,11 +648,20 @@ class AgentToolbox:
             )
         return {"ok": True, **result}
 
-    def _apply_behavior_goal(self, goal: str, locomotion: bool = True) -> dict[str, Any]:
+    def _apply_behavior_goal(
+        self,
+        goal: str,
+        locomotion: bool = True,
+        min_height_ratio: float | None = None,
+    ) -> dict[str, Any]:
         if self.config_service is None:
             return {"error": "Config service unavailable."}
         result = apply_behavior_goal(
-            goal, self.sim, self.config_service, locomotion=bool(locomotion)
+            goal,
+            self.sim,
+            self.config_service,
+            locomotion=bool(locomotion),
+            min_height_ratio=None if min_height_ratio is None else float(min_height_ratio),
         )
         if self.notifier is not None:
             self.notifier.notify_threadsafe(

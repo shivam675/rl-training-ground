@@ -7,6 +7,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from backend.agents.usage import usage_event
 from backend.models import OllamaSettings
 
 
@@ -122,6 +123,14 @@ class OllamaClient:
                     for call in msg.get("tool_calls") or []:
                         tool_calls.append(call)
                     if item.get("done") is True:
+                        # Ollama's final chunk carries the counts and its own
+                        # generation time — more accurate than a wall clock here,
+                        # which would include prompt processing.
+                        yield usage_event(
+                            item.get("prompt_eval_count"),
+                            item.get("eval_count"),
+                            (item.get("eval_duration") or 0) / 1e9 or None,
+                        )
                         break
             except RuntimeError as exc:
                 lowered = str(exc).lower()

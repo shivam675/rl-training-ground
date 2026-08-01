@@ -11,6 +11,7 @@ import 'package:rtg_flutter_app/src/app_state.dart';
 import 'package:rtg_flutter_app/src/panels/home_panel.dart';
 import 'package:rtg_flutter_app/src/panels/robot_panel.dart';
 import 'package:rtg_flutter_app/src/panels/reward_panel.dart';
+import 'package:rtg_flutter_app/src/panels/training_panel.dart';
 import 'package:rtg_flutter_app/src/theme/app_theme.dart';
 import 'package:rtg_flutter_app/src/widgets/common.dart';
 
@@ -470,6 +471,93 @@ void main() {
       'mean(air_time)',
     );
   });
+
+  testWidgets('Training controls all sit on one baseline', (tester) async {
+    // "Parallel envs" carried a helperText, which reserved a line under that one
+    // field and pushed its box up relative to every sibling in the same Wrap.
+    final state = AppState(EmptyApi());
+
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: MaterialApp(
+          theme: buildAppTheme(brightness: Brightness.light),
+          home: const Scaffold(body: TrainingPanel()),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final envs = tester.getRect(
+      find.ancestor(
+        of: find.text('Parallel envs'),
+        matching: find.byType(TextField),
+      ),
+    );
+    final arch = tester.getRect(
+      find.ancestor(
+        of: find.text('MLP hidden layers'),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(
+      envs.top,
+      moreOrLessEquals(arch.top, epsilon: 1.0),
+      reason: 'the envs field must share a top edge with its neighbours',
+    );
+    expect(envs.height, moreOrLessEquals(arch.height, epsilon: 1.0));
+  });
+
+  testWidgets('a running trainer reports elapsed, ETA and episode length', (
+    tester,
+  ) async {
+    final state = AppState(EmptyApi());
+
+    tester.view.physicalSize = const Size(1600, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: MaterialApp(
+          theme: buildAppTheme(brightness: Brightness.light),
+          home: const Scaffold(body: TrainingPanel()),
+        ),
+      ),
+    );
+
+    // 60s in, a quarter done -> ~180s left at the run's own average rate.
+    state.trainingStatus = {
+      'active': true,
+      'message': 'training',
+      'timestep': 250000,
+      'total_timesteps': 1000000,
+      'episode_length': 411,
+      'started_at':
+          DateTime.now().subtract(const Duration(seconds: 60)).millisecondsSinceEpoch /
+          1000,
+    };
+    state.notifyListeners();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('1m 0s'), findsOneWidget); // elapsed
+    expect(find.text('3m 0s'), findsOneWidget); // finishes in
+    expect(find.text('411'), findsOneWidget); // episode length
+
+    // Idle: elapsed would otherwise keep counting up from a start with no end.
+    state.trainingStatus = {'active': false, 'message': 'complete'};
+    state.notifyListeners();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Elapsed'), findsNothing);
+    expect(find.text('Finishes in'), findsNothing);
+  });
 }
 
 /// Captures config patches so an edit can be asserted on what it SENDS, not on
@@ -485,4 +573,5 @@ class RecordingApi extends EmptyApi {
     if (path == '/env/config/patch') patches.add(body);
     return {'ok': true};
   }
+
 }

@@ -47,6 +47,40 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
   static String _formatNetArch(dynamic value) =>
       value is List ? value.join(', ') : '';
 
+  /// Wall-clock time since the run launched, from the backend's `started_at`.
+  static Duration? _elapsed(dynamic startedAt) {
+    if (startedAt is! num) return null;
+    final started = DateTime.fromMillisecondsSinceEpoch(
+      (startedAt * 1000).round(),
+    );
+    final delta = DateTime.now().difference(started);
+    return delta.isNegative ? Duration.zero : delta;
+  }
+
+  /// Time left, from the run's own average step rate rather than the reported FPS.
+  ///
+  /// An average is deliberate: Isaac spends 30-60s booting Kit before the first
+  /// step, so the estimate starts pessimistic and tightens as the run proceeds —
+  /// whereas instantaneous FPS swings enough to make the number jump around, which
+  /// reads as unreliable even when it is closer.
+  static Duration? _remaining(Duration? elapsed, int timestep, int total) {
+    if (elapsed == null || timestep <= 0 || total <= timestep) return null;
+    final seconds = elapsed.inMilliseconds / 1000;
+    if (seconds <= 0) return null;
+    final rate = timestep / seconds; // steps per second, run average
+    if (rate <= 0) return null;
+    return Duration(seconds: ((total - timestep) / rate).round());
+  }
+
+  static String _formatDuration(Duration d) {
+    final hours = d.inHours;
+    final minutes = d.inMinutes.remainder(60);
+    final seconds = d.inSeconds.remainder(60);
+    if (hours > 0) return '${hours}h ${minutes}m';
+    if (minutes > 0) return '${minutes}m ${seconds}s';
+    return '${seconds}s';
+  }
+
   void _updateNetArch(AppState state, String raw) {
     final value = raw.trim();
     if (value.isEmpty) {
@@ -98,6 +132,9 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
     final statusMessage = '${training['message'] ?? 'idle'}';
     final timestep = (training['timestep'] as num?)?.toInt() ?? 0;
     final totalTimesteps = (training['total_timesteps'] as num?)?.toInt() ?? 0;
+    final episodeLength = (training['episode_length'] as num?)?.toInt();
+    final elapsed = _elapsed(training['started_at']);
+    final remaining = _remaining(elapsed, timestep, totalTimesteps);
     final blockers = state.trainingBlockers();
     final canStart =
         !state.busy &&
@@ -208,13 +245,9 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
                 controller: numEnvsController,
                 keyboardType: TextInputType.number,
                 style: monoStyle(context, fontSize: 13),
-                decoration: InputDecoration(
-                  labelText: 'Parallel envs',
-                  helperText: backend == 'isaac'
-                      ? 'GPU, thousands ok'
-                      : 'capped at CPU cores',
-                  helperStyle: const TextStyle(fontSize: 10),
-                ),
+                // No helperText: it added a line below this field only, which
+                // pushed the box out of alignment with every sibling control.
+                decoration: const InputDecoration(labelText: 'Parallel envs'),
                 onChanged: (value) => state.setTrainingNumEnvs(
                   int.tryParse(value.trim()) ?? state.trainingNumEnvs,
                 ),
@@ -304,6 +337,26 @@ class _TrainingPanelState extends ConsumerState<TrainingPanel> {
                 label: 'FPS',
                 value: '${training['fps']}',
                 icon: Icons.speed,
+              ),
+            // Only while running: `started_at` with no finish time can only give
+            // "now minus start", which would keep counting up after a run ended.
+            if (running && elapsed != null)
+              StatChip(
+                label: 'Elapsed',
+                value: _formatDuration(elapsed),
+                icon: Icons.schedule,
+              ),
+            if (running && remaining != null)
+              StatChip(
+                label: 'Finishes in',
+                value: _formatDuration(remaining),
+                icon: Icons.hourglass_bottom,
+              ),
+            if (episodeLength != null)
+              StatChip(
+                label: 'Episode length',
+                value: '$episodeLength',
+                icon: Icons.straighten,
               ),
             StatChip(
               label: 'Backend',

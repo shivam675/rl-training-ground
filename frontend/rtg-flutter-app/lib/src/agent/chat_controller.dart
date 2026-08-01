@@ -47,6 +47,16 @@ class ChatMessage {
   /// text selection only switch on once the message stops growing.
   bool streaming = false;
 
+  /// What this reply cost: prompt/generated tokens and generation speed, summed
+  /// over the provider round(s) that produced it. Zero completion tokens means no
+  /// `usage` event arrived (an endpoint that ignores `include_usage`), so the
+  /// footer stays hidden rather than claiming a reply was free.
+  int promptTokens = 0;
+  int completionTokens = 0;
+  double? tps;
+
+  bool get hasUsage => completionTokens > 0;
+
   final DateTime time;
 
   String asTranscript() {
@@ -67,6 +77,9 @@ class ChatMessage {
     if (thinking.isNotEmpty) 'thinking': thinking,
     if (providerLabel.isNotEmpty) 'providerLabel': providerLabel,
     if (diagnoseError != null) 'diagnoseError': diagnoseError,
+    if (hasUsage) 'promptTokens': promptTokens,
+    if (hasUsage) 'completionTokens': completionTokens,
+    if (hasUsage && tps != null) 'tps': tps,
     'time': time.toIso8601String(),
   };
 
@@ -90,7 +103,10 @@ class ChatMessage {
       providerLabel: data['providerLabel']?.toString() ?? '',
       diagnoseError: data['diagnoseError']?.toString(),
       time: DateTime.tryParse(data['time']?.toString() ?? ''),
-    );
+    )
+      ..promptTokens = (data['promptTokens'] as num?)?.toInt() ?? 0
+      ..completionTokens = (data['completionTokens'] as num?)?.toInt() ?? 0
+      ..tps = (data['tps'] as num?)?.toDouble();
   }
 }
 
@@ -214,6 +230,33 @@ class ChatController extends ChangeNotifier {
 
   void _requestForceScroll() => forceScrollTick++;
 
+  /// Whether this tool bubble should offer "Configure reward".
+  ///
+  /// `apply_behavior_goal` deliberately sets NO reward — it calibrates the joints,
+  /// observations and fall floor, and the reward is a separate authoring step. That
+  /// leaves the user at a dead end unless they know to ask for step two, so the
+  /// applied bubble offers it.
+  ///
+  /// The gate is the config itself, not a flag: once any reward term is enabled the
+  /// button disappears on its own, whether the agent authored it, the user did in
+  /// the Rewards panel, or an older conversation already had.
+  bool offersRewardStep(ChatMessage message) {
+    if (message.kind != ChatKind.tool) return false;
+    if (message.toolName != 'apply_behavior_goal') return false;
+    if (message.toolOk != true || message.needsConfirmation) return false;
+    return !_state.hasEnabledRewards;
+  }
+
+  /// Ask the agent for step two, in the words the tool's own `next_step` uses.
+  Future<void> configureReward() {
+    return sendChat(
+      'Now author the reward for that goal: call patch_env_config with rewards[] '
+      'entries that each carry params.expr, written against the state vocabulary '
+      'and the measured numbers you just calibrated. Then tell me each term, its '
+      'weight and what it is for, and report any audit warnings you get back.',
+    );
+  }
+
   /// Buffer a content chunk, splitting out any inline `<think>` reasoning.
   void _queueChunk(String chunk) {
     final visible = _separateThink(chunk);
@@ -301,6 +344,33 @@ class ChatController extends ChangeNotifier {
     bubble.thinking += think;
     notifyListeners();
   }
+
+  /// Token counts for the round that just finished.
+  ///
+  /// The event arrives after that round's text, so the newest agent bubble is the
+  /// one it describes. A round that produced only a tool call has no bubble yet —
+  /// its cost is carried forward and added to the next reply, so nothing is lost
+  /// and no bubble is invented just to hold a number.
+  void _applyUsage(Map<String, dynamic> event) {
+    _flushChunks(); // make sure this round's bubble exists before stamping it
+    _pendingPromptTokens += (event['prompt_tokens'] as num?)?.toInt() ?? 0;
+    _pendingCompletionTokens += (event['completion_tokens'] as num?)?.toInt() ?? 0;
+    final tps = (event['tps'] as num?)?.toDouble();
+    if (tps != null) _pendingTps = tps;
+    final bubble = messages.isEmpty ? null : messages.last;
+    if (bubble == null || bubble.kind != ChatKind.agent) return;
+    bubble.promptTokens += _pendingPromptTokens;
+    bubble.completionTokens += _pendingCompletionTokens;
+    bubble.tps = _pendingTps ?? bubble.tps;
+    _pendingPromptTokens = 0;
+    _pendingCompletionTokens = 0;
+    _pendingTps = null;
+    notifyListeners();
+  }
+
+  int _pendingPromptTokens = 0;
+  int _pendingCompletionTokens = 0;
+  double? _pendingTps;
 
   void _applyRouteEvent(Map<String, dynamic> event) {
     final label = event['label']?.toString() ?? '';
@@ -522,6 +592,9 @@ class ChatController extends ChangeNotifier {
     }
     messages.add(ChatMessage(kind: ChatKind.user, text: text));
     _pendingProviderLabel = '';
+    _pendingPromptTokens = 0;
+    _pendingCompletionTokens = 0;
+    _pendingTps = null;
     sending = true;
     notifyListeners();
     _persistChat();
@@ -578,6 +651,8 @@ class ChatController extends ChangeNotifier {
               tool.text = _toolDoneText(tool.toolResult, error);
             }
             notifyListeners();
+          case 'usage':
+            _applyUsage(event);
           case 'notice':
             _finishStreamingBubble();
             messages.add(

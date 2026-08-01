@@ -44,10 +44,13 @@ def _selfcheck() -> int:
     """
     import importlib
 
-    # SB3's logger imports matplotlib + pandas at module top; optuna drives tuning.
+    # Exactly the modules the app imports lazily, at train/tune time. Keep this list
+    # honest: it used to demand matplotlib + pandas because SB3's logger once
+    # imported them at module top, but as of SB3 2.9.0 `matplotlib.figure` is behind
+    # `if TYPE_CHECKING:` and pandas is not imported at all. Nothing else in the
+    # backend references either — so requiring them failed the BUILD over modules the
+    # app never loads, which is the opposite of what this check is for.
     mods = [
-        "matplotlib.figure",
-        "pandas",
         "optuna",
         "stable_baselines3",
         "pybullet",

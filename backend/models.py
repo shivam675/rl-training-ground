@@ -184,6 +184,11 @@ class TrainingStatus(BaseModel):
     episode_length: int | None = None
     eval_reward: float | None = None  # latest held-out eval reward, when eval is on
     fps: float | None = None
+    #: Wall-clock epoch seconds when the run was launched. The app derives elapsed
+    #: time and the ETA from it — both need a start, and the run-directory name is a
+    #: local-time string that is the wrong thing to parse for arithmetic. Survives
+    #: into the terminal status so a finished run can still report how long it took.
+    started_at: float | None = None
     message: str = "idle"
     backend: str = "pybullet"
     num_envs: int = 1

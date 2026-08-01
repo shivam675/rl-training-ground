@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:http/http.dart' as http;
 
 import 'agent/chat_controller.dart';
 import 'api_client.dart';
@@ -220,7 +222,13 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       } catch (_) {}
     }
-    if ((!trainingActive && !evalActive) || _pollingTelemetry) return;
+    // A stopped recording is NOT the end of the story: the Isaac child needs a few
+    // seconds more to close the mp4, and `active` is already false by then. Without
+    // this the poll stopped exactly when the interesting transition was about to
+    // happen, and the 3D page sat blank with nothing to tell the user why.
+    if ((!trainingActive && !evalActive && !videoFinalizing) || _pollingTelemetry) {
+      return;
+    }
     _pollingTelemetry = true;
     try {
       if (trainingActive) {
@@ -240,9 +248,13 @@ class AppState extends ChangeNotifier {
         // A finished run should appear in the runs list right away.
         if (status['active'] != true) await loadRuns(notify: false);
       }
-      if (evalActive) {
+      if (evalActive || videoFinalizing) {
         evaluationStatus = await api.getJson('/evaluation/status');
         if (evaluationStatus?['active'] != true) await loadRuns(notify: false);
+        // The recording is closed and playable — hand it to the 3D page's player.
+        final ready = evaluationStatus?['video_ready'] == true;
+        final run = evaluationStatus?['video_run']?.toString();
+        if (ready && run != null && run.isNotEmpty) videoRunName = run;
       }
       notifyListeners();
     } catch (_) {
@@ -392,12 +404,53 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Run whose recorded `eval_video.mp4` the 3D page should play, or null for none.
+  ///
+  /// Set two ways, and they are the same thing: a recording that has just finished
+  /// (the poll above), and a past run the user picked from the runs list. The video
+  /// lives in the run directory next to the model, so a recording made once is
+  /// replayable for as long as the run exists.
+  String? videoRunName;
+
+  /// The Isaac child is still closing the mp4 — show "preparing", not an empty view.
+  bool get videoFinalizing => evaluationStatus?['video_pending'] == true;
+
+  /// URL the player streams from. Range-served, so seeking works.
+  String videoUrl(String runName) => '${api.baseUrl}/runs/$runName/video';
+
+  void showRunVideo(String? runName) {
+    if (videoRunName == runName) return;
+    videoRunName = runName;
+    notifyListeners();
+  }
+
+  /// Copy a run's recording wherever the user wants it. The file is already local,
+  /// so this is a copy, not a download — but "Save a copy" is what the button means.
+  /// Returns the destination, or null if the user cancelled.
+  Future<String?> saveRunVideo(String runName) async {
+    final target = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save recording',
+      fileName: '$runName.mp4',
+      type: FileType.custom,
+      allowedExtensions: const ['mp4'],
+    );
+    if (target == null) return null;
+    final res = await http.get(Uri.parse(videoUrl(runName)));
+    if (res.statusCode != 200) {
+      throw ApiException('Could not read the recording (${res.statusCode}).');
+    }
+    await File(target).writeAsBytes(res.bodyBytes);
+    return target;
+  }
+
   Future<void> startEvaluation(
     String runName, {
     int episodes = 3,
     bool deterministic = true,
     bool record = false,
   }) async {
+    // A new evaluation supersedes whatever the 3D page was showing.
+    videoRunName = null;
     await guard(() async {
       await api.postJson('/evaluation/start', {
         'run_name': runName,

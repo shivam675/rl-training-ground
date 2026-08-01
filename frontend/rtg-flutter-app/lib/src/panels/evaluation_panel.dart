@@ -203,6 +203,14 @@ class _EvaluationPanelState extends ConsumerState<EvaluationPanel> {
                   ref.read(navIndexProvider.notifier).state = AppPage.viewer;
                 }
               },
+              // The recording was saved into the run dir alongside the model, so
+              // checking a policy's behaviour later needs no re-run.
+              onPlayVideo: run['has_video'] == true
+                  ? () {
+                      state.showRunVideo(run['name'].toString());
+                      ref.read(navIndexProvider.notifier).state = AppPage.viewer;
+                    }
+                  : null,
               onExport: () async {
                 final path = await state.exportRun(run['name'].toString());
                 if (path != null && context.mounted) {
@@ -512,6 +520,7 @@ class _RunCard extends StatelessWidget {
     required this.showProject,
     required this.onSelect,
     required this.onEvaluate,
+    required this.onPlayVideo,
     required this.onExport,
     required this.onDelete,
   });
@@ -523,6 +532,10 @@ class _RunCard extends StatelessWidget {
   final bool showProject;
   final ValueChanged<bool> onSelect;
   final VoidCallback onEvaluate;
+
+  /// Null when the run has no recording — the button is hidden rather than shown
+  /// disabled, since "this run was never recorded" is not something to fix here.
+  final VoidCallback? onPlayVideo;
   final VoidCallback onExport;
   final VoidCallback onDelete;
 
@@ -596,6 +609,7 @@ class _RunCard extends StatelessWidget {
                       'best ${(run['reward_best'] as num).toStringAsFixed(2)}',
                     if (run['eval_best_mean'] != null)
                       'eval ${(run['eval_best_mean'] as num).toStringAsFixed(2)}',
+                    if (run['has_video'] == true) '🎬 recording',
                     if (!hasModel) 'no model',
                   ].join(' · '),
                   style: TextStyle(
@@ -616,6 +630,13 @@ class _RunCard extends StatelessWidget {
               color: context.colors.danger,
             ),
           ),
+          if (onPlayVideo != null)
+            IconButton(
+              tooltip: 'Play the saved recording',
+              visualDensity: VisualDensity.compact,
+              onPressed: onPlayVideo,
+              icon: const Icon(Icons.smart_display_outlined, size: 18),
+            ),
           IconButton(
             tooltip: 'Export bundle (model + config + telemetry)',
             visualDensity: VisualDensity.compact,

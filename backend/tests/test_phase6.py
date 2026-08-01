@@ -222,3 +222,49 @@ def test_training_health_thresholds_wait_for_meaningful_regression():
     assert reward_regressed(100.0, 70.0, 100, 2200, 10_000)
     assert not episode_length_collapsed(200, 120, 2000)
     assert episode_length_collapsed(200, 80, 2000)
+
+
+def test_usage_event_shape_and_tps():
+    """One shape for both providers, because the app parses it once. tps is omitted
+    rather than reported as 0 when there is nothing to divide."""
+    from backend.agents.usage import usage_event
+
+    assert usage_event(120, 300, 2.0) == {
+        "type": "usage",
+        "prompt_tokens": 120,
+        "completion_tokens": 300,
+        "tps": 150.0,
+    }
+    assert "tps" not in usage_event(120, 0, 2.0)  # nothing generated
+    assert "tps" not in usage_event(120, 300, None)  # provider gave no timing
+    assert usage_event(None, None, None)["prompt_tokens"] == 0
+
+
+def test_ollama_client_emits_usage_from_its_done_chunk():
+    """The counts live on the final `done` chunk; before this they were read and
+    dropped, so the chat had no idea what a reply cost."""
+    from backend.agents.ollama_client import OllamaClient
+    from backend.models import OllamaSettings
+
+    client = OllamaClient(OllamaSettings())
+
+    async def fake_round(messages, tools, think=None):
+        yield {"message": {"content": "hi"}}
+        yield {
+            "done": True,
+            "prompt_eval_count": 42,
+            "eval_count": 8,
+            "eval_duration": 2_000_000_000,  # ns
+        }
+
+    client._stream_round = fake_round
+
+    async def collect():
+        return [event async for event in client.stream_chat_events("sys", "hello")]
+
+    events = asyncio.run(collect())
+    assert {"type": "chunk", "text": "hi"} in events
+    usage = [e for e in events if e["type"] == "usage"]
+    assert usage == [
+        {"type": "usage", "prompt_tokens": 42, "completion_tokens": 8, "tps": 4.0}
+    ]

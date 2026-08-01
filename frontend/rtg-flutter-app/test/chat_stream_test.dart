@@ -101,6 +101,42 @@ class FinalChangesApi extends BackendApi {
   }
 }
 
+/// Streams a reply plus the per-round token totals both providers now emit.
+class UsageApi extends BackendApi {
+  @override
+  Future<Map<String, dynamic>> getJson(String path) async => {'ok': true};
+
+  @override
+  Future<Map<String, dynamic>> postJson(
+    String path,
+    Map<String, dynamic> body,
+  ) async => {'ok': true};
+
+  @override
+  Stream<Map<String, dynamic>> streamPostJson(
+    String path,
+    Map<String, dynamic> body,
+  ) async* {
+    // Round one is a tool call with no text — its cost has no bubble to land on
+    // and must be carried into the reply rather than dropped.
+    yield {'type': 'tool_call', 'name': 'get_robot_info', 'args': const {}};
+    yield {
+      'type': 'tool_result',
+      'name': 'get_robot_info',
+      'result': {'name': 'go1'},
+    };
+    yield {'type': 'usage', 'prompt_tokens': 100, 'completion_tokens': 20};
+    yield {'type': 'chunk', 'text': 'It is a Go1.'};
+    yield {
+      'type': 'usage',
+      'prompt_tokens': 300,
+      'completion_tokens': 30,
+      'tps': 42.5,
+    };
+    yield {'type': 'done'};
+  }
+}
+
 class RoutedApi extends BackendApi {
   @override
   Future<Map<String, dynamic>> getJson(String path) async => {'ok': true};
@@ -390,6 +426,67 @@ void main() {
 
     // The error reaches the agent through the normal chat path.
     expect(find.textContaining('Training failed to start'), findsOneWidget);
+  });
+
+  testWidgets('a reply reports its token cost, tool round included', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appStateProvider.overrideWith((ref) => AppState(UsageApi())),
+        ],
+        child: const MaterialApp(home: Scaffold(body: AssistantChat())),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'which robot is this');
+    await tester.tap(find.byTooltip('Send (Enter)'));
+    await tester.pump(const Duration(milliseconds: 120));
+
+    // 100+300 prompt and 20+30 generated: the tool round produced no bubble, so
+    // its cost carries into the reply instead of vanishing.
+    expect(find.textContaining('↑400'), findsOneWidget);
+    expect(find.textContaining('↓50'), findsOneWidget);
+    expect(find.textContaining('43 tok/s'), findsOneWidget);
+  });
+
+  testWidgets('an applied behaviour goal offers the reward step, once', (
+    tester,
+  ) async {
+    // apply_behavior_goal calibrates but deliberately writes no reward, and the
+    // user had to know to ask for step two in words. The button is that step —
+    // and it has to disappear the moment a reward exists.
+    final api = PendingConfirmationApi();
+    final state = AppState(api);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appStateProvider.overrideWith((ref) => state)],
+        child: const MaterialApp(home: Scaffold(body: AssistantChat())),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'make this robot walk');
+    await tester.tap(find.byTooltip('Send (Enter)'));
+    await tester.pump(const Duration(milliseconds: 80));
+
+    // Still awaiting confirmation — nothing has been applied yet.
+    expect(find.text('Configure reward'), findsNothing);
+
+    await tester.tap(find.text('Approve & Apply'));
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(find.text('Configure reward'), findsOneWidget);
+
+    // The gate is the config, so any enabled reward term retires the button —
+    // whoever authored it.
+    state.envConfig = {
+      'rewards': [
+        {'key': 'forward_velocity', 'enabled': true},
+      ],
+    };
+    state.notifyListeners();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(find.text('Configure reward'), findsNothing);
   });
 
   testWidgets('an idle or running trainer shows no Diagnose button', (

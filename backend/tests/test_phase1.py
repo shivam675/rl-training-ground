@@ -229,7 +229,7 @@ def test_a_calibrated_position_window_does_not_warn_about_urdf_limits(tmp_path):
     assert any("initial_joint_pose" in w for w in flagged)
 
 
-@pytest.mark.parametrize("goal", ["walk", "balance", "gallop", "sit_stand_sit"])
+@pytest.mark.parametrize("goal", ["walk", "balance", "gait", "gallop", "sit_stand_sit"])
 def test_reward_priors_compile_and_survive_their_own_audit(goal):
     """The priors are what the agent authors AGAINST, so they must be exemplary.
 
@@ -262,6 +262,62 @@ def test_walk_priors_keep_the_anti_slide_penalties():
     weights = {name: weight for name, _expr, weight in REWARD_PRIORS["walk"]}
     for key in ("lateral_velocity", "vertical_velocity", "body_rate", "joint_limit_violation"):
         assert weights[key] < 0, key
+
+
+@pytest.mark.parametrize("n_contacts", [2, 4, 6])
+def test_gait_prior_is_limb_count_agnostic(n_contacts):
+    """The whole point of the gait prior: it must read the same on a biped, a
+    quadruped and a hexapod.
+
+    A diagonal-pair "trot" term would need subscripts, which the grammar does not
+    have — so every term here reduces the per-limb vectors with mean/min and the
+    width comes from the robot. This compiles and audits it at three limb counts;
+    a term that had smuggled in a limb count (a `/ 4`, a `sum()`) would pass at one
+    and fail at the others.
+    """
+    from backend.rl.goal_rewards import REWARD_PRIORS
+    from backend.rl.reward_expr import Term, TermSet, audit
+    from backend.rl.state_vocab import allowed_names, sample_states
+
+    term_set = TermSet(
+        [Term(name=n, expr=e, weight=w) for n, e, w in REWARD_PRIORS["gait"]],
+        allowed_names(contacts=True, commands=False),
+    )
+    states = sample_states(
+        n_joints=12, n_actions=12, n_contacts=n_contacts, contacts=True, standing_height=0.3125
+    )
+    spans = term_set.bounds(states, num_envs=1)
+    assert audit(spans, term_set.scaling_terms(states[0])) == []
+    # Reading the same on every robot means the numbers don't move with limb count.
+    assert spans["swing_phase"] == pytest.approx((0.0, 0.2))
+
+
+def test_gait_prior_trades_the_anti_gait_penalties_for_contact_timing():
+    """vertical_velocity and body_rate penalise the body oscillation a gait NEEDS, so
+    a gait prior that inherited them would train the fast flat trot back. What replaces
+    them has to be the per-limb timing, or nothing distinguishes a step from a slide."""
+    from backend.rl.goal_rewards import REWARD_PRIORS
+
+    terms = {name: (expr, weight) for name, expr, weight in REWARD_PRIORS["gait"]}
+    assert "vertical_velocity" not in terms and "body_rate" not in terms
+    assert terms["swing_phase"][1] > 0  # pays for a limb being off the ground
+    for penalty in ("stance_drag", "air_hang", "foot_slip"):
+        assert terms[penalty][1] < 0
+        assert any(
+            source in terms[penalty][0]
+            for source in ("contact_time", "air_time", "contact")
+        ), penalty
+
+
+def test_prior_floor_note_is_carried_into_the_prompt():
+    """A prior is reward terms only, and the fall floor is a termination — a gait
+    rewarded for compression while a 0.70 floor terminates it is the one failure the
+    priors cannot express their way out of. So the pairing must reach the agent."""
+    from backend.rl.goal_rewards import describe_priors
+
+    rendered = describe_priors()
+    assert "gait:" in rendered
+    assert "min_height_ratio" in rendered
 
 
 def test_gallop_prior_references_contact_state():
@@ -381,6 +437,33 @@ def test_goal_height_floor_is_strict_for_locomotion_and_permissive_otherwise(
     assert result["config"]["terminations"]["min_base_height"] == pytest.approx(0.6 * ratio)
     # Calibration only — the reward is the model's job.
     assert [r for r in result["config"]["rewards"] if r["enabled"]] == []
+
+
+def test_goal_height_floor_is_overridable_per_goal(tmp_path):
+    """0.70 is right for a steady walk and wrong for a gait with a compression phase,
+    which it terminates on the very motion the reward pays for. A fraction, not metres,
+    so one number ports from an A1 at 0.31 m to a B1 at 0.70 m — and out-of-range
+    values are rejected, since 0 removes the fall floor and >1 kills a standing robot."""
+    from backend.rl.goal_rewards import apply_behavior_goal
+
+    class FakeSim:
+        robot_body = None
+        cid = None
+
+        def actions(self):
+            return {"actions": [{"joint_index": 0, "joint_name": "hip"}]}
+
+        def robot_info(self):
+            return {"path": "r2d2.urdf"}
+
+    service = ConfigService(tmp_path)
+    service.save(EnvConfig(urdf_path="r2d2.urdf", observations=[], actions=[], rewards=[]))
+    result = apply_behavior_goal("gait", FakeSim(), service, min_height_ratio=0.55)
+    assert result["min_base_height"] == pytest.approx(0.6 * 0.55)
+
+    for bad in (0.0, 1.2):
+        with pytest.raises(ValueError, match="min_height_ratio"):
+            apply_behavior_goal("gait", FakeSim(), service, min_height_ratio=bad)
 
 
 def test_validate_flags_bad_action_scales(client):

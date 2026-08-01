@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'src/backend_launcher.dart';
 import 'src/home.dart';
@@ -14,6 +15,9 @@ final backendLauncher = BackendLauncher();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // Video playback (the recorded-evaluation player on the 3D page) needs libmpv
+  // loaded before any Player is constructed.
+  MediaKit.ensureInitialized();
   // Fonts are bundled in google_fonts/ — never fetch from the network.
   GoogleFonts.config.allowRuntimeFetching = false;
   // Last-resort guard: a stray async exception (e.g. a refused socket) must
