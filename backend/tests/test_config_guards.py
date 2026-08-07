@@ -174,6 +174,21 @@ def test_a_bare_reward_key_is_blocked_with_the_fix_attached(client):
     assert any("params.expr" in p for p in config_service.validate(stale, sim))
 
 
+def test_a_top_level_expr_on_a_reward_is_taken_as_params_expr(client):
+    """Observed on a real gallop-authoring turn: the agent wrote
+    `{"key": ..., "expr": ...}` because `terminations` in the same tool takes a
+    top-level `expr`. The whole patch was rejected and four valid terms went with
+    it. The shape is unambiguous, so accept it."""
+    config = config_service.current_or_default(sim)
+    updated = config_service.apply_patch(
+        config,
+        {"rewards": [{"key": "flight_phase", "expr": "min(base_vx, 3.0)", "weight": 0.5}]},
+    )
+    term = next(r for r in updated.rewards if r.key == "flight_phase")
+    assert term.params["expr"] == "min(base_vx, 3.0)"
+    assert term.weight == 0.5
+
+
 def test_the_five_pybullet_only_keys_warn_instead_of_blocking(client):
     """They reference link/target state the vocabulary cannot express, so they are
     still legal — but they cannot train on the only training lane, and that is worth
@@ -185,3 +200,26 @@ def test_the_five_pybullet_only_keys_warn_instead_of_blocking(client):
     )
     assert any("target_link_position" in w for w in config_service.warnings(updated, sim))
     assert not any("target_link_position" in p for p in config_service.validate(updated, sim))
+
+
+def test_patching_the_stance_clears_the_measured_spawn_height(client):
+    """The stance decides where the feet are, so a height measured against the old
+    stance is wrong the moment the stance moves — and it is what
+    `terminations.min_base_height` is calibrated to. Observed on Valkyrie, whose
+    derived stance leaned the torso 15 deg forward: correcting it by hand would
+    otherwise have kept a height measured in the leaning pose."""
+    config = config_service.current_or_default(sim)
+    seeded = config.model_copy(update={"initial_base_height": 0.99})
+    joint = next(iter(seeded.initial_joint_pose))
+
+    moved = config_service.apply_patch(seeded, {"initial_joint_pose": {joint: 0.123}})
+    assert moved.initial_joint_pose[joint] == 0.123
+    assert moved.initial_base_height is None
+    # Merged, not replaced: correcting one joint must not drop the rest of the stance.
+    assert len(moved.initial_joint_pose) == len(seeded.initial_joint_pose)
+
+    # An explicit height in the same patch is a deliberate override and still wins.
+    both = config_service.apply_patch(
+        seeded, {"initial_joint_pose": {joint: 0.123}, "initial_base_height": 1.5}
+    )
+    assert both.initial_base_height == 1.5

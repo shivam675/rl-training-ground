@@ -46,9 +46,11 @@ Use a proof-led transformation story:
 
 ## Visual system
 
-- Light theme with a warm off-white background (`#F7F5F0`).
-- Deep navy text (`#17212B`), teal evidence accent (`#1F8873`), and restrained warm orange (`#D97745`) for setbacks or pivots.
-- Use a modern humanist sans-serif available in the workspace; avoid decorative or futuristic display fonts.
+- Light theme with a low-glare neutral background (`#F6F7F2`).
+- Use `Georgia Bold` for deck and slide titles, `Segoe UI` for body copy, and `Segoe UI Semibold` for metrics. The serif/sans pairing gives the story a human editorial character while keeping explanatory text highly readable; all three fonts are present on the build machine.
+- Use deep ink (`#18232F`) for primary text, deep teal (`#0B6B64`) for progress and evidence, rust (`#B8502A`) for setbacks and pivots, and slate (`#5B6670`) for supporting copy.
+- Against the background, the measured contrast ratios are 14.77:1 for ink, 5.91:1 for teal, 4.62:1 for rust, and 5.45:1 for slate. Each clears the 4.5:1 contrast target for normal text.
+- Teal should carry successful outcomes and verified evidence. Rust should appear only where the story changes direction, so the audience learns the color semantics without a legend.
 - Minimum sizes: 50 pt deck title, 35 pt slide titles, 24 pt subheads, 16 pt body.
 - Prefer one strong composition per slide. Avoid dashboard grids, repeated cards, glossy gradients, fake UI controls, and excessive iconography.
 - Vary silhouettes: full-width statement, text-plus-image, timeline, one simple workflow, evidence chart, and video-frame-led result slides.

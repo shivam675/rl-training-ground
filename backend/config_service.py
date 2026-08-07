@@ -34,6 +34,8 @@ SUPPORTED_PATCH_KEYS = {
     "rewards",
     "terminations",
     "domain_randomization",
+    "initial_joint_pose",
+    "initial_base_height",
 }
 
 
@@ -266,6 +268,19 @@ class ConfigService:
 
         for reward_patch in patch.get("rewards", []) or []:
             key = reward_patch.get("key")
+            # Accept a top-level `expr` as `params.expr`. The same tool takes
+            # `terminations: {"expr": ...}` top-level, so an agent writing
+            # `{"key": ..., "expr": ...}` is following the shape next to it, not
+            # inventing one — observed on a real gallop authoring turn, where it
+            # threw away four valid terms.
+            if isinstance(reward_patch.get("expr"), str):
+                reward_patch = {
+                    **{k: v for k, v in reward_patch.items() if k != "expr"},
+                    "params": {
+                        **(reward_patch.get("params") or {}),
+                        "expr": reward_patch["expr"],
+                    },
+                }
             existing = next((r for r in data["rewards"] if r["key"] == key), None)
             authored = _expr_of(reward_patch) or (existing and _expr_of(existing))
             if key not in reward_keys and not authored:
@@ -321,6 +336,22 @@ class ConfigService:
                 **data.get("domain_randomization", {}),
                 **patch["domain_randomization"],
             }
+
+        if isinstance(patch.get("initial_joint_pose"), dict):
+            # Merged, so correcting one joint does not mean restating the stance.
+            data["initial_joint_pose"] = {
+                **(data.get("initial_joint_pose") or {}),
+                **{k: float(v) for k, v in patch["initial_joint_pose"].items()},
+            }
+            # The stance decides where the feet are, so a height measured against
+            # the OLD stance is now wrong — and it is the height the run's
+            # min_base_height termination is calibrated to. Clearing it is how you
+            # ask ensure_spawn_height to re-measure; an explicit height in the same
+            # patch still wins, since that branch runs after this one.
+            data["initial_base_height"] = None
+        if "initial_base_height" in patch:
+            value = patch["initial_base_height"]
+            data["initial_base_height"] = None if value is None else float(value)
 
         return EnvConfig.model_validate(data)
 

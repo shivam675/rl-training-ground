@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import ValidationError
@@ -409,6 +409,30 @@ async def robot_fix_dynamics() -> dict[str, Any]:
             category="robot",
         )
     return result
+
+
+@app.get("/robot/preview")
+async def robot_preview(
+    width: int = 640,
+    height: int = 420,
+    yaw: float = 0.0,
+    pitch: float = 0.0,
+    zoom: float = 0.0,
+) -> Response:
+    """A still of the loaded robot, for eyeballing that it IS the right robot.
+
+    `render_jpeg` (unlike `render_frame`) never steps the world, so this is a
+    look, not a simulation — the pose you see is the pose that was loaded. The
+    camera deltas mutate the shared `sim.camera`, which is harmless: PyBullet is
+    headless and nothing else renders from it.
+    """
+    if yaw or pitch:
+        sim.camera.orbit(yaw, pitch)
+    if zoom:
+        sim.camera.zoom(zoom)
+    # off the loop: TinyRenderer is a CPU rasterizer and holds the PyBullet lock.
+    jpeg = await asyncio.to_thread(sim.render_jpeg, width, height)
+    return Response(jpeg, media_type="image/jpeg")
 
 
 @app.get("/robot/observations")

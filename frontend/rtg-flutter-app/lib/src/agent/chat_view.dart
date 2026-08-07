@@ -316,9 +316,12 @@ class ToolActivityRow extends StatelessWidget {
         : running
         ? scheme.primary
         : colors.success;
+    // On failure the args are dropped: the row ellipsises at a couple of lines,
+    // and a long args dump pushed the actual error off the end — the user saw a
+    // red bubble with no reason in it.
     final label = [
       message.toolName ?? 'tool',
-      if ((message.toolArgs ?? '').isNotEmpty) '(${message.toolArgs})',
+      if (!failed && (message.toolArgs ?? '').isNotEmpty) '(${message.toolArgs})',
     ].join(' ');
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, left: 34),
@@ -358,7 +361,7 @@ class ToolActivityRow extends StatelessWidget {
                   Flexible(
                     child: Text(
                       failed || awaiting ? '$label — ${message.text}' : label,
-                      maxLines: 2,
+                      maxLines: failed ? 6 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: monoStyle(context, fontSize: 11.5, color: color),
                     ),
@@ -421,9 +424,12 @@ class _ConfigToolActivityRow extends StatelessWidget {
         : running
         ? scheme.primary
         : colors.success;
+    // On failure the args are dropped: the row ellipsises at a couple of lines,
+    // and a long args dump pushed the actual error off the end — the user saw a
+    // red bubble with no reason in it.
     final label = [
       message.toolName ?? 'tool',
-      if ((message.toolArgs ?? '').isNotEmpty) '(${message.toolArgs})',
+      if (!failed && (message.toolArgs ?? '').isNotEmpty) '(${message.toolArgs})',
     ].join(' ');
     final result = message.toolResult;
     final changeSet = (result?['change_set'] as Map?)?.cast<String, dynamic>();
@@ -489,7 +495,7 @@ class _ConfigToolActivityRow extends StatelessWidget {
                               : (failed || awaiting
                                     ? '$label - ${message.text}'
                                     : label),
-                          maxLines: 2,
+                          maxLines: failed ? 6 : 2,
                           overflow: TextOverflow.ellipsis,
                           style: monoStyle(
                             context,

@@ -1,6 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../app_state.dart';
 import '../theme/app_theme.dart';
@@ -197,6 +201,10 @@ class _RobotPanelState extends ConsumerState<RobotPanel> {
               ),
           ],
         ),
+        const SizedBox(height: Insets.md),
+        // The picture answers "is this the right robot?" faster than 45 joint
+        // names do. Keyed on the loaded path so swapping robots re-renders.
+        _RobotPreview(robotKey: '$loadedPath|${info['name']}'),
         if (loadedPath != null && loadedPath.isNotEmpty) ...[
           const SizedBox(height: Insets.md),
           CopyableValue(value: loadedPath, maxLines: 2),
@@ -601,6 +609,141 @@ class _Disclosure extends StatelessWidget {
                 ),
               ),
         children: [child],
+      ),
+    );
+  }
+}
+
+/// A still of the loaded robot from `GET /robot/preview`, draggable to orbit
+/// and scrollable to zoom.
+///
+/// Deliberately not the 3D page and deliberately not a simulation: the backend
+/// renders with `render_jpeg`, which never steps physics, so the robot holds the
+/// pose it was loaded in. This is here to catch "wrong URDF" and "meshes didn't
+/// resolve", nothing more.
+class _RobotPreview extends ConsumerStatefulWidget {
+  const _RobotPreview({required this.robotKey});
+
+  /// Identity of what is loaded. A change re-fetches.
+  final String robotKey;
+
+  @override
+  ConsumerState<_RobotPreview> createState() => _RobotPreviewState();
+}
+
+class _RobotPreviewState extends ConsumerState<_RobotPreview> {
+  static const int _width = 640;
+  static const int _height = 420;
+
+  Uint8List? _frame;
+  String? _error;
+
+  // Throttling by in-flight guard rather than a Timer: a drag emits events far
+  // faster than a CPU rasterizer can answer, so deltas accumulate while one
+  // request is out and go as a single orbit when it lands.
+  bool _inFlight = false;
+  double _yaw = 0, _pitch = 0, _zoom = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pump();
+  }
+
+  @override
+  void didUpdateWidget(_RobotPreview old) {
+    super.didUpdateWidget(old);
+    if (old.robotKey != widget.robotKey) _pump();
+  }
+
+  void _nudge({double yaw = 0, double pitch = 0, double zoom = 0}) {
+    _yaw += yaw;
+    _pitch += pitch;
+    _zoom += zoom;
+    _pump();
+  }
+
+  Future<void> _pump() async {
+    if (_inFlight) return;
+    final (yaw, pitch, zoom) = (_yaw, _pitch, _zoom);
+    _yaw = _pitch = _zoom = 0;
+    _inFlight = true;
+    final base = ref.read(appStateProvider).api.baseUrl;
+    try {
+      final res = await http.get(
+        Uri.parse(
+          '$base/robot/preview?width=$_width&height=$_height'
+          '&yaw=$yaw&pitch=$pitch&zoom=$zoom',
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        if (res.statusCode == 200) {
+          _frame = res.bodyBytes;
+          _error = null;
+        } else {
+          _error = 'Preview failed (${res.statusCode}).';
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Preview unavailable: $e');
+    } finally {
+      _inFlight = false;
+      // Deltas that arrived while this one was out.
+      if (mounted && (_yaw != 0 || _pitch != 0 || _zoom != 0)) _pump();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(Radii.md),
+      child: AspectRatio(
+        aspectRatio: _width / _height,
+        child: Listener(
+          onPointerSignal: (event) {
+            if (event is PointerScrollEvent) {
+              _nudge(zoom: -event.scrollDelta.dy / 60);
+            }
+          },
+          child: GestureDetector(
+            onPanUpdate: (d) => _nudge(yaw: d.delta.dx, pitch: d.delta.dy),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.grab,
+              child: ColoredBox(
+                color: scheme.surfaceContainerHighest,
+                child: _error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(Insets.md),
+                          child: Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      )
+                    : _frame == null
+                    ? const Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : Image.memory(
+                        _frame!,
+                        gaplessPlayback: true,
+                        fit: BoxFit.cover,
+                      ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
