@@ -41,7 +41,7 @@ with a `Physics` variant set defaulting to `physx` is the normal, working output
 Converter v0.1.3. Individual payload files reporting `articulation_roots=NONE` is also normal —
 they are `over` specs; the root only exists in the composed stage.
 
-So CLAUDE.md's claim that `UrdfConverter` rebuilds `usd/` trees deterministically from the tracked
+So docs/architecture_notes.md's claim that `UrdfConverter` rebuilds `usd/` trees deterministically from the tracked
 `robot_resolved.urdf` **does** still hold.
 
 ### Verifying the expression stack without a spawned robot
@@ -61,7 +61,7 @@ terms being *rejected* rather than silently zero. Re-derive with the same shape 
 Two gaps, and neither alone produces a gait:
 
 - **Data** — no contact/air-time state, so a flight phase is *inexpressible*. No weighting of
-  the current 11 terms produces one (recorded in CLAUDE.md; a 20M-step "gallop" run converged to
+  the current 11 terms produces one (recorded in docs/architecture_notes.md; a 20M-step "gallop" run converged to
   a flat trot at 2.86 m/s).
 - **Plumbing** — `_patch_for_goal` templates → 11 named keys → two parallel branch chains
   (`env_math.compute_reward`, `reward_builder.evaluate_reward`), so every new term is a code
@@ -222,7 +222,7 @@ Two notes for later phases:
   auditing into problems would have made every pre-existing config untrainable (the historical
   `energy`/`joint_velocity` sums are legitimately flagged as DOF-dependent).
 - `build_spec`'s pre-offset-action guard correctly rejected the committed
-  `.codex_smoke/isaac-a1-spawn-6` config, which predates offset actions. Those smoke configs
+  `smoke_runs/isaac-a1-spawn-6` config, which predates offset actions. Those smoke configs
   cannot be used to launch a run without rewriting their action windows to straddle zero.
 
 ---

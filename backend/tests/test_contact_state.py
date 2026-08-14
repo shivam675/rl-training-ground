@@ -1,7 +1,7 @@
 """Contact state — the part of P1 that does not need a GPU.
 
 The contact *sensor* can only be checked on the Isaac lane by hand (see the spike
-in docs/superpowers/plans/2026-07-29-expression-cutover.md), but everything that
+in docs/design/plans/2026-07-29-expression-cutover.md), but everything that
 decides what a contact expression MEANS is pure logic and belongs in CI:
 
   * a flight phase is expressible at all, and reads 1 only when every limb is up;

@@ -1,7 +1,5 @@
 # Walk Height Termination Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Make walk and run presets terminate low-body crawling below 70% of the robot's measured standing height.
 
 **Architecture:** Keep the existing `min_base_height` termination path and change only the walk/run preset threshold. Expose the ratio as one calibration constant and keep the helper-agent guidance synchronized with the preset.
@@ -24,7 +22,7 @@
 - Modify: `backend/tests/test_phase1.py`
 - Modify: `backend/rl/goal_rewards.py`
 - Modify: `backend/agents/helper_agent.py`
-- Create: `docs/superpowers/plans/2026-07-27-walk-height-termination.md`
+- Create: `docs/design/plans/2026-07-27-walk-height-termination.md`
 
 **Interfaces:**
 - Consumes: `_patch_for_goal(kind: str, sim, actions: list[dict[str, Any]])`
@@ -58,7 +56,7 @@ Run:
 
 ```powershell
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = "1"
-.\.venv\Scripts\python.exe -m pytest backend/tests/test_phase1.py::test_locomotion_goal_terminates_below_seventy_percent_height -q --basetemp=.pytest_codex_walk_height_red
+.\.venv\Scripts\python.exe -m pytest backend/tests/test_phase1.py::test_locomotion_goal_terminates_below_seventy_percent_height -q --basetemp=.pytest_tmp_walk_height_red
 ```
 
 Expected: both parameter cases fail because the current preset returns approximately `0.305`, not `0.42`.
@@ -88,7 +86,7 @@ Run:
 
 ```powershell
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = "1"
-.\.venv\Scripts\python.exe -m pytest backend/tests/test_phase1.py::test_locomotion_goal_terminates_below_seventy_percent_height -q --basetemp=.pytest_codex_walk_height_green
+.\.venv\Scripts\python.exe -m pytest backend/tests/test_phase1.py::test_locomotion_goal_terminates_below_seventy_percent_height -q --basetemp=.pytest_tmp_walk_height_green
 ```
 
 Expected: `2 passed`.
@@ -99,7 +97,7 @@ Run:
 
 ```powershell
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = "1"
-.\.venv\Scripts\python.exe -m pytest backend/tests/test_phase1.py -q --basetemp=.pytest_codex_walk_height_phase1
+.\.venv\Scripts\python.exe -m pytest backend/tests/test_phase1.py -q --basetemp=.pytest_tmp_walk_height_phase1
 ```
 
 Expected: all tests in `test_phase1.py` pass.
@@ -110,7 +108,7 @@ Run:
 
 ```powershell
 git diff --check
-git diff -- backend/rl/goal_rewards.py backend/agents/helper_agent.py backend/tests/test_phase1.py docs/superpowers/plans/2026-07-27-walk-height-termination.md
+git diff -- backend/rl/goal_rewards.py backend/agents/helper_agent.py backend/tests/test_phase1.py docs/design/plans/2026-07-27-walk-height-termination.md
 ```
 
 Expected: no whitespace errors and no changes outside the four listed files.
@@ -118,6 +116,6 @@ Expected: no whitespace errors and no changes outside the four listed files.
 - [ ] **Step 7: Commit the implementation**
 
 ```powershell
-git add -- backend/rl/goal_rewards.py backend/agents/helper_agent.py backend/tests/test_phase1.py docs/superpowers/plans/2026-07-27-walk-height-termination.md
+git add -- backend/rl/goal_rewards.py backend/agents/helper_agent.py backend/tests/test_phase1.py docs/design/plans/2026-07-27-walk-height-termination.md
 git commit -m "fix: reject crawling in walk goals"
 ```

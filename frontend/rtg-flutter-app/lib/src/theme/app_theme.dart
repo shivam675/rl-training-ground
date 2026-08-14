@@ -5,7 +5,7 @@ import 'easy_colors.dart';
 import 'tokens.dart';
 
 /// The app theme. Design decisions and the token table live in
-/// `docs/superpowers/plans/2026-07-30-ui-refactor.md`.
+/// `docs/design/plans/2026-07-30-ui-refactor.md`.
 ///
 /// Two properties of this theme are load-bearing rather than cosmetic:
 ///

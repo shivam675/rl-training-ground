@@ -1,7 +1,5 @@
 # Robot-Specific Isaac Spawn Height Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Start every Isaac robot at its collision-grounded preview height and give A1 all 12 locomotion actions with valid joint ranges.
 
 **Architecture:** Reuse PyBullet's existing collision-aware grounding result, carry it through `EnvConfig`, and consume it in Isaac's articulation initial state. Extend the generic joint-name classifier for A1's `thigh` and `calf` names, shifting its existing 1.2-radian command window inside finite URDF limits.

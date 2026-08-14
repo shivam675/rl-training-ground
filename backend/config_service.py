@@ -26,7 +26,7 @@ MAX_UNDO_STACK = 20
 # user and the assistant decide together what to observe, control and reward
 # before training unlocks — see [[easyrtg-production-flow]].
 # `expr` is a boolean expression ORed with the height floor — see
-# docs/superpowers/plans/2026-07-29-expression-cutover.md (D3).
+# docs/design/plans/2026-07-29-expression-cutover.md (D3).
 SUPPORTED_TERMINATION_KEYS = {"max_steps", "min_base_height", "expr"}
 SUPPORTED_PATCH_KEYS = {
     "observations",

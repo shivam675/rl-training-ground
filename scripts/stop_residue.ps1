@@ -9,7 +9,7 @@ Two kinds of leftover survive a crash or a Ctrl+C, and both bite silently:
 
 * A backend still listening on 8000. BackendLauncher attaches to whatever answers
   /health and never kills it, so a stale server keeps serving OLD CODE against a
-  new checkout - you edit, relaunch, and see no change. (The trap CLAUDE.md warns
+  new checkout - you edit, relaunch, and see no change. (The trap docs/architecture_notes.md warns
   about under backend_launcher.dart.)
 * An orphaned Isaac Sim / Kit tree. IsaacTrainingWorker only reaps it while the
   backend is alive to notice the stop; kill the backend first and Kit lives on

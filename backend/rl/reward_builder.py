@@ -138,7 +138,7 @@ def _contact_state(manager: PyBulletManager, body: int, row) -> dict[str, Any]:
     counter and this lane evaluates single snapshots (the "Test reward" preview), so
     a zero would be a lie. Absent means an expression using them is rejected on this
     lane with a clear message instead of silently reading 0 — see D4 in
-    docs/superpowers/plans/2026-07-29-expression-cutover.md.
+    docs/design/plans/2026-07-29-expression-cutover.md.
     """
     chains = _contact_chains(manager)
     if not chains:

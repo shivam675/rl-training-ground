@@ -50,7 +50,7 @@ PLAY_LOG_NAME = "eval_log.txt"
 #: "failed (exit 1)" is that signature.
 #:
 #: PYTHONPATH/PYTHONHOME go for the same reason — the ROS 2 leak documented in
-#: CLAUDE.md shadows Isaac's 3.12 site-packages, and isaaclab.bat builds its own
+#: docs/architecture_notes.md shadows Isaac's 3.12 site-packages, and isaaclab.bat builds its own
 #: PYTHONPATH on top of whatever it inherits. Isaac Sim's Python is deliberately
 #: separate from this venv, so none of these have any business crossing over.
 _APP_PYTHON_ENV_KEYS = (

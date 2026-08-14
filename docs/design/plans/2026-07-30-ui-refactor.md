@@ -121,7 +121,7 @@ also costs no canvas height. Per-item detail lives in the tab each step links to
 ### D10 — Reward-authoring errors stay out of this refactor
 
 The first real run rejected a reward because the agent wrote `base_angular_velocity[2]` instead of
-`yaw_rate` — the observation-name trap CLAUDE.md calls the single most likely authoring mistake. It
+`yaw_rate` — the observation-name trap docs/architecture_notes.md calls the single most likely authoring mistake. It
 is **not** this plan's job. Invariant 2 holds: presentation only. The rejection already surfaces in
 three places, and a real fix belongs in the agent prompt or the compiler, tracked separately. Do not
 let it creep in here.

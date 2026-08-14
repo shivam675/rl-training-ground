@@ -11,4 +11,4 @@ Traceback (most recent call last):
   File "C:\IsaacLab\_isaac_sim\kit\python\Lib\pathlib.py", line 1013, in open
     return io.open(self, mode, buffering, encoding, errors, newline)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-FileNotFoundError: [Errno 2] No such file or directory: 'X:\\workspace\\auto-rl\\sxc1742\\.codex_smoke\\isaac-a1-spawn-5\\config.json'
+FileNotFoundError: [Errno 2] No such file or directory: 'X:\\workspace\\auto-rl\\sxc1742\\smoke_runs\\isaac-a1-spawn-5\\config.json'

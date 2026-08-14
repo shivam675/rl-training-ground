@@ -2,7 +2,7 @@
 /// rounding and depth stay consistent as new surfaces are built. Prefer these
 /// over ad-hoc numeric literals in new code.
 ///
-/// Values come from `docs/superpowers/plans/2026-07-30-ui-refactor.md`. The
+/// Values come from `docs/design/plans/2026-07-30-ui-refactor.md`. The
 /// refactor is shadow-only: surfaces separate from the canvas by depth, not by
 /// an outline, so [Shadows] is what a panel reaches for where it used to reach
 /// for a border.

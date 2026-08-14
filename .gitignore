@@ -254,7 +254,7 @@ warp-cache/
 # Generated USD from URDF->USD conversion. Deterministic output of
 # UrdfConverter given robot_resolved.urdf (which IS kept), so it is rebuildable
 # and was 4.3 MB of binary in the smoke fixtures.
-.codex_smoke/**/usd/
+smoke_runs/**/usd/
 
 # Generated model / media artifacts
 *.pt
@@ -270,5 +270,16 @@ warp-cache/
 *.db
 # Generated model / media artifacts (scoped; gitignored)
 .pytest_tmp/*
+
+# Editor / local tooling config. Machine-specific, never part of the project.
+# Project documentation lives in docs/ -- see docs/architecture_notes.md.
+.claude/
+.codex/
+CLAUDE.md
+.cursor/
+.aider*
+.github/copilot-instructions.md
+AGENTS.md
+GEMINI.md
 
 

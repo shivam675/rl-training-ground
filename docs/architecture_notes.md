@@ -1,6 +1,7 @@
-# CLAUDE.md
+# Architecture notes
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Working reference for this repository: what each subsystem is, how the two simulation lanes
+relate, and the sharp edges worth knowing before a nontrivial change.
 
 ## What this is
 
@@ -92,7 +93,7 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = "1"
 
 `.pytest_tmp/` is now **gitignored** (it was tracked, so every run left dozens of `M`/`D` entries in
 `git status` and invited a stray `git add -A` to commit test output). `ov/`, `warp-cache/`, `*.ptx`
-and generated `.codex_smoke/**/usd/` are gitignored too — machine-specific compiled GPU kernels and
+and generated `smoke_runs/**/usd/` are gitignored too — machine-specific compiled GPU kernels and
 rebuildable USD, ~6.5 MB that used to be in git. Tracked repo is ~4.2 MB.
 
 Still: **stage explicit paths, never `git add -A`/`git commit -a`** — a local run writes into
@@ -342,7 +343,7 @@ training keeps `model_best.pt` (evaluation prefers it over `model_final.pt`) so 
 GPU time rather than the policy.
 
 Any change here invalidates existing policies (action semantics or stance moved); retrain from
-scratch. Specs: `docs/superpowers/specs/2026-07-27-robot-specific-spawn-height.md`,
+scratch. Specs: `docs/design/specs/2026-07-27-robot-specific-spawn-height.md`,
 `2026-07-27-walk-height-termination-design.md`, `2026-07-27-offset-position-actions.md`.
 
 ### Expression rewards — `reward_expr.py` + `state_vocab.py` — **THE ONLY REWARD PATH**
@@ -478,7 +479,7 @@ which immediately caught a DOF-dependent `sum(contact)` in the gallop prior. `He
 is overridden to inject `describe_vocabulary(...)` + `describe_priors()`, because widths come from the
 robot and a static prompt cannot carry them.
 
-**`docs/superpowers/plans/2026-07-29-expression-cutover.md` is the record of the whole cutover** —
+**`docs/design/plans/2026-07-29-expression-cutover.md` is the record of the whole cutover** —
 read its START HERE section before touching rewards. All of P0→P3 is landed, with each phase's Status
 section carrying what was verified and the findings worth not re-deriving. Ordering decided there and
 worth keeping in mind: **expressions landed before contact sensing**, because contacts-first would
@@ -612,10 +613,10 @@ CORS config, re-read `docs/APP_RECON.md` §2 first and preserve those mitigation
 `.venv-rtg` venv, and Linux-first setup, with no mention of Isaac. Don't cite it or follow its
 commands; use this file plus `docs/`.
 
-`docs/superpowers/specs/` + `plans/` hold **dated per-feature design docs** (`YYYY-MM-DD-*.md`) —
+`docs/design/specs/` + `plans/` hold **dated per-feature design docs** (`YYYY-MM-DD-*.md`) —
 the newest and most trustworthy record of recent behaviour changes, since they postdate
 `APP_RECON.md`. Read the latest ones before touching spawn height or goal terminations.
-`.codex_smoke/isaac-a1-spawn*/` are **committed Isaac smoke-run artifacts** for the Unitree A1/Go1
+`smoke_runs/isaac-a1-spawn*/` are **committed Isaac smoke-run artifacts** for the Unitree A1/Go1
 casestudy (config.json, telemetry.jsonl, training_log.txt, robot_resolved.urdf, isaac_policy.json)
 — reference output for what a healthy vs. free-falling spawn looks like, not something to
 regenerate casually. The generated `usd/` trees that used to sit beside them are gitignored now:

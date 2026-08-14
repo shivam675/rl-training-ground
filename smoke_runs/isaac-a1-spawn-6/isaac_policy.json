@@ -18,5 +18,5 @@
     "RL_calf_joint"
   ],
   "initial_base_height": 0.43000000000000005,
-  "usd_path": "X:\\workspace\\auto-rl\\sxc1742\\.codex_smoke\\isaac-a1-spawn-6\\usd\\robot_resolved\\robot_resolved.usda"
+  "usd_path": "X:\\workspace\\auto-rl\\sxc1742\\smoke_runs\\isaac-a1-spawn-6\\usd\\robot_resolved\\robot_resolved.usda"
 }
