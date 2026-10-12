@@ -1,0 +1,39 @@
+--- A/page-39
++++ B/page-39
+@@ -1,30 +1,7 @@
+ 38
+-• Final verification focused strictly on backend logic because the Flutter tool failed to run 
+-properly in the test environment, leaving frontend status completely unconfirmed.
+-7.4 Practical and academic significance
+-The practical contribution of EasyRTG is an integrated path from a robot file to a recorded policy, 
+-combining configuration, training and supporting evidence within one application. Its 
+-academic contribution is a case study of language-assisted reward design without unrestricted 
+-code execution. The heterogeneous run archive also demonstrates why reward, episode 
+-survival and task-specific behaviour must be evaluated together.
+-The project does not demonstrate that robot learning has become effortless. Its more 
+-defensible contribution is that important configuration decisions are made visible, reviewable 
+-and repeatable. When a decision is incorrect, as in the galloping reward, the retained evidence 
+-makes the error identifiable.
+-8 Conclusion and Future Work
+-8.1 Conclusion
+-This work establishes an integrated desktop platform enabling users to import a URDF robot, 
+-define a locomotion task in natural language, and train reinforcement learning policies without 
+-writing low-level simulator scripts. All five primary objectives outlined in Chapter 1 were 
+-satisfied.
+-The system relies on a Flutter frontend, a FastAPI-orchestrated backend, PyBullet-based 
+-parameter inspection, and training within the NVIDIA Isaac Sim simulator using GPU hardware 
+-to autonomously extract motion physics directly from the URDF tree. Rewards are captured and 
+-audited as evaluated mathematical expressions via an established vocabulary facilitated by an 
+-LLM operating under strictly confined user validation protocols. The complete application 
+-underwent analysis across thirty-four Isaac Sim runs utilising four distinct robot families and 
+-three continuous-control algorithms.
+-Three significant outcomes defined the experimental trials. Parallel execution on the GPU 
+-eliminated the CPU bottleneck for multi-platform learning, achieving a peak throughput of 
+-32,056.8 environment steps per second at a single workstation level using an RTX 5000 GPU. 
+-For quadruped models such as the Go1, learner selection exerted minimally significant 
++executing reward system that is based on language, academically. The heterogeneous run 
++archive also shows the importance of separately and task-specifically evaluating reward and 
++episode survival and behaviour.
++The project does not reflect the simplicity of robot learning. An important contribution it makes 
++is that important configuration decisions are made visible, reviewable and repeatable. 
++Evidence is kept and is evident of the wrong decision (for example the galloping reward).

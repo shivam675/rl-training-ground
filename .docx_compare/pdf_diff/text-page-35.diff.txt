@@ -1,0 +1,27 @@
+--- A/page-35
++++ B/page-35
+@@ -1,13 +1,14 @@
+ 34
+ Figure 10. Reward for Valkyrie under SAC and TD3, same reward expression and same 40M-step budget.
+ Figure 11. Episode length reveals that SAC's advantage came from staying upright, not from scoring faster.
+-Both learners initially improved and remained similar for approximately 20 million steps. Their 
+-behaviour then diverged. SAC reached a best mean reward of 1,283.8 with a mean episode 
+-length of 821.0 steps. TD3 remained near 200 steps of survival, reached a best reward of 287.0 
+-and later stopped after producing NaN observations. The dotted line in the figures marks the 
+-point of failure.
+-At their best checkpoints, the policies received broadly similar reward per step. SAC achieved 
+-a larger total because it accumulated these terms for approximately four times as many steps 
+-before falling. Its advantage was therefore episode survival rather than a higher scoring rate. 
+-TD3 telemetry also showed several reward terms increasing by orders of magnitude before 
+-failure, indicating critic or numerical instability rather than only a failure to move forward.
++For around 20 million steps, there was no significant difference between both learners in both 
++methods. They are then diverged in their behaviour. SAC achieved its highest average reward at 
++1283.8 and the average episode length was 821.0 steps. TD3 stayed around 200 steps of 
++survival, got to 287.0 of best reward, and then stalled afterwards, producing NaN observations. 
++The dotted line in the figures is the failure line.
++The policies were compared at their best checkpoints, for which they received broadly similar 
++reward per step. SAC got a bigger total because it added these up for about four times as many 
++steps before it dropped out. So it wasn't a more points-per-minute advantage, it was about 
++saving the episode. Before failure, TD3 also revealed several orders of magnitude growth in 
++reward terms, which suggest a critic or numerical failure and not just a failure to take a step 
++forward.

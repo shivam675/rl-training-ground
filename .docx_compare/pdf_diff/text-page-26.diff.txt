@@ -1,0 +1,43 @@
+--- A/page-26
++++ B/page-26
+@@ -1,23 +1,22 @@
+ 25
+-experiments in Chapter 6 depends on the saved configuration, term-level telemetry and 
+-recorded video. Run provenance is therefore part of the evaluation mechanism rather than only 
+-a storage feature.
++experiments in Chapter 6 relies on the use of the saved configuration, telemetry at the term 
++level and recorded video. So run provenance is a feature of the evaluation mechanism as well 
++as a feature for storage.
+ 5 Implementation and Iterative Development
+ 5.1 From proposal to working system
+-The original proposal described a six-week, CPU-first application based on PyBullet, 
+-Gymnasium and PPO from Stable-Baselines3. It was intended to run on an average laptop and 
+-to use predefined reward components with optional custom Python. The completed system 
+-differs from this plan in each area that introduced significant technical risk. Training moved to 
+-NVIDIA Isaac Sim on a GPU, custom Python rewards were removed, predefined reward 
+-components became audited expressions, and joint-name rules were replaced by morphology 
+-inference. The evaluation also expanded from PPO on sample robots to three algorithms across 
+-four robot families.
+-These changes do not indicate that the proposal failed. Instead, the prototype exposed 
+-requirements that could not have been established from the initial design alone. The following 
+-development history identifies the failures and observations that produced each major 
+-revision.
++The original idea was to use a six-week, CPU-first application using PyBullet, Gymnasium and 
++PPO in Stable Baselines3. It was supposed to be deployed on a typical laptop and to utilize 
++reward components that are predefined, and optionally custom Python. In each area where 
++there was an element of significant technical risk, the completed system differs from this plan. 
++Training was switched to NVIDIA Isaac Sim on a GPU, the custom Python rewards were replaced 
++with and become audited expressions, and the joint-name rules were replaced with 
++morphology inference. The evaluation was also expanded to three algorithms for four robot 
++families, instead of PPO on sample robots.
++The changes do not mean that the proposal failed. Rather the prototype revealed the needs that 
++could not have been determined from the original design. The development history below lists 
++the errors and observations that led to each of the major revisions.
+ 5.2 Milestone history
+ Figure 4. Major implementation and experiment milestones, reconstructed from Git dates and the run archive.
+-The commits dated 11 June, 'initial 300x300 30fps stream' and 'most of the app is working and 
+-is stable', established the first visible prototype. On 14 June, 'most of the agent is working' and 
+-'Make Windows build/run work; stream JPEG sim frames' connected the assistant to a desktop 
++The commits on 11 June - 'initial 300x300 30fps stream' and 'most of the app is working and is 
++stable' - were the first to show a prototype that was visible. On 14 June the assistant was 
++connected to a desktop build with ‘most of the agent is working’ and ‘Make Windows build/run 

@@ -1,0 +1,11 @@
+--- A/page-10
++++ B/page-10
+@@ -21,7 +21,7 @@
+ scoring faster. ................................................................................................. 34
+ Figure 12. The NASA Valkyrie during recorded SAC policy evaluation. .................. 35
+ Figure 13. Best mean episode length for every analysable Isaac run, in chronological order. 44
+-Figure 14. Reward against environment steps for the best run of each robot family.44
++Figure 14. Reward against environment steps for the best run of each robot family.45
+ Figure 15. Environment steps before each run's smoothed mean episode length first holds 
+ above 900. ...................................................................................................... 45
+ Figure 16. Episode length for the best Go1 run under each learner....................... 45

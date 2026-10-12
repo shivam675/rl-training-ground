@@ -1,0 +1,27 @@
+--- A/page-36
++++ B/page-36
+@@ -5,13 +5,14 @@
+ task and configuration, not evidence that SAC is generally superior. The limits of the 
+ comparison are discussed in Section 7.3.
+ 6.9 Functional verification
+-The 256 passing backend tests provide a second form of evidence. They do not demonstrate 
+-learned robot behaviour. Instead, they verify the mechanisms required to interpret the training 
+-results: morphology handling, action mapping, state vocabulary, expression guards, episode 
+-clocks, contact signals, Isaac bridge calculations, configuration phases, and failure handling.
+-Neither form of evidence is sufficient in isolation. A visually convincing gait does not guarantee 
+-configuration safety, and passing standard checks offers no way to determine whether the 
+-output produces useful locomotion or something fundamentally unstable. The galloping result 
+-from Section 6.7 demonstrates this clearly, it satisfied every software check yet produced an 
+-unintended gait pattern rather than a functional motion. This gap between automated 
+-verification and behavioural evaluation confirms that both are required at once.
++The other evidence is from the 256 passing backend unit tests. Not exhibiting learned robot 
++behaviours. Rather, they check the mechanisms that need to be interpreted in order to translate 
++the results of the training: handling of morphology, mapping of actions, vocabulary of the 
++states, action guards, episode timers, contact signals, calculations of the Isaac bridge, 
++configuration phases, and failure handling.
++Both types of evidence are needed alone to be sufficient. Visual realism of gait does not imply 
++gait-safety, and standard gait checks will not reveal if the gait produced by the output is an 
++effective gait or whether it is fundamentally unsafe. This is evident in the galloping result from 
++Section 6.7 which passed all the software tests, but generated an unintended gait pattern 
++instead of a functional gait. This difference between automated verification and behavioural 
++evaluation is a testament to the need for both at the same time.

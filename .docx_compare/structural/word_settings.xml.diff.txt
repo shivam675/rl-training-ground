@@ -1,0 +1,36 @@
+--- A/word/settings.xml
++++ B/word/settings.xml
+@@ -1,6 +1,6 @@
+ <w:settings xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:w16cex="http://schemas.microsoft.com/office/word/2018/wordml/cex" xmlns:w16cid="http://schemas.microsoft.com/office/word/2016/wordml/cid" xmlns:w16="http://schemas.microsoft.com/office/word/2018/wordml" xmlns:w16du="http://schemas.microsoft.com/office/word/2023/wordml/word16du" xmlns:w16sdtdh="http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash" xmlns:w16sdtfl="http://schemas.microsoft.com/office/word/2024/wordml/sdtformatlock" xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex" xmlns:sl="http://schemas.openxmlformats.org/schemaLibrary/2006/main" mc:Ignorable="w14 w15 w16se w16cid w16 w16cex w16sdtdh w16sdtfl w16du">
+-  <w:zoom w:percent="110"/>
+-  <w:proofState w:spelling="clean" w:grammar="clean"/>
++  <w:zoom w:percent="100"/>
++  <w:proofState w:spelling="clean"/>
+   <w:defaultTabStop w:val="720"/>
+   <w:characterSpacingControl w:val="doNotCompress"/>
+   <w:footnotePr>
+@@ -27,6 +27,7 @@
+     <w:rsid w:val="002075B1"/>
+     <w:rsid w:val="00207C65"/>
+     <w:rsid w:val="00266F27"/>
++    <w:rsid w:val="002E5484"/>
+     <w:rsid w:val="00331CD1"/>
+     <w:rsid w:val="003459D7"/>
+     <w:rsid w:val="003C3665"/>
+@@ -35,6 +36,8 @@
+     <w:rsid w:val="004D21A2"/>
+     <w:rsid w:val="004D65F8"/>
+     <w:rsid w:val="00521687"/>
++    <w:rsid w:val="005369DE"/>
++    <w:rsid w:val="00554652"/>
+     <w:rsid w:val="00650F54"/>
+     <w:rsid w:val="00666F21"/>
+     <w:rsid w:val="006B6027"/>
+@@ -54,6 +57,7 @@
+     <w:rsid w:val="00AB7032"/>
+     <w:rsid w:val="00BF6F9B"/>
+     <w:rsid w:val="00CB7C75"/>
++    <w:rsid w:val="00D26C5D"/>
+     <w:rsid w:val="00D7659C"/>
+     <w:rsid w:val="00DB501B"/>
+     <w:rsid w:val="00DE28E8"/>

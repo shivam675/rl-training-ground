@@ -1,0 +1,18 @@
+--- A/page-29
++++ B/page-29
+@@ -1,10 +1,9 @@
+ 28
+-OpenAI Codex was introduced only after the application and evaluation evidence had been 
+-produced. It was used to restyle my original report material and to improve document 
+-formatting. It did not contribute to the EasyRTG application code, run the experiments or 
+-determine the findings. This separation is important because the software-development 
+-evidence in this chapter records my decisions and Claude-assisted implementation, whereas 
+-the final wording of the report is substantially Codex-assisted.
++The application and evidence of evaluation has been completed even before the launch of 
++OpenAI Codex. It was used to rework my original report material, and to enhance document 
++formatting. It didn't help with the development of EasyRTG's applications, or the running of 
++experiments, or the conclusions. Significant about this separation is the software￾development evidence in this chapter is mine and Claude's; the wording of the report is much 
++more Codex's, though.
+ 6 Experiments, Results and Findings
+ 6.1 Run coverage and failure history
+ The earlier project presentation summarised 30 runs up to 3 August 2026, while the README 

@@ -1,0 +1,73 @@
+--- A/page-40
++++ B/page-40
+@@ -1,30 +1,41 @@
+ 39
+-influence over final outcomes; PPO, SAC, and TD3 achieved greater than ninety-six percent 
+-survival episodes and converged upon comparable reward scores. Conversely, algorithm 
+-choice directly dictated training viability on higher-dimensional platforms like the Valkyrie 
+-humanoid. SAC emerged as the solitary method maintaining stable balance throughout its 
+-simulation, reaching an eighty-two point one percent survival score while PPO and TD3 
+-plateaued at twenty percent, with TD3 subsequently degrading into numerical instability.
+-The engineering process was fundamentally driven by mitigating failures encountered during 
+-iterative integration. Initial challenges necessitated the inclusion of robot-relative floor-falling 
+-terminations, while fragile rule-based naming conventions were discarded in favour of a robust 
+-kinematic tree traversal mechanism. Directories and safety concerns regarding arbitrary 
+-Python execution mandated an AST expression compiler, whereas galloping traversal 
+-conditions informed the explicit modelling of foot surface contact states within Isaac Sim.
+-A notable limitation arose during the Go1 galloping test, where imprecise reward specifications 
+-drove TD3 to emulate a rapid trot movement. This unintended locomotion mode accumulated 
+-exceptionally high scalar rewards, causing the platform to entirely omit required airtime during 
+-its motion phase. The experiment confirms that unconstrained total reward volumes serve 
+-insufficiently as indicators of actual movement behaviour; without monitoring contact signals, 
+-episode length, and preliminary videos, unregulated reward accumulation remains practically 
+-insignificant. Finally, while the internal AI assistant frequently achieved functional reward 
+-functions from natural language inputs, it nonetheless requires a significantly expanded 
+-validation set to guarantee robustness in complex engineering scenarios.
+-The application evolved from its initial CPU-based conceptualisation into a fully operational 
+-pipeline. This progression demonstrates that robotic locomotion, reward design, and GPU￾assisted training can be consolidated into a single no-code desktop platform while maintaining 
+-strict user oversight.
+-8.2 Future work
+-The first priority is a controlled usability study. A comparison between the EasyRTG workflow 
+-and a documented code-based baseline should measure task completion time, configuration 
+-errors, requests for assistance and a validated usability scale. This study is required to evaluate 
+-the no-code claim empirically rather than infer it from the architecture.
++8 Conclusion and Future Work
++8.1 Conclusion
++This work brings together an integrated desktop platform for taking in one URDF robot file and 
++outputting one locomotion task in natural language, and for training RL policies directly 
++without having to write low level simulator scripts. Each of the five main goals listed in 
++Chapter 1 were met.
++It involves autonomously extracting motion physics from the URDF tree, using NVIDIA Isaac 
++Sim simulator on GPU hardware for training, PyBullet for parameter inspection and a Flutter 
++frontend, and a FastAPI-orchestrated backend. Rewards are expressed using a limited set of 
++vocabulary (assessed math expressions are validated) and an LLM (under user validation 
++process). All the application was analysed using the Isaac Sim running 34 times with four 
++different families of robots and three different continuous control algorithms.
++There were three significant outcomes of the experimental trials. In the case of multi-platform 
++learning, the CPU was eliminated as the learning process' bottleneck, and parallel execution 
++on the GPU was used, where the maximum throughput at the single workstation level with the 
++RTX 5000 GPU was 32,056.8 environment steps per second. The impact of learner selection 
++was at best weakly significant for quadrupedal models such as the Go1 and all three models 
++(PPO, SAC, TD3) achieved a high number of survival episodes with over ninety six percent and 
++converged to similar reward scores. Conversely, algorithm choice was a direct contributor to 
++the training viability of more dimensional platforms, like the Valkyrie humanoid. Among the 
++three methods, only SAC maintained the stable balance throughout the entire simulation and 
++resulted in an eighty two point one percent survival rate, whereas PPO and TD3 had a 
++maximum of twenty percent survival rates but then became numerically unstable at later 
++stages.
++The iterative integration was mediated by means of failure, as the engineering process was 
++motivated primarily in this way. At first, it was necessary to introduce the robot relative floor 
++falling terminations and to give up fragile rule based naming, in favour of a more powerful 
++traversal mechanism of kinematic tree. The galloping traversal conditions led to the need for 
++explicit foot surface contact states modelling in Isaac Sim; Directories and safety issues 
++around arbitrary Python execution necessitated the need for an AST expression compiler.
++One note was that TD3 was not sufficiently "rewarded" with the Go1 galloping test and so it 
++was emulating a fast trot gait. This also received an unwanted locomotion mode, and the 
++platform failed to reach required height of airtime during the locomotion phase, which was 
++also given very high scalar reward. As demonstrated in this experiment, unconstrained total 
++reward volumes are not sufficient on their own to indicate the actual movement behaviour – if 
++it is not monitored using contact signals and episode length and seen from the preliminary 
++videos, it is of little consequence. Lastly, although the internal AI assistant was able to 
++sometimes successfully produce functional reward functions from natural language input, it 
++still needs a much larger validation set to ensure it is robust in complex engineering 
++situations.

@@ -1,0 +1,24 @@
+--- A/page-25
++++ B/page-25
+@@ -2,12 +2,12 @@
+ Figure 3. The EasyRTG desktop assistant, showing a generated training configuration and the changes offered for 
+ review.
+ 4.5 Training, monitoring and evaluation
+-After a configuration is approved, Isaac training runs in a separate subprocess under Isaac 
+-Sim's Python environment and follows the installed Isaac Lab workflow [12]. The worker writes 
+-telemetry to a file, which the backend follows and streams to the Flutter charts. Every run 
+-retains its environment configuration, observation and action contracts, checkpoints, log and 
+-evaluation video. Live evaluation can launch NVIDIA's WebRTC client, while recorded 
+-evaluation runs headlessly and produces an MP4 file that can be replayed inside the desktop 
+-application.
+-Retained evidence is required because a reward curve cannot show whether a humanoid is 
+-walking forward, drifting sideways or merely remaining upright. The interpretation of several 
++Once a configuration has been approved Isaac training runs in a separate subprocess within 
++the Isaac Sim Python environment and proceeds with the same flow as the installed Isaac Lab 
++workflow [12]. The worker writes telemetry to a file, then the backend follows it on the file and 
++streams it to theflutter charts. Environment configuration, observation and action contracts, 
++checkpoints, log and evaluation video are all saved for each run. Live evaluation starts NVIDIA's 
++WebRTC client and recorded evaluation is executed headless and generates an MP4 file which 
++can be replayed in the desktop application.
++Evidence must be retained because without it, a reward curve cannot indicate if a humanoid is 
++walking forward, drifting sideways or simply standing upright. The interpretation of several 

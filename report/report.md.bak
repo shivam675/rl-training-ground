@@ -1,0 +1,652 @@
+---
+kicker: FINAL PROJECT REPORT
+title: EasyRTG
+subtitle: An Intelligent No-Code Platform for Training Robots
+author: Shivam Chavan
+student_id: 3053682
+supervisor: Shraddha Naik
+inspector:
+programme: MSc in Artificial Intelligence and Computer Science
+affiliation: School of Computer Science | University of Birmingham Dubai | August 2026
+header_front: EasyRTG | Final Project Report
+header_body: EasyRTG | An Intelligent No-Code Platform for Training Robots
+---
+
+@@sect roman
+
+@@front Declaration and Honour Code
+
+I certify that this project is my own work. The design decisions, the implementation, the experiments, the interpretation of the results and the conclusions are mine, and they describe the EasyRTG system contained in the submitted GitLab repository. Where I have drawn on the ideas, software or findings of other authors, I have acknowledged them through numbered citations.
+
+I understand that the final submission must comply with the University's academic-integrity requirements, including the prescribed honour-code wording and the disclosure of any supporting tools. My disclosure of generative-AI use is on the following page.
+
+Name: Shivam Chavan
+
+Student ID: 3053682
+
+@@pagebreak
+
+@@front Use of Generative AI
+
+I used generative AI as a supporting tool alongside my own work. It was never the author of the system or of this report. Its contribution was limited to the following:
+
+- Debugging. When a simulator configuration failed or a policy learned the wrong behaviour, I used an assistant to help read stack traces and narrow down candidate causes. Every fix was verified against the running system before I kept it.
+- Exploring implementation options. I asked for comparisons between approaches I was already considering — for example, whether to embed Isaac Sim in the backend process or run it as a subprocess. The decisions, and the reasons recorded in Chapter 5, are mine.
+- Boilerplate and documentation. I used it to draft repetitive code and docstrings so that I could spend my time on the morphology, expression and audit layers that carry the project's contribution.
+- Language and formatting. I used it to tighten wording and to help prepare this document. The structure, the argument and the claims are mine.
+
+Every suggestion I accepted was checked against the source code, the repository history, the recorded telemetry or the cited literature. Where a generated suggestion disagreed with what the system actually did, I kept the system. Responsibility for the technical content of this report and for the submitted work is mine.
+
+@@pagebreak
+
+@@front Acknowledgements
+
+I would like to thank my supervisor, Shraddha Naik, for her guidance throughout this project. Her feedback is the reason this became a project that could be evaluated rather than an ambitious product idea. When I wanted to add features, she asked what evidence they would produce. That question shaped the whole second half of the work.
+
+I am also grateful to the School of Computer Science for the setting and the resources that made the work possible, and in particular for access to the GPU workstation without which none of the parallel training experiments in Chapter 6 could have run.
+
+Finally, I want to thank the people who encouraged me through the parts of this project that never appear in a demonstration: the simulator configurations that would not load, the policies that learned to crawl instead of walk, and the long overnight runs that only revealed their problems near the end. Those failures were frustrating at the time. They are also where most of the decisions in this report came from.
+
+@@pagebreak
+
+@@front Abstract
+
+Training a robot with reinforcement learning normally means assembling six separate things: a physics simulator, an environment implementation, a reward function, a learning library, experiment monitoring and a way to evaluate the resulting policy. Each one assumes you already understand the other five. I built EasyRTG to collapse that assembly into a single guided workflow. The user loads a robot in Universal Robot Description Format (URDF), describes the behaviour they want in plain language, reviews a configuration that an assistant has drafted, tests the reward before spending GPU time, launches parallel training and replays the recorded policy — without writing simulator or reinforcement-learning code.
+
+The finished system combines a Flutter desktop interface, a FastAPI orchestration backend, PyBullet for robot inspection and reward testing, and NVIDIA Isaac Sim for parallel training and playback. Its central technical decision is to stop hard-coding robots. Instead of joint-name rules and a fixed reward menu, EasyRTG derives control-relevant morphology from the URDF itself and represents every reward term as an audited mathematical expression over a shared state vocabulary. That one change is what allowed the same application pipeline to train quadrupeds and a humanoid without a separate implementation per body.
+
+I evaluated the platform on 40 timestamped Isaac run directories collected between 13 July and 18 August 2026. Thirty-four contained usable reward telemetry; six failed before producing any. The experiments cover the Unitree A1, ANYmal, Unitree Go1 and NASA Valkyrie with PPO, SAC and TD3. Twelve runs held at least 95% of the 1,000-step episode cap. Peak throughput was 32,056.8 environment steps per second on a single RTX 5000. Go1 reached 96.3%, 100% and 99.1% of the cap with PPO, SAC and TD3 respectively. Valkyrie reached 82.1% with SAC but only about 20% with PPO and TD3 — the same robot, the same reward expression, the same step budget, and a different outcome purely because of the learner.
+
+Those numbers cut both ways, and the report says so. GPU parallelism is what made the experiments possible at all. It also made it easy to produce a high reward that did not mean the intended behaviour: on the galloping task, TD3 scored well with a fast trot that never left the ground. What EasyRTG demonstrates is a working integration of language-assisted configuration, general robot inspection and accelerated learning. What it does not yet demonstrate is reduced cognitive load — that needs a user study — or transfer to physical hardware. Those two gaps define the next stage of the work.
+
+@@pagebreak
+
+@@front Table of Contents
+
+@@toc
+
+@@pagebreak
+
+@@front List of Figures
+
+@@lof
+
+@@pagebreak
+
+@@front List of Tables
+
+@@lot
+
+@@pagebreak
+
+@@front Abbreviations
+
+| Term | Meaning |
+|---|---|
+| API | Application Programming Interface |
+| AST | Abstract Syntax Tree |
+| DRL | Deep Reinforcement Learning |
+| GPU | Graphics Processing Unit |
+| LLM | Large Language Model |
+| PPO | Proximal Policy Optimisation |
+| REST | Representational State Transfer |
+| RL | Reinforcement Learning |
+| SAC | Soft Actor-Critic |
+| TD3 | Twin Delayed Deep Deterministic Policy Gradient |
+| UI | User Interface |
+| URDF | Universal Robot Description Format |
+| USD | Universal Scene Description |
+
+@@sect arabic
+
+# 1  Introduction
+
+## 1.1 Project motivation
+
+The idea for EasyRTG came from an earlier robotics project that succeeded for the wrong reason. The robot did eventually learn the behaviour I wanted. But the result hid how much manual work it had taken to get there. I had spent months connecting a simulator, environment code, reward logic, training scripts and visualisation, and by the time I had something worth demonstrating, the hard part was no longer the robot. It was the knowledge required to make the surrounding tools agree with each other.
+
+That experience is what pointed me at the real barrier. Reinforcement learning is usually introduced as a clean loop: an agent observes a state, chooses an action, receives a reward [1]. A newcomer meets something much less compact — simulator installation, robot file formats, coordinate systems, action scaling, termination conditions, hyperparameters, logging and evaluation. Mature libraries cut down the amount of algorithm code you have to write, but they generally assume you can already build the environment correctly [2]. So I asked a different question: what happens if the environment-building process becomes the product, instead of an undocumented prerequisite?
+
+@@figure workflow.png 6.2x1.55 :: The EasyRTG workflow, from robot import to policy evaluation.
+
+## 1.2 Problem statement
+
+The problem is not a shortage of reinforcement-learning algorithms. Existing frameworks are powerful, but their power is only reachable through source code, configuration files and simulator-specific conventions. Loading a new URDF tells you nothing on its own: not which joints should be controlled, not which links can touch the ground, not how high the body should spawn, and certainly not what reward will distinguish walking from crawling. What this project addresses is the fragmented expertise needed to turn a robot description and a behavioural intention into a training run that is valid, inspectable and repeatable.
+
+## 1.3 Aim and objectives
+
+My aim was to build a desktop platform that takes a user from a URDF robot and a natural-language objective to a trained and evaluated policy without writing simulator or reinforcement-learning code. I set five objectives against that aim:
+
+- Provide one desktop workflow covering robot inspection, configuration, training, monitoring and evaluation.
+- Derive control-relevant morphology from the URDF rather than relying on robot-specific joint-name rules.
+- Let an LLM assistant author reward expressions and configuration changes, while keeping every consequential action reviewable by the user.
+- Use GPU-parallel simulation so that repeated robot-learning experiments are practical on one workstation.
+- Evaluate the platform across different robot bodies, tasks and learning algorithms using saved telemetry, not demonstration footage alone.
+
+## 1.4 Research questions
+
+Those objectives are what I built. The following four questions are what I set out to answer with the finished system, and they organise both the implementation and the evaluation that follow.
+
+Table: Research questions used to organise the implementation and evaluation.
+| ID | Research question |
+|---|---|
+| RQ1 | How can a no-code interface translate a URDF and a natural-language goal into a valid RL configuration while retaining human oversight? |
+| RQ2 | To what extent can morphology-derived configuration and expression rewards support different robot bodies without robot-specific application logic? |
+| RQ3 | How do PPO, SAC and TD3 differ across quadruped and humanoid locomotion experiments? |
+| RQ4 | How do parallel environment count and robot complexity affect GPU simulation throughput? |
+
+## 1.5 Scope and contributions
+
+EasyRTG is a single-user desktop application for simulated URDF robots. Its contribution is an integrated workflow plus a set of engineering mechanisms — morphology inference, expression rewards, configuration auditing, agent tool use and run provenance — not a new reinforcement-learning algorithm. Physical deployment, terrain curricula, camera observations, ROS integration and multi-agent learning are all outside what I implemented. The results should therefore be read as evidence that the platform can configure and train several simulated robots. They are not evidence of sim-to-real transfer, and they are not evidence of universal no-code usability.
+
+## 1.6 Organisation of this report
+
+Chapter 2 reviews the work this project builds on: the learners I used, the shift to GPU-native simulation that made the experiments feasible, the reward-design literature that explains why reward authoring is the real bottleneck, and the platforms closest to EasyRTG's accessibility goal. Chapter 3 sets out the design-science method, the evidence I relied on, the requirements I held myself to and the experimental protocol. Chapter 4 describes the architecture and the three mechanisms that carry the contribution. Chapter 5 is the honest development history, including the parts that failed. Chapter 6 presents the experiments and results from the run archive. Chapter 7 answers the research questions and states the limitations plainly. Chapter 8 concludes and sets out what I would do next.
+
+# 2  Background and Literature Survey
+
+## 2.1 Reinforcement learning for robot control
+
+In reinforcement learning, a policy chooses actions from observations and is improved using rewards gathered through interaction [1]. For robotics that formulation is attractive, because you can specify the behaviour you want without providing a labelled action for every state. It is also what makes robotics hard: continuous action spaces, contact dynamics and long training horizons all amplify instability and reward-design mistakes [2]. This is why experience is normally collected in simulation before a policy is considered for real hardware, and it is why every experiment in this report is simulated.
+
+## 2.2 The three learners: PPO, SAC and TD3
+
+I used three algorithms, and the reasons matter for how Chapter 6 should be read. PPO is on-policy and limits destructive updates through a clipped surrogate objective [3]; its simplicity and reliable implementations have made it the default locomotion baseline. SAC is off-policy and maximises expected return together with policy entropy [4], which keeps exploration alive and tends to help in continuous control. TD3 attacks value overestimation in deterministic actor-critic methods using twin critics, delayed policy updates and target-policy smoothing [5].
+
+EasyRTG began with PPO alone. I added SAC and TD3 late, once the question had changed. Early on I only wanted to know whether a robot could learn at all through my pipeline. By August the more interesting question was whether different learners would expose different weaknesses in the same task — and, as Section 6.8 shows, they did.
+
+Table: Algorithm rationale and its observed role in EasyRTG.
+| Algorithm | Learning style | Reason for inclusion | Observed project role |
+|---|---|---|---|
+| PPO | On-policy, stochastic | Common locomotion baseline; stable implementation | Strong quadruped results; weak Valkyrie survival |
+| SAC | Off-policy, maximum entropy | Exploration and sample reuse in continuous control | Best Go1 and Valkyrie policies |
+| TD3 | Off-policy, deterministic | Tests whether twin critics reduce overestimation | Strong Go1 result; Valkyrie later diverged |
+
+## 2.3 From single environments to massively parallel simulation
+
+Gym standardised the boundary between an agent and an environment [6], and Gymnasium and Stable-Baselines3 supplied the maintained implementations and APIs that EasyRTG's early CPU lane was built on [7, 8]. PyBullet gave me a lightweight way to load a URDF, inspect its joints and check my state calculations [9]. All three were the right tools for validating one robot instance. None of them could supply the volume of experience the final locomotion experiments needed, and that limit is what forced the architecture described in Chapter 4.
+
+## 2.4 Isaac Gym and the GPU-native turn
+
+Makoviychuk et al. showed that physics simulation and policy learning can both stay resident on the GPU, removing the CPU transfer bottleneck and raising throughput by orders of magnitude [10]. This is the single most important result for my project. It is the difference between running one robot at a few hundred steps per second and running four thousand at over thirty thousand — the gap between an experiment I could attempt once and an experiment I could repeat until it told me something. Section 6.4 measures where that gap actually landed on my hardware.
+
+## 2.5 Orbit and Isaac Lab
+
+Mittal et al. introduced Orbit, a modular framework for robot-learning environments on Isaac Sim, since developed into Isaac Lab [11]. Orbit matters here for the opposite reason to Isaac Gym: it shows how much structure a well-designed environment framework can offer, and simultaneously how firmly that structure is aimed at developers. Its environment definitions are Python classes. That is entirely reasonable for its audience, and it is exactly the assumption EasyRTG is trying to remove. I use Isaac Lab as the training substrate [25] while keeping its configuration surface behind the desktop workflow.
+
+## 2.6 Learning to walk in minutes
+
+Rudin et al. trained thousands of simulated ANYmal robots to walk in minutes on a single GPU [12]. This paper set my expectation for what a legged-locomotion run should cost, and it is why ANYmal was the first robot I attempted. It is also a useful corrective to my own results: their reported speed comes from an environment, reward and curriculum tuned by domain experts for that robot. My ANYmal runs took ten attempts to reach 95% of the episode cap once (Appendix D). The distance between those two facts is a fair measure of what a general no-code pipeline currently costs against a specialist implementation.
+
+## 2.7 Reward design as the real bottleneck
+
+A reward is not a neutral description of a task. It is an optimisation target, and an agent will exploit any gap between the behaviour you intended and the quantity you actually measured. Potential-based shaping can preserve an optimal policy under specific conditions [13], but practical locomotion rewards are combinations of objectives and penalties where no such guarantee holds. Reproducibility work compounds the problem: Henderson et al. and Engstrom et al. both show that implementation details and evaluation choices can change deep-RL outcomes materially [14, 15].
+
+I take this literature as the justification for treating reward authoring as a correctness problem rather than a configuration detail. It is the reason EasyRTG compiles and audits reward expressions before committing GPU time, and the reason Chapter 6 reports episode length beside reward everywhere. Section 6.7 contains the concrete case this literature predicts — a policy that scored well on the galloping reward without galloping.
+
+## 2.8 Eureka: language models writing rewards
+
+Ma et al. demonstrated with Eureka that a large language model can generate reward code and then improve it using training feedback, reaching human-competitive reward design on a range of tasks [16]. Eureka is the closest published precedent for the assistant in EasyRTG, and the differences are deliberate. Eureka writes executable reward code and searches over it evolutionarily. My assistant writes expressions over an approved state vocabulary, and those expressions are compiled through an AST whitelist and audited on synthetic state ranges before they can be saved. I gave up expressive freedom to get inspectability and safe tool use — a trade I discuss again in Section 7.2, because it is the trade I am least certain about.
+
+## 2.9 DrEureka: pushing language-assisted design toward hardware
+
+DrEureka extended the same line of work toward sim-to-real, using a language model to help design both reward and domain-randomisation configurations [17]. I cite it as the honest measure of what my project does not attempt. EasyRTG stops at the recorded simulated policy; there is no domain randomisation and no hardware deployment. DrEureka is what the next stage of this work would have to look like, and Section 8.2 says so.
+
+## 2.10 General-purpose simulators: Gazebo and Unity ML-Agents
+
+Gazebo provides a general robot simulator with programmatic interfaces and deep ROS integration [18], and Unity ML-Agents turns game-engine scenes into learning environments [19]. Both are more capable than EasyRTG in their own domains, and neither is trying to solve my problem. Gazebo's strength is breadth of robotics integration, paid for with substantial setup. ML-Agents' strength is flexible visual environments, paid for with engine-specific authoring. In both cases the path from "here is my robot file" to "here is a trained policy" runs through code that a non-expert cannot write.
+
+## 2.11 Unity RL Playground: the closest accessibility claim
+
+Ye et al.'s Unity RL Playground is the nearest published work to my accessibility goal, offering one-click locomotion training for imported mobile robots [20]. It confirms that the gap I am targeting is real and that others are targeting it. Where EasyRTG differs is in what it exposes rather than what it hides: a shared state vocabulary the user can author rewards against, an audit step that runs before training, and a retained run archive that makes a claim checkable after the fact. I could not find reported evidence that Unity RL Playground covers reward authoring at this level, though its scope as published is narrower than what I have tried to compare against.
+
+## 2.12 Where EasyRTG sits
+
+Read together, this literature says something slightly uncomfortable: the algorithms exist, the simulators exist, and even language-assisted reward generation exists. What is missing is orchestration — making robot structure, reward semantics, training controls and evidence visible in one place to somebody who does not start as an expert. That is the gap EasyRTG tests, and the value of the project is in the concrete design plus a documented account of where the abstraction holds and where expert judgement is still required.
+
+Table: Positioning EasyRTG against representative robot-simulation and learning platforms.
+| Platform | Robot import | Training interface | Reward authoring | Primary trade-off |
+|---|---|---|---|---|
+| Gazebo/ROS | Rich model ecosystem | Programmatic | Controller/environment code | Broad robotics integration; substantial setup |
+| Unity ML-Agents | Scene/component based | Unity + Python | Agent scripts and trainer config | Flexible visuals; engine-specific authoring |
+| Isaac Lab | USD/URDF workflows | Python/configuration | Environment/reward code | High throughput; expert-oriented |
+| Unity RL Playground | Imported mobile robots | One-click task workflow | Task framework | Closest accessibility goal; narrower reported scope |
+| EasyRTG | URDF with inferred morphology | Desktop no-code flow | Audited expressions from user or assistant | Accessible integration; currently simulation-only |
+
+# 3  Research Methodology and Requirements
+
+## 3.1 Design-science approach
+
+Because the research questions ask how an integrated tool can be designed and what happens when it is applied, I followed a design-science approach in which knowledge is produced by building and evaluating an artefact [21]. A purely observational study would not have answered them. The process was deliberately iterative: identify a barrier, implement a mechanism, watch it fail, revise it, then evaluate the new behaviour. Peffers et al.'s process — problem identification, objectives, design and development, demonstration, evaluation, communication — provides the structure I used [22], and Chapter 5 is the record of going round that loop.
+
+## 3.2 Evidence sources
+
+Design-science only means something if the evaluation rests on evidence somebody else could check, so I limited myself to four sources. The Git history — 50 commits between 11 June and 14 August 2026 — records the sequence of architectural changes. The source code and its automated tests establish what is actually implemented. Every Isaac run stores its own configuration and telemetry, so any number in Chapter 6 can be recomputed from the archive rather than taken on trust. Recorded policy videos supply the behavioural evidence that numbers cannot.
+
+One rule governs the analysis: I include only timestamped directories that contain numeric reward telemetry, and I count the directories without it as pre-telemetry failures rather than quietly dropping them. That rule is why the run count in this report is higher than the count in my presentation, and Section 6.1 explains the difference.
+
+## 3.3 Functional and non-functional requirements
+
+I held the implementation to eight requirements, each tied to something that can be checked in the repository rather than to a general aspiration.
+
+Table: Traceable project requirements.
+| ID | Requirement | Verification evidence |
+|---|---|---|
+| FR1 | Load and inspect an arbitrary URDF robot | Robot panel, morphology tests, A1/ANYmal/Go1/Valkyrie |
+| FR2 | Create observations, actions, rewards and terminations without editing code | Config panels and expression editor |
+| FR3 | Let an assistant propose and apply configuration through tools | Agent toolbox and confirmation gates |
+| FR4 | Launch and monitor GPU-parallel training | Isaac worker and telemetry charts |
+| FR5 | Replay and compare completed policies | Evaluation worker, videos and run archive |
+| NFR1 | Reject invalid or unsafe reward expressions before launch | Compiler, audit and configuration tests |
+| NFR2 | Keep the desktop responsive during long-running work | Subprocess workers and polling/streaming |
+| NFR3 | Preserve run provenance | Saved config, telemetry, checkpoints and video |
+
+## 3.4 Experimental protocol and metrics
+
+The run archive covers experiments between 13 July and 18 August 2026, all on one RTX 5000. The usable set contains 34 runs: eight A1 PPO, ten ANYmal PPO, four Go1 PPO, three Go1 SAC, two Go1 TD3, three Valkyrie PPO, three Valkyrie SAC and one Valkyrie TD3. That distribution is not balanced, and I do not present it as one. Every comparison in Chapter 6 is described as an observed project result, not a statistically complete benchmark.
+
+My primary measures are mean episode reward, mean episode length, environment steps per second, and task-specific terms such as forward velocity, uprightness, lateral drift and flight phase. Episode length is always reported as a fraction of the 1,000-step cap, because that fraction answers the question reward cannot: did the robot stay up? For each robot and algorithm pairing, the fleet summaries use the run with the highest observed reward. That makes the summary readable and introduces best-run selection bias, which I return to in Section 7.3 rather than leaving implicit.
+
+## 3.5 Software verification
+
+Alongside the training experiments I ran the repository's backend test command in a clean temporary directory with third-party pytest plugin autoloading disabled. It produced 256 passing tests, one skipped and no failures. The tests cover configuration phases, expression compilation, morphology, contact state, episode timing, Isaac bridge calculations, action authoring, spawn height and smoke behaviour. The Flutter command-line tool did not return in the environment available to me, so I make no fresh claim about frontend analysis status; that gap is listed in Section 7.3 with the rest.
+
+# 4  System Design and Architecture
+
+## 4.1 Architectural overview
+
+The requirements in Section 3.3 push in two directions at once. FR4 wants thousands of parallel environments on a GPU; NFR2 wants a desktop that still responds while they run. EasyRTG resolves that with a desktop client and a local orchestration service. Flutter provides the only user interface [26]. FastAPI owns application state, exposes REST and streaming endpoints, supervises workers and records project state [27]. The LLM assistant gets no privileged path — it calls the same bounded tools the application uses. Expensive simulation is split into two lanes so that a lightweight check never consumes a GPU training session.
+
+@@figure architecture.png 6.2x3.05 :: EasyRTG architecture, and the separation between the inspection and GPU training lanes.
+
+The three sections that follow describe the mechanisms that carry the project's contribution, in the order a user meets them: first the robot is understood, then the reward is written, then the assistant is allowed to help.
+
+## 4.2 URDF inspection and morphology
+
+My first prototype guessed robot roles from names — 'hip', 'foot', 'ankle'. It worked on the examples I had, and it broke the moment naming conventions changed. That failure is the origin of the morphology layer, which treats the URDF as a kinematic tree instead of a list of strings. It identifies the base, the movable joints, leaf structures, candidate limbs and contact links from connectivity and joint properties. Standing height and spawn height are measured relative to the robot rather than copied from whichever sample robot I happened to test last. This is what lets dimensionless signals such as `height_ratio` and `upright` mean the same thing on a quadruped and on a humanoid.
+
+It does not mean every URDF is automatically trainable. Poor inertial values, unrealistic joint limits and ambiguous contact geometry all still need calibration, and Section 7.3 lists that as a limitation. What it does mean is that a new robot starts from structural evidence rather than from a list of names written for a previous robot.
+
+## 4.3 Expression rewards and the shared state vocabulary
+
+Having derived the robot's structure, the next question is how the user says what they want it to do. A fixed reward catalogue looked like the safe answer, because users could only pick components I had already validated. In practice it did the opposite of what I wanted: it limited the behaviours the system could express and pushed every new task back into application code. EasyRTG now stores each reward term as a short mathematical expression over a state vocabulary — `forward_velocity`, `upright`, `height_ratio`, `mean(contact)`, `flight_phase`, `episode_progress`. Vector widths come from morphology, so `mean(contact)` means the same thing whether the robot has two contact limbs, four or six.
+
+Safety comes from the compiler rather than from restricting the menu. Expressions are parsed into an abstract syntax tree and accepted only if every node is on a whitelist. Attribute access and subscripting are excluded, which is what prevents the arbitrary-Python reward path I deleted from creeping back in. Configuration patches compile every enabled expression before saving, and an audit then evaluates reward scale across synthetic state ranges, flagging non-finite values, dominant penalties, all-penalty designs and sums that depend on degree-of-freedom count. None of this proves a reward will produce good learning. It catches several expensive classes of failure before any GPU time is committed, which on a 40-million-step run is worth several hours.
+
+## 4.4 Assistant and human oversight
+
+The assistant is what makes the expression layer usable by someone who would not write those expressions themselves. It can read robot details, calibrate a goal, patch a configuration, test a reward, start or stop training and inspect past runs. Simple commands can be routed to a local Ollama model, while more demanding goal interpretation can use an OpenAI-compatible endpoint. The system prompt carries the robot-specific vocabulary and the available reward priors.
+
+Crucially, the tools that change configuration or control runs stay gated, so the user approves anything consequential. I did not invent that pattern — it follows established human-AI interaction guidance to communicate what the system can do, make changes visible, and preserve correction or undo [23]. It is also the design decision that most often slowed me down while using my own application, which I take as evidence that it is doing its job.
+
+@@figure assistant.png 4.0x5.82 :: The EasyRTG desktop assistant, showing a generated training configuration and the changes offered for review.
+
+## 4.5 Training, monitoring and evaluation
+
+Once a configuration is approved, Isaac training runs in a separate subprocess under Isaac Sim's own Python environment, following the installed Isaac Lab workflow [25]. The worker writes telemetry to a file; the backend tails it and pushes updates to the Flutter charts. Each run keeps its exact environment configuration, its observation and action contracts, checkpoints, log and evaluation video. Live evaluation can launch NVIDIA's WebRTC client; recorded evaluation runs headless and produces an MP4 that stays replayable inside the desktop application.
+
+That retained evidence is not bookkeeping for its own sake. A reward curve cannot tell you whether a humanoid is walking forward, drifting sideways, or merely staying alive without completing the task. Chapter 6 depends on being able to go back and look.
+
+# 5  Implementation and Iterative Development
+
+## 5.1 From proposal to working system
+
+My original proposal described a six-week CPU-first application built on PyBullet, Gymnasium and Stable-Baselines3 PPO, with predefined reward parts and optional custom Python, running on a normal laptop. The finished system differs in almost every risky part of that plan. Training moved to Isaac Sim on an NVIDIA GPU. Custom Python was removed entirely. Reward components became audited expressions. Morphology replaced joint-name rules. The evaluation grew from PPO on sample robots to three algorithms across four robot families.
+
+I do not think that record shows the proposal was poor. It shows the prototype was used for what a prototype is for — finding out what the project actually required. The rest of this chapter is the specific sequence of failures that produced each of those changes.
+
+## 5.2 Milestone history
+
+@@figure milestones.png 6.2x2.08 :: Major implementation and experiment milestones, reconstructed from Git dates and the run archive.
+
+The first commits on 11 June — 'initial 300x300 30fps stream' and 'most of the app is working and is stable' — established a visible prototype. On 14 June, 'most of the agent is working' and 'Make Windows build/run work; stream JPEG sim frames' joined the assistant to a desktop build. These messages are informal, but they capture the priority I had at the time: make one complete interaction visible before refining anything underneath it.
+
+The next phase was less direct. 'Add MJX backend, config revisions, and agent routing' on 29 June explored an alternative high-performance backend, and the following day 'switching to linux as mujoco isnt working good on win' recorded why that stalled. This branch never became the final training lane, but it taught me something the UI could not paper over: simulator and operating-system constraints do not disappear because you have hidden them behind a nice interface. EasyRTG subsequently adopted Isaac Sim as a separate GPU subprocess, which kept the main application cross-platform while letting the training lane be as platform-specific as it needed to be.
+
+The locomotion case study began properly on 27 July with 'added unitree go1 robot as casestudy'. My walking reward immediately found an easier solution than walking: stay low and crawl. The commit 'fix: reject crawling in walk goals' is where that failure became a robot-relative height termination. On 28 July, 'Derive robot structure from URDF, not joint names; add expression layer' removed the next source of hidden robot-specific assumptions.
+
+The most concentrated redesign landed on 29 July. Four commits — 'Evaluate rewards as expressions on the Isaac lane', 'Give the Isaac lane real contact state, so a flight phase is expressible', 'Let the agent author the reward; delete the 4-keyword goal enum' and 'Delete the reward catalogue: expressions are the only reward path' — changed what the product was. The same day ended with 'Record the gallop result; gait is no longer inexpressible'. That result mattered more than it sounds: galloping cannot be described by forward speed alone, because it requires every foot to leave the ground at once. Expressing it needed contact state in the Isaac lane and a reward language capable of describing a flight phase. Until both existed, the gait was not slow to learn — it was unsayable.
+
+Work after that tightened the interface and the error handling. 'Stop expressions written against observation names from being saved' on 30 July came directly out of an authoring mistake I made myself. UI refinement continued to 'most stable and clean ui' on 7 August. The 14 August commits reorganised the architecture notes and updated the README and presentation, and the run directories added on 18 August expanded the analysable dataset past the numbers in my earlier slides.
+
+## 5.3 Key engineering decisions
+
+Six decisions survived that sequence. Each one is listed with the alternative I actually encountered, because in every case I tried the alternative first.
+
+Table: Engineering decisions that emerged through iteration.
+| Decision | Alternative encountered | Reason retained |
+|---|---|---|
+| Two simulation lanes | Use PyBullet for everything | Fast inspection stays lightweight; Isaac provides training throughput |
+| Expression rewards | Fixed catalogue or arbitrary Python | More behaviours than a catalogue; safer and more portable than exec |
+| URDF-derived morphology | Joint-name heuristics | Supports unfamiliar naming and robot-relative measurements |
+| Subprocess Isaac worker | Embed Isaac in FastAPI | Isaac uses its own Python and runtime, and can fail without taking the UI down |
+| Human approval gates | Fully autonomous tool execution | Makes consequential changes visible and recoverable |
+| Saved run directories | Ephemeral charts | Enables later recomputation, comparison and failure diagnosis |
+
+## 5.4 Security and reliability improvements
+
+One consequence of a no-code interface is that the user becomes more dependent on the application's safeguards, so those safeguards are part of the contribution rather than housekeeping. An internal review of the application identified unsafe pickle loading, arbitrary custom reward execution, ungated agent mutations and permissive CORS. I addressed the high-priority issues in July, and then deleted the custom-Python reward path altogether rather than defending it with a growing denylist — expression compilation now excludes dangerous syntax by construction. The training, tuning and evaluation workers also check for conflicting jobs, and the desktop backend launcher will not kill a server it did not start.
+
+# 6  Experiments, Results and Findings
+
+## 6.1 Run coverage and failure history
+
+Before any result, the count. My presentation summarised 30 runs through 3 August. The README later summarised 32. Recomputing the final archive for this report found 40 timestamped directories: 34 with numeric reward telemetry and six without. I am reporting the changing count rather than hiding it, because it is an accurate record of a project whose final fortnight added most of its algorithm coverage. Every fleet-level number below comes from the 34 analysable runs, and Appendix D lists all of them individually.
+
+Twelve of those runs held at least 95% of the episode cap. Many others learned only partial stability, and one Valkyrie TD3 run produced usable telemetry before failing numerically. The chronological view in Appendix C makes the shape of the project visible: the successful policies appear only after repeated failures in spawning, termination, reward scale and learned behaviour. A polished final video is an incomplete account of development, and this is the figure that shows why.
+
+## 6.2 Fleet-level results
+
+Table: Best observed run for each robot and algorithm pairing.
+| Robot | Algorithm | Best reward | Episode length | % of cap | Peak steps/s |
+|---|---|---|---|---|---|
+| A1 | PPO | 4,767.0 | 967.5 | 96.8% | 32,056.8 |
+| ANYmal | PPO | 769.8 | 954.6 | 95.5% | 21,055.5 |
+| Go1 | PPO | 2,073.9 | 962.7 | 96.3% | 27,500.0 |
+| Go1 | SAC | 2,250.1 | 1000.0 | 100.0% | 27,840.3 |
+| Go1 | TD3 | 2,112.7 | 990.9 | 99.1% | 28,975.6 |
+| Valkyrie | PPO | 276.1 | 204.2 | 20.4% | 14,280.0 |
+| Valkyrie | SAC | 1,283.8 | 821.0 | 82.1% | 11,171.6 |
+| Valkyrie | TD3 | 287.0 | 206.2 | 20.6% | 14,388.8 |
+
+@@figure fleet_survival.png 6.2x2.37 :: Episode survival for the best observed run in each robot and algorithm pairing.
+
+The quadrupeds were consistently easier to stabilise. A1 PPO reached 967.5 steps and the highest reward I recorded anywhere, 4,767.0. ANYmal PPO reached 954.6. Go1 reached 962.7 with PPO, the full 1,000 with SAC and 990.9 with TD3. Valkyrie is where the learners separated: PPO 204.2 steps, SAC 821.0, TD3 206.2.
+
+One warning about how to read that table. Reward functions differ between robots and tasks, so reward height must not be compared across rows as though it were a shared score. A1's 4,767.0 does not mean A1 learned better than Go1; it means A1's reward expression pays more per step. The `% of cap` column is the only column in the table that is directly comparable across rows, which is exactly why I report it everywhere.
+
+## 6.3 What the reward actually paid for
+
+Because reward totals are not comparable across robots, the more informative question is what a given policy was being paid for. EasyRTG logs each reward term separately, so I can decompose the total at the moment a policy performed best.
+
+@@figure reward_terms.png 6.2x3.4 :: Term-by-term decomposition of the reward at the peak-reward step of the best Go1 run.
+
+The decomposition is dominated by three positive terms — forward velocity at 1.49, staying alive at 0.50 and uprightness at 0.49 — against penalties that are between one and four orders of magnitude smaller. Effort, at −0.060, is the largest penalty; joint-limit violation, at −0.00017, is effectively zero, which tells me the policy was not fighting its joint limits at all.
+
+This is a useful sanity check and a warning at the same time. It confirms the policy earned its score by moving forward while upright, rather than by exploiting a penalty structure. It also shows how little the penalties actually constrained it. A reward this dominated by its positive terms leaves the door open to the kind of misspecification that Section 6.7 documents, and it is the strongest argument I have for keeping the audit step described in Section 4.3.
+
+## 6.4 Throughput and the GPU lane
+
+@@figure throughput.png 6.2x2.37 :: Peak simulation throughput against the number of parallel environments, coloured by robot.
+
+The highest throughput I observed was 32,056.8 environment steps per second, for A1 at 4,096 environments. Go1 also exceeded 30,000 steps per second in recorded runs. Valkyrie never got past roughly 14,600 at any batch size I tried.
+
+Environment count increases the available parallel work, but morphology sets the cost of each simulated step, and a humanoid with more joints and bodies is not a fair throughput comparison with a quadruped. So RQ4 does not resolve to a single scaling rule. It resolves to an interaction: parallelism sets the opportunity, and robot complexity sets the practical ceiling. The two runs at 16 environments, added on 18 August, make the lower bound of that relationship concrete — both fall below 100 steps per second, roughly three hundred times slower than the same robots at 4,096.
+
+## 6.5 How long learning took
+
+Throughput is only half of what makes an experiment affordable; the other half is how many steps the policy needs. I measured this as the number of environment steps before the smoothed mean episode length first holds above 900, which is the point at which a policy has stopped falling over rather than merely got lucky in one logging interval.
+
+Exactly twelve runs cross that threshold, and they are the same twelve that reach 95% of the cap in Section 6.1 — a consistency check I was glad to see, since the two are computed by different routes. Appendix C gives the full ordering. The spread is wide: the best ANYmal run gets there in 2.51M steps, while the slowest Go1 run needs 17.60M. Notably, the fastest crossings are not the highest-scoring runs. A1's best-reward run (20260728-202311, reward 4,767.0) took 16.42M steps to stabilise, while an earlier A1 run stabilised in 4.03M and scored less than half as much. Stabilising early and scoring highly are not the same achievement, and averaging them into one "performance" number would have hidden that.
+
+## 6.6 Go1: three learners, one solved robot
+
+Go1 is the only robot I ran with all three learners at the same environment count, which makes it the cleanest place to compare them.
+
+@@figure go1_algorithms.png 6.2x2.37 :: Reward for the best Go1 run under each learner, at 4,096 environments with the same reward expression.
+
+The answer is that on a solved robot, the learner barely matters. All three converge to within 8% of each other on reward — SAC 2,250.1, TD3 2,112.7, PPO 2,073.9 — and all three hold essentially the whole episode: 100%, 99.1% and 96.3% of the cap. The traces differ in shape more than in destination. SAC climbs in distinct steps, PPO more smoothly, TD3 fastest at the start and then flat.
+
+I want to be careful about what this shows. It is not evidence that the three algorithms are equivalent; it is evidence that this task, on this robot, is easy enough that all three saturate it. The interesting comparison is therefore not here but on the humanoid, where the task is hard enough to separate them. That is Section 6.8. What Go1 establishes is the necessary baseline: when the task is tractable, my pipeline does not favour one learner, so any separation seen later belongs to the problem rather than to my implementation.
+
+## 6.7 Go1 walking and galloping
+
+Go1 also produced the clearest demonstration in the whole project that the reward defines the behaviour. Walking rewarded forward motion, uprightness and sustained ground contact. Galloping required a flight phase where all four feet leave the ground. In the presentation experiments the walking policy travelled at 0.98 m/s, held uprightness at 0.99 and survived 963 steps, while the galloping policy reached 1.38 m/s, survived the full episode and was airborne for 43% of the stride. Same robot, same training budget. Only the reward semantics changed.
+
+@@figure go1_evaluation.png 5.7x3.21 :: The Unitree Go1 during recorded policy evaluation.
+
+Then the three-algorithm comparison added a qualification I did not want but should have expected. TD3 produced the fastest policy on the galloping task at about 1.65 m/s — and it was airborne for only 29% of the stride, against SAC's 52% at a slower 1.52 m/s. TD3 had found a quick trot that scored well on my galloping reward without galloping.
+
+This is exactly the failure mode the reward-design literature predicts [13, 14], and finding it in my own system was the most useful negative result of the project. It is why contact-state metrics and video inspection stayed in the pipeline next to reward, and it is why I do not treat a high reward as a finished result anywhere in this chapter.
+
+## 6.8 Valkyrie: a controlled algorithm comparison
+
+The strongest comparison the archive supports is SAC against TD3 on Valkyrie, with the same reward expression and the same 40-million-step budget. Everything except the learner is held constant, which is what makes it worth more than the rest of the matrix.
+
+@@figure valkyrie_reward.png 6.2x2.37 :: Reward for Valkyrie under SAC and TD3, same reward expression and same 40M-step budget.
+@@figure valkyrie_episode_length.png 6.2x2.37 :: Episode length reveals that SAC's advantage came from staying upright, not from scoring faster.
+
+Both learners improved at first, and for roughly the first 20 million steps they are hard to tell apart. Then they diverge. SAC reached a best mean reward of 1,283.8 with an episode length of 821.0. TD3 flattened at around 200 steps of survival, finished with a best reward of 287.0, and eventually stopped altogether after NaN observations — the dotted line in the figures marks where that run died.
+
+The reason this comparison changes the interpretation of reward is in the second figure. At their best checkpoints the two policies received broadly similar reward per step. SAC's total was larger because it accumulated those terms for about four times as many steps before falling. Its advantage was survival, not scoring rate. The TD3 telemetry also showed reward terms exploding by many orders of magnitude approaching failure, which points at critic and numerical instability rather than a simple failure to move forward.
+
+@@figure valkyrie_evaluation.png 5.7x3.21 :: The NASA Valkyrie during recorded SAC policy evaluation.
+
+Valkyrie is therefore the humanoid answer to RQ3, and it is a narrow one. The choice of learner materially changed the outcome on the hard task, in the direction of SAC, under the one configuration I tested. It does not make SAC the better algorithm in general, and Section 7.3 explains why I cannot make that claim from this archive.
+
+## 6.9 Functional verification
+
+The 256 passing backend tests provide the second kind of evidence in this report. They do not show that a robot has learned anything. What they verify is the machinery that makes the training results interpretable at all: morphology, action mapping, the state vocabulary, expression guards, episode clocks, contact signals, Isaac bridge mathematics, configuration phases and failure handling.
+
+I regard the combination as stronger than either half. A visually convincing gait cannot prove configuration safety, and a passing unit test cannot prove useful behaviour. The galloping result in Section 6.7 is precisely a case where the tests were all green and the behaviour was still wrong — which is the argument for keeping both.
+
+# 7  Discussion
+
+## 7.1 Answering the research questions
+
+RQ1 asked how a no-code interface could translate a URDF and a goal into a valid training configuration while keeping human oversight. The implemented answer is the staged workflow of Chapter 4: structural inspection, robot-relative calibration, reward authoring constrained to a shared vocabulary, compile-and-audit checks, and explicit confirmation for consequential tools. The application completes that flow without the user editing environment source. What I cannot say is how much expertise or time it removes, because I did not run a comparative user study. That is the largest hole in the evaluation and I return to it in Section 8.2.
+
+RQ2 asked about generalisation across bodies. A1, ANYmal, Go1 and Valkyrie all produced analysable runs through the same core pipeline, and structural morphology with dimensionless state terms removed several hard-coded assumptions along the way. The evidence supports cross-robot applicability within legged URDF models. It says nothing about manipulators, wheeled robots or closed-chain mechanisms, none of which I tested.
+
+RQ3 asked how the learners differ, and the answer has two halves that only make sense together. On Go1, where the task was tractable, all three learners saturated it and the choice barely mattered (Section 6.6). On Valkyrie, where it was not, SAC was the only learner that produced sustained walking (Section 6.8). The finding is therefore about the interaction rather than about a ranking: learner choice becomes material exactly when the task is hard enough to expose it. I cannot go further than that, because algorithm coverage is unbalanced, hyperparameters were not exhaustively tuned, and the summaries select best observed runs.
+
+RQ4 asked about throughput. The archive shows a clear relationship between parallel environment count and simulation speed, bounded by the cost of the robot: A1 reached 32,056.8 steps per second at 4,096 environments and Valkyrie never approached that ceiling. This agrees with the GPU-native simulation literature [10, 12] and retrospectively justifies the architectural move to Isaac described in Section 5.2.
+
+## 7.2 What the project learned about abstraction
+
+The hardest design problem in this project was deciding what to hide. Hiding the simulator installation does not remove its hardware and operating-system constraints — the MJX detour in Section 5.2 is what taught me that. Hiding rewards behind a catalogue makes the interface simple and the platform inflexible. Allowing arbitrary Python makes the platform flexible and unsafe. EasyRTG's compromise is to expose the decisions that actually influence learning — observations, actions, expressions, terminations, algorithm — while hiding only the boilerplate needed to execute them.
+
+I am least confident about where that line falls for the assistant. It is not an oracle, and I have deliberately not presented it as one: it is an authoring and orchestration layer sitting inside a system with validation and human review. The six pre-telemetry failures and the many short-lived policies are part of the result rather than noise around it. Language assistance can reduce configuration effort. It does not remove the need for measurable checks, and it did not remove the need for me to diagnose the Valkyrie TD3 divergence by hand.
+
+## 7.3 Limitations and threats to validity
+
+- The experiment matrix is unbalanced. SAC and TD3 were concentrated on Go1 and Valkyrie, while A1 and ANYmal are PPO-only, so no cross-robot algorithm claim is available.
+- Fleet summaries select the highest-reward run per pairing. They describe best observed performance, not an expected mean across random seeds.
+- All throughput results come from one RTX 5000 and should not be generalised to other GPUs without measurement.
+- Every policy was evaluated in simulation. Domain randomisation and transfer to a physical robot were not attempted.
+- No formal participant study measured task completion time, error rate, learning curve or perceived usability, so the no-code claim in this report is architectural rather than empirical.
+- Training quality depends on URDF dynamics, and automatic morphology cannot repair unrealistic mass, inertia, collision or joint-limit data.
+- Observations remain a fixed seven-key catalogue even though rewards are expressions. Camera observations, terrain, velocity commands, ROS and multi-agent RL are not implemented.
+- The fresh verification covered the backend only. The Flutter command-line tool hung in the available environment, so the current frontend lint and test status is unconfirmed and should be rechecked before submission.
+
+## 7.4 Practical and academic significance
+
+Practically, EasyRTG shortens the path from a robot file to a recorded policy by packaging configuration, training and evidence into one application. Academically, it offers a case study in how a language model can assist reward design without being handed unrestricted code execution, and it supplies a heterogeneous run archive that shows why reward, episode survival and task-specific behaviour have to be read together rather than separately.
+
+Its most defensible contribution is not that robot learning has become effortless. It is that the difficult decisions have become visible, reviewable and repeatable — and that when one of them was wrong, as with the galloping reward, the system made the mistake findable.
+
+# 8  Conclusion and Future Work
+
+## 8.1 Conclusion
+
+EasyRTG began as the application I would have wanted before my earlier robot project: load a robot, state a goal, follow one process I could understand. The finished implementation turns that into a working desktop platform with URDF inspection, morphology-derived configuration, assistant-authored reward expressions, GPU-parallel training, live telemetry and retained policy evaluation.
+
+The evidence covers 34 analysable Isaac runs across four robot families and three algorithms, a peak of 32,056.8 environment steps per second, strong quadruped locomotion, and a clear SAC advantage on the tested Valkyrie task. But the results I learned most from were the failures, because they are what changed the system. Crawling produced robot-relative termination. Joint-name failures produced structural morphology. An inexpressible gallop produced contact state and expression rewards. Unsafe flexibility produced a restricted compiler. A galloping policy that never left the ground is why episode length and contact metrics sit beside reward throughout Chapter 6.
+
+The honest summary is that this project is a story of refinement rather than an implementation of its proposal. The proposal was a plan for six weeks of CPU training. What it became is a platform whose central claim — that robot structure, reward semantics and training evidence can be made visible in one place to a non-expert — is now supported by working software and a run archive that anybody can recompute.
+
+## 8.2 Future work
+
+The first priority is the study I did not run. A small, properly designed usability comparison between the EasyRTG workflow and a documented code-based baseline, measuring task completion time, configuration errors, assistance requests and a validated usability scale, would let the no-code claim be evaluated instead of inferred. Everything else in this section is less important than that.
+
+On the technical side, observation expressions and per-episode velocity commands should be introduced together, so that one policy can respond to changing instructions rather than to a single fixed goal. A campaign worker could then propose, audit and probe reward revisions automatically while still requiring user approval — which is the natural extension of Section 4.4 rather than a replacement for it.
+
+Beyond that, the work needs terrain and sensor observations, better automatic dynamics checks, more robots evaluated with balanced seeds and algorithm budgets, and measurement on more than one GPU. The hyperparameter choices in this report were made through individual experiments; a reproducible study using a framework such as Optuna [24] would put them on firmer ground. Finally, domain randomisation and export to physical hardware are both necessary before EasyRTG could claim a complete route from simulation to real robot behaviour, and DrEureka [17] is a reasonable model for what that stage should look like.
+
+# Bibliography
+
+[1] R. S. Sutton and A. G. Barto, Reinforcement Learning: An Introduction, 2nd ed. Cambridge, MA: MIT Press, 2018.
+
+[2] J. Kober, J. A. Bagnell, and J. Peters, "Reinforcement learning in robotics: A survey," International Journal of Robotics Research, vol. 32, no. 11, pp. 1238-1274, 2013.
+
+[3] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, "Proximal policy optimization algorithms," arXiv:1707.06347, 2017.
+
+[4] T. Haarnoja, A. Zhou, P. Abbeel, and S. Levine, "Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor," in Proceedings of ICML, pp. 1861-1870, 2018.
+
+[5] S. Fujimoto, H. van Hoof, and D. Meger, "Addressing function approximation error in actor-critic methods," in Proceedings of ICML, pp. 1587-1596, 2018.
+
+[6] G. Brockman et al., "OpenAI Gym," arXiv:1606.01540, 2016.
+
+[7] M. Towers et al., "Gymnasium: A standard interface for reinforcement learning environments," arXiv:2407.17032, 2024.
+
+[8] A. Raffin et al., "Stable-Baselines3: Reliable reinforcement learning implementations," Journal of Machine Learning Research, vol. 22, no. 268, pp. 1-8, 2021.
+
+[9] E. Coumans and Y. Bai, "PyBullet, a Python module for physics simulation for games, robotics and machine learning," 2016-2021. Available: https://pybullet.org/.
+
+[10] V. Makoviychuk et al., "Isaac Gym: High performance GPU-based physics simulation for robot learning," arXiv:2108.10470, 2021.
+
+[11] M. Mittal et al., "Orbit: A unified simulation framework for interactive robot learning environments," IEEE Robotics and Automation Letters, vol. 8, no. 6, pp. 3740-3747, 2023.
+
+[12] N. Rudin, D. Hoeller, P. Reist, and M. Hutter, "Learning to walk in minutes using massively parallel deep reinforcement learning," in Proceedings of CoRL, PMLR vol. 164, pp. 91-100, 2022.
+
+[13] A. Y. Ng, D. Harada, and S. Russell, "Policy invariance under reward transformations: Theory and application to reward shaping," in Proceedings of ICML, pp. 278-287, 1999.
+
+[14] P. Henderson et al., "Deep reinforcement learning that matters," in Proceedings of AAAI, vol. 32, no. 1, 2018.
+
+[15] L. Engstrom et al., "Implementation matters in deep policy gradients: A case study on PPO and TRPO," in Proceedings of ICLR, 2020.
+
+[16] Y. J. Ma et al., "Eureka: Human-level reward design via coding large language models," arXiv:2310.12931, 2023.
+
+[17] Y. J. Ma et al., "DrEureka: Language model guided sim-to-real transfer," in Proceedings of Robotics: Science and Systems, 2024.
+
+[18] N. Koenig and A. Howard, "Design and use paradigms for Gazebo, an open-source multi-robot simulator," in Proceedings of IEEE/RSJ IROS, pp. 2149-2154, 2004.
+
+[19] A. Juliani et al., "Unity: A general platform for intelligent agents," arXiv:1809.02627, 2020.
+
+[20] L. Ye et al., "Unity RL Playground: A versatile reinforcement learning framework for mobile robots," arXiv:2503.05146, 2025.
+
+[21] A. R. Hevner, S. T. March, J. Park, and S. Ram, "Design science in information systems research," MIS Quarterly, vol. 28, no. 1, pp. 75-105, 2004.
+
+[22] K. Peffers, T. Tuunanen, M. A. Rothenberger, and S. Chatterjee, "A design science research methodology for information systems research," Journal of Management Information Systems, vol. 24, no. 3, pp. 45-77, 2007.
+
+[23] S. Amershi et al., "Guidelines for human-AI interaction," in Proceedings of CHI, paper 3, pp. 1-13, 2019.
+
+[24] T. Akiba, S. Sano, T. Yanase, T. Ohta, and M. Koyama, "Optuna: A next-generation hyperparameter optimization framework," in Proceedings of KDD, pp. 2623-2631, 2019.
+
+[25] NVIDIA, "Isaac Lab documentation," 2026. Available: https://isaac-sim.github.io/IsaacLab/.
+
+[26] Flutter, "Flutter desktop documentation," 2026. Available: https://docs.flutter.dev/platform-integration/desktop.
+
+[27] FastAPI, "FastAPI documentation," 2026. Available: https://fastapi.tiangolo.com/.
+
+# Appendix A  GitLab Repository and Running the Project
+
+## A.1 Repository
+
+GitLab project URL: https://git.cs.bham.ac.uk/projects-2025-26/sxc1742
+
+The `backend` directory contains the FastAPI orchestration service, robot inspection, configuration services, reinforcement-learning logic, the Isaac subprocess workers and the LLM agent tools. The Flutter desktop application is under `frontend/rtg-flutter-app`. The `docs` directory holds the architecture notes, setup records and design plans. `scripts` provides the Windows and Linux launchers, build tooling and the media and figure generators. `backend/runs` stores every experiment's configuration, telemetry, checkpoints and evaluation video, and is the source of every number in Chapter 6.
+
+## A.2 Minimum setup
+
+- Install Python 3.12, the Flutter desktop tooling and the backend packages listed in `backend/requirements.txt`.
+- For GPU training, install NVIDIA Isaac Sim 6.0.1 and Isaac Lab 3.0 as described in `docs/isaac_setup.md`.
+- Create the Python environment with `uv` and install the backend requirements into it.
+- Start both services with `scripts/dev_run.ps1` on Windows or `scripts/dev_run.sh` on Linux.
+- Load a URDF, configure the goal and reward, run Test reward, then launch Isaac training from the desktop application.
+
+## A.3 Verification commands
+
+Backend tests: `$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD=1; .\.venv\Scripts\python.exe -m pytest backend\tests\ -q --basetemp=.pytest_tmp`
+
+Frontend: `cd frontend\rtg-flutter-app; flutter analyze; flutter test`
+
+Report figures: `py -m uv run --python 3.12 --with matplotlib --with numpy python scripts/make_report_figures.py`
+
+Report document: `.venv\Scripts\python.exe scripts\write_report.py`
+
+# Appendix B  Experiment Coverage
+
+Table: Coverage of the 34 analysable Isaac runs by robot and algorithm.
+| Robot | PPO | SAC | TD3 | Total analysable |
+|---|---|---|---|---|
+| A1 | 8 | 0 | 0 | 8 |
+| ANYmal | 10 | 0 | 0 | 10 |
+| Go1 | 4 | 3 | 2 | 9 |
+| Valkyrie | 3 | 3 | 1 | 7 |
+
+Six timestamped run directories contained no numeric reward telemetry and are retained in the failure count rather than discarded. One further directory, named `p3gallop`, does not follow the timestamped `*-isaac` naming convention and is excluded from all fleet-level calculations. Every figure in this report is generated from the run archive at build time by `scripts/make_report_figures.py`; the run directories themselves remain the authoritative data.
+
+# Appendix C  Supplementary Figures
+
+These figures support Chapter 6 but were moved here to keep the main body within the page limit. Each is generated from the same run archive as the figures in the body.
+
+@@figure fleet_chronology.png 6.2x2.37 :: Best mean episode length for every analysable Isaac run, in chronological order.
+
+The chronological view is the shape of the project rather than a result. Early ANYmal runs cluster low. The A1 and Go1 runs from late July onward cluster near the cap. The two runs at the far right, at 16 environments, are the 18 August additions that establish the low end of the throughput relationship in Section 6.4.
+
+@@figure learning_curves.png 6.2x3.9 :: Reward against environment steps for the best run of each robot family.
+
+Plotted at the same scale within each panel, the four best runs show how differently the four bodies behave. A1 rises steeply and then jumps again near 16M steps. Go1 climbs in visible stages. ANYmal is unstable throughout, dipping by half between 3M and 5M steps before recovering — the clearest single picture of why ANYmal needed ten attempts. Valkyrie improves slowly for 25M steps and only then accelerates, which is why a shorter budget would have concluded that the humanoid could not learn at all.
+
+@@figure sample_efficiency.png 6.2x3.5 :: Environment steps before each run's smoothed mean episode length first holds above 900.
+
+@@figure go1_episode_length.png 6.2x2.37 :: Episode length for the best Go1 run under each learner.
+
+The Go1 episode-length panel is the companion to Section 6.6: all three learners reach and hold the cap, so on this robot survival does not distinguish them at all. Compare it against the Valkyrie equivalent in Section 6.8, where survival is the only thing that does.
+
+# Appendix D  Full Run Index
+
+Every analysable run in the archive, in chronological order. Reward is the best mean episode reward observed in the run; episode length is the mean episode length at that same step; peak steps per second is the highest throughput recorded during the run. This table is the raw material for every fleet-level number in Chapter 6.
+
+Table: All 34 analysable Isaac runs, 13 July to 18 August 2026.
+| Run | Robot | Algorithm | Envs | Best reward | Episode length | % of cap | Peak steps/s |
+|---|---|---|---|---|---|---|---|
+| 20260713-083121 | ANYmal | PPO | 512 | 137.0 | 165.9 | 16.6% | 2,095 |
+| 20260713-084227 | ANYmal | PPO | 256 | 193.4 | 222.2 | 22.2% | 738 |
+| 20260717-093639 | ANYmal | PPO | 256 | 159.1 | 195.4 | 19.5% | 1,207 |
+| 20260717-093932 | ANYmal | PPO | 256 | 518.0 | 659.4 | 65.9% | 3,572 |
+| 20260717-102543 | ANYmal | PPO | 2048 | 769.8 | 954.6 | 95.5% | 21,056 |
+| 20260717-110526 | ANYmal | PPO | 128 | 738.2 | 771.6 | 77.2% | 591 |
+| 20260722-133515 | ANYmal | PPO | 2048 | 144.0 | 170.5 | 17.0% | 5,582 |
+| 20260722-140347 | ANYmal | PPO | 1024 | 174.6 | 219.7 | 22.0% | 2,047 |
+| 20260722-141517 | ANYmal | PPO | 1024 | 93.1 | 112.0 | 11.2% | 4,745 |
+| 20260722-141803 | ANYmal | PPO | 1024 | 76.7 | 93.0 | 9.3% | 1,525 |
+| 20260727-173801 | A1 | PPO | 2048 | 12.3 | 22.5 | 2.2% | 12,420 |
+| 20260727-180733 | A1 | PPO | 2048 | 152.0 | 164.2 | 16.4% | 10,966 |
+| 20260727-182222 | A1 | PPO | 8192 | 506.5 | 547.6 | 54.8% | 11,493 |
+| 20260727-184016 | A1 | PPO | 4096 | 2,146.8 | 1000.0 | 100.0% | 17,925 |
+| 20260727-201514 | A1 | PPO | 4096 | 2,338.3 | 1000.0 | 100.0% | 20,285 |
+| 20260728-185127 | A1 | PPO | 4096 | 1,865.3 | 988.3 | 98.8% | 30,599 |
+| 20260728-192453 | A1 | PPO | 4096 | 1,900.9 | 979.9 | 98.0% | 28,462 |
+| 20260728-202311 | A1 | PPO | 4096 | 4,767.0 | 967.5 | 96.8% | 32,057 |
+| 20260801-185125 | Go1 | PPO | 4096 | 2,073.9 | 962.7 | 96.3% | 27,500 |
+| 20260801-215400 | Go1 | PPO | 2048 | 147.7 | 208.8 | 20.9% | 18,081 |
+| 20260802-191958 | Go1 | PPO | 6400 | 1,600.6 | 1000.0 | 100.0% | 31,631 |
+| 20260803-211052 | Valkyrie | PPO | 4096 | 88.3 | 55.9 | 5.6% | 14,556 |
+| 20260803-230732 | Valkyrie | PPO | 4096 | 96.1 | 62.4 | 6.2% | 11,230 |
+| 20260803-233317 | Valkyrie | PPO | 5800 | 276.1 | 204.2 | 20.4% | 14,280 |
+| 20260812-143000 | Go1 | SAC | 4096 | 1,952.9 | 1000.0 | 100.0% | 26,180 |
+| 20260812-151442 | Go1 | SAC | 4096 | 2,250.1 | 1000.0 | 100.0% | 27,840 |
+| 20260812-160555 | Go1 | TD3 | 4096 | 2,112.7 | 990.9 | 99.1% | 28,976 |
+| 20260812-165024 | Valkyrie | SAC | 3048 | 1,283.8 | 821.0 | 82.1% | 11,172 |
+| 20260812-181127 | Valkyrie | TD3 | 4096 | 287.0 | 206.2 | 20.6% | 14,389 |
+| 20260812-192641 | Go1 | TD3 | 4096 | 1,905.0 | 1000.0 | 100.0% | 22,239 |
+| 20260813-175701 | Valkyrie | SAC | 6200 | 251.3 | 82.8 | 8.3% | 14,182 |
+| 20260813-190946 | Valkyrie | SAC | 2048 | 140.0 | 94.1 | 9.4% | 8,540 |
+| 20260818-084821 | Go1 | SAC | 16 | 97.5 | 121.1 | 12.1% | 96 |
+| 20260818-145041 | Go1 | PPO | 16 | 147.2 | 250.4 | 25.0% | 80 |
+
+The twelve runs that hold at least 95% of the episode cap are the five A1 PPO runs from 27-28 July, the single ANYmal PPO run of 17 July at 2,048 environments, and all six Go1 runs at 4,096 environments or above. No Valkyrie run reaches that threshold under any learner.
+
+# Appendix E  Compute Environment and Reproduction Notes
+
+Every training and evaluation result in this report was produced on one workstation, and the pre-release status of the simulator stack is relevant to reproducing them.
+
+Table: Compute and software environment used for all experiments.
+| Component | Version or specification |
+|---|---|
+| GPU | One NVIDIA RTX 5000 |
+| Isaac Sim | 6.0.1-rc.7 |
+| Isaac Lab | 3.0.0-beta2 (`v3.0.0-beta2.patch1`) |
+| Physics backend | Newton (replaces `omni.physics.tensors` from Isaac Sim 6.0) |
+| Isaac Sim Python | 3.12, bundled with Isaac Sim |
+| Application Python | 3.12, project virtual environment |
+| Inspection simulator | PyBullet, headless |
+| Backend | FastAPI |
+| Desktop client | Flutter |
+| Episode cap | 1,000 steps |
+
+Both Isaac components are pre-release: Isaac Sim is a release candidate and Isaac Lab is a beta. This matters for reproduction, because the physics backend changed to Newton in Isaac Sim 6.0 and results obtained on an earlier `omni.physics.tensors` build should not be expected to match. Isaac Sim also owns its own bundled Python and therefore cannot run inside the application's virtual environment, which is the practical reason for the subprocess architecture described in Section 4.5 rather than a stylistic preference.
+
+Three further notes for anyone reproducing this work. First, throughput figures are peak values observed within a run, not sustained averages, and they depend on environment count as shown in Section 6.4. Second, the two runs at 16 environments were deliberately small diagnostic runs and should not be read as failed training attempts. Third, all figures in this report are regenerated from `backend/runs` by `scripts/make_report_figures.py`, so adding runs to the archive and re-running the figure and document scripts updates the evidence without any manual editing.

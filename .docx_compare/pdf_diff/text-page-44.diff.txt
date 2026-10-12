@@ -1,0 +1,24 @@
+--- A/page-44
++++ B/page-44
+@@ -1,4 +1,13 @@
+ 43
++• Create the Python environment using uv and install the backend requirements into it.
++• Start both services with scripts/dev_run.ps1 on Windows or scripts/dev_run.sh on 
++Linux.
++• Load a URDF, configure the goal and reward, run Test reward, then launch Isaac training 
++from the desktop application.
++A.3 Verification commands
++Backend tests:
++$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD=1; .\.venv\Scripts\python.exe -m pytest 
++backend\tests\ -q --basetemp=.pytest_tmp
+ Frontend:
+ cd frontend\rtg-flutter-app; flutter analyze; flutter test
+ Report figures:
+@@ -18,7 +27,3 @@
+ isaac naming convention and is excluded from fleet-level calculations. Figures are generated 
+ from the run archive by scripts/make_report_figures.py; the run directories remain the 
+ authoritative data source.
+-Appendix C Supplementary Figures
+-The following figures support the analysis in Chapter 6 and were placed in the appendix to keep 
+-the main body within the page limit. Each figure is generated from the same run archive as the 
+-figures in the main text.

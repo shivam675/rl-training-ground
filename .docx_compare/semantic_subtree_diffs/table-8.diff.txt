@@ -1,0 +1,34 @@
+--- A/table-8
++++ B/table-8
+@@ -271,6 +271,7 @@
+             <w:noProof/>
+             <w:lang w:val="en-US"/>
+           </w:rPr>
++          <w:lastRenderedPageBreak/>
+           <w:t xml:space="preserve">[5] </w:t>
+         </w:r>
+       </w:p>
+@@ -553,7 +554,6 @@
+             <w:noProof/>
+             <w:lang w:val="en-US"/>
+           </w:rPr>
+-          <w:lastRenderedPageBreak/>
+           <w:t xml:space="preserve">[10] </w:t>
+         </w:r>
+       </w:p>
+@@ -1266,6 +1266,7 @@
+             <w:noProof/>
+             <w:lang w:val="en-US"/>
+           </w:rPr>
++          <w:lastRenderedPageBreak/>
+           <w:t xml:space="preserve">[22] </w:t>
+         </w:r>
+       </w:p>
+@@ -1564,7 +1565,6 @@
+             <w:noProof/>
+             <w:lang w:val="en-US"/>
+           </w:rPr>
+-          <w:lastRenderedPageBreak/>
+           <w:t xml:space="preserve">[27] </w:t>
+         </w:r>
+       </w:p>

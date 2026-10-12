@@ -1,0 +1,31 @@
+--- A/page-32
++++ B/page-32
+@@ -10,16 +10,18 @@
+ 100 steps per second, approximately three hundred times slower than the same robots at 4,096 
+ environments.
+ 6.5 How long learning took
+-Experiment cost depends on both simulation throughput and the number of steps required for 
+-learning. Learning time was measured as the number of environment steps before the 
+-smoothed mean episode length first remained above 900. This threshold indicates sustained 
+-stability rather than a single favourable logging interval.
+-Exactly twelve runs crossed this threshold, matching the twelve runs that reached 95% of the 
+-episode limit through a separately calculated measure. Appendix C provides the complete 
+-ordering. The best ANYmal run crossed after 2.51M steps, while the slowest successful Go1 
+-run required 17.60M steps. Faster stabilisation did not imply a higher final reward. The highest￾reward A1 run (20260728-202311; reward 4,767.0) required 16.42M steps to stabilise, whereas 
+-an earlier A1 run stabilised after 4.03M steps and achieved less than half that reward. Learning 
+-speed and final score must therefore be reported separately.
++The amount of simulation throughput and the number of steps needed to learn affects 
++experiment cost. The number of environment steps before the first time the smoothed mean 
++episode length exceeded 900 was used as a metric for learning time. This threshold represents 
++a 'stable interval' and not a single favourable logging interval.
++This number of runs has been exceeded exactly 12 times (twelve runs in the same measure with 
++a separate calculation which is equal to 95% of the limit for the episode). A full ordering is given 
++in Appendix C. The best ANYmalrun was achieved after 2.51M steps and the slowest successful 
++run with Go1 was after 17.60M steps. This did not mean that the reward was greater if the 
++stabilisation was completed more quickly. The most rewarding A1 run (20260728-202311; 
++reward 4,767.0) took 16.42M steps to stabilise, while a previous A1 run took less than half that 
++number of steps and had a reward of only 2,102.5. The learning speed and score at the end of 
++the learning need to be reported separately, therefore.
+ 6.6 Go1: three learners, one solved robot
+ Go1 was the only robot evaluated with all three learners at the same environment count, 
+ making it the most suitable three-algorithm comparison.

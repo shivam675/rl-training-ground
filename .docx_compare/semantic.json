@@ -1,0 +1,1090 @@
+{
+  "paragraph_counts": {
+    "a": 958,
+    "b": 957
+  },
+  "paragraph_ids": {
+    "a": 958,
+    "b": 957,
+    "common": 921,
+    "only_a": 37,
+    "only_b": 36
+  },
+  "subtree_equality_ignoring_edit_ids": {
+    "tables": false,
+    "drawings": false,
+    "section_properties": true
+  },
+  "changed_subtree_indexes_ignoring_edit_ids": {
+    "tables": [
+      8,
+      11
+    ],
+    "drawings": [
+      3,
+      4,
+      5
+    ]
+  },
+  "table_summaries_a": [
+    {
+      "index": 1,
+      "section": "Front matter",
+      "text": "TermMeaningAPIApplication Programming InterfaceASTAbstract Syntax TreeDRLDeep Reinforcement LearningGPUGraphics Processing UnitLLMLarge Language ModelPPOProximal Policy OptimisationRESTRepresentational State TransferRLReinforcement LearningSACSoft Actor-CriticTD3Twin Delayed Deep Deterministic Policy GradientUIUser InterfaceURDFUniversal Robot Description FormatUSDUniversal Scene Description"
+    },
+    {
+      "index": 2,
+      "section": "1.4 Research questions",
+      "text": "IDResearch questionRQ1How can a no-code interface translate a URDF and a natural-language goal into a valid RL configuration while retaining human oversight?RQ2To what extent can morphology-derived configuration and expression rewards support different robot bodies without robot-specific application logic?RQ3How do PPO, SAC and TD3 differ across quadruped and humanoid locomotion experiments?RQ4How do parallel environment count and robot complexity affect GPU simulation throughput?"
+    },
+    {
+      "index": 3,
+      "section": "2.2 The three learners: PPO, SAC and TD3",
+      "text": "AlgorithmLearning styleReason for inclusionObserved project rolePPOOn-policy, stochasticCommon locomotion baseline; stable implementationStrong quadruped results; weak Valkyrie survivalSACOff-policy, maximum entropyExploration and sample reuse in continuous controlBest Go1 and Valkyrie policiesTD3Off-policy, deterministicTests whether twin critics reduce overestimationStrong Go1 result; Valkyrie later diverged"
+    },
+    {
+      "index": 4,
+      "section": "2.12 Where EasyRTG sits",
+      "text": "PlatformRobot importTraining interfaceReward authoringPrimary trade-offGazebo/ROSRich model ecosystemProgrammaticController/environment codeBroad robotics integration; substantial setupUnity ML-AgentsScene/component basedUnity + PythonAgent scripts and trainer configFlexible visuals; engine-specific authoringIsaac LabUSD/URDF workflowsPython/configurationEnvironment/reward codeHigh throughput; expert-orientedUnity RL PlaygroundImported mobile robotsOne-click task workflowTask frameworkClosest ac"
+    },
+    {
+      "index": 5,
+      "section": "3.3 Functional and non-functional requirements",
+      "text": "IDRequirementVerification evidenceFR1Load and inspect an arbitrary URDF robotRobot panel, morphology tests, A1/ANYmal/Go1/ValkyrieFR2Create observations, actions, rewards and terminations without editing codeConfig panels and expression editorFR3Let an assistant propose and apply configuration through toolsAgent toolbox and confirmation gatesFR4Launch and monitor GPU-parallel trainingIsaac worker and telemetry chartsFR5Replay and compare completed policiesEvaluation worker, videos and run archiv"
+    },
+    {
+      "index": 6,
+      "section": "5.3 Key engineering decisions",
+      "text": "DecisionAlternative encounteredReason retainedTwo simulation lanesUse PyBullet for everythingFast inspection stays lightweight; Isaac provides training throughputExpression rewardsFixed catalogue or arbitrary PythonMore behaviours than a catalogue; safer and more portable than execURDF-derived morphologyJoint-name heuristicsSupports unfamiliar naming and robot-relative measurementsSubprocess Isaac workerEmbed Isaac in FastAPIIsaac uses its own Python and runtime, and can fail without taking the "
+    },
+    {
+      "index": 7,
+      "section": "6.2 Fleet-level results",
+      "text": "RobotAlgorithmBest rewardEpisode length% of capPeak steps/sA1PPO4,767.0967.596.8%32,056.8ANYmalPPO769.8954.695.5%21,055.5Go1PPO2,073.9962.796.3%27,500.0Go1SAC2,250.11000.0100.0%27,840.3Go1TD32,112.7990.999.1%28,975.6ValkyriePPO276.1204.220.4%14,280.0ValkyrieSAC1,283.8821.082.1%11,171.6ValkyrieTD3287.0206.220.6%14,388.8"
+    },
+    {
+      "index": 8,
+      "section": "Bibliography",
+      "text": "[1] R. S. Sutton and A. G. Barto, Reinforcement Learning: An Introduction, 2nd ed., Cambridge, MA: MIT Press, 2018. [2] J. Kober, J. A. Bagnell, and J. Peters, \"Reinforcement learning in robotics: A survey,\" International Journal of Robotics Research, vol. 32, no. 11, pp. 1238-1274, 2013. [3] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, \"Proximal policy optimization algorithms,\" arXiv:1707.06347, 2017.[4] T. Haarnoja, A. Zhou, P. Abbeel, and S. Levine, \"Soft actor-critic: Off-"
+    },
+    {
+      "index": 9,
+      "section": "Appendix B  Experiment Coverage",
+      "text": "RobotPPOSACTD3Total analysableA18008ANYmal100010Go14329Valkyrie3317"
+    },
+    {
+      "index": 10,
+      "section": "Appendix D  Full Run Index",
+      "text": "RunRobotAlgorithmEnvsBest rewardEpisode length% of capPeak steps/s20260713-083121ANYmalPPO512137.0165.916.6%2,09520260713-084227ANYmalPPO256193.4222.222.2%73820260717-093639ANYmalPPO256159.1195.419.5%1,20720260717-093932ANYmalPPO256518.0659.465.9%3,57220260717-102543ANYmalPPO2048769.8954.695.5%21,05620260717-110526ANYmalPPO128738.2771.677.2%59120260722-133515ANYmalPPO2048144.0170.517.0%5,58220260722-140347ANYmalPPO1024174.6219.722.0%2,04720260722-141517ANYmalPPO102493.1112.011.2%4,74520260722-14"
+    },
+    {
+      "index": 11,
+      "section": "Appendix E  Compute Environment and Reproduction Notes",
+      "text": "ComponentVersion or specificationGPUOne NVIDIA RTX 5000Isaac Sim6.0.1-rc.7Isaac Lab3.0.0-beta2 (`v3.0.0-beta2.patch1`)Physics backendNewton (replaces `omni.physics.tensors` from Isaac Sim 6.0)Isaac Sim Python3.12, bundled with Isaac SimApplication Python3.12, project virtual environmentInspection simulatorPyBullet, headlessBackendFastAPIDesktop clientFlutterEpisode cap1,000 steps"
+    }
+  ],
+  "table_summaries_b": [
+    {
+      "index": 1,
+      "section": "Front matter",
+      "text": "TermMeaningAPIApplication Programming InterfaceASTAbstract Syntax TreeDRLDeep Reinforcement LearningGPUGraphics Processing UnitLLMLarge Language ModelPPOProximal Policy OptimisationRESTRepresentational State TransferRLReinforcement LearningSACSoft Actor-CriticTD3Twin Delayed Deep Deterministic Policy GradientUIUser InterfaceURDFUniversal Robot Description FormatUSDUniversal Scene Description"
+    },
+    {
+      "index": 2,
+      "section": "1.4 Research questions",
+      "text": "IDResearch questionRQ1How can a no-code interface translate a URDF and a natural-language goal into a valid RL configuration while retaining human oversight?RQ2To what extent can morphology-derived configuration and expression rewards support different robot bodies without robot-specific application logic?RQ3How do PPO, SAC and TD3 differ across quadruped and humanoid locomotion experiments?RQ4How do parallel environment count and robot complexity affect GPU simulation throughput?"
+    },
+    {
+      "index": 3,
+      "section": "2.2 The three learners: PPO, SAC and TD3",
+      "text": "AlgorithmLearning styleReason for inclusionObserved project rolePPOOn-policy, stochasticCommon locomotion baseline; stable implementationStrong quadruped results; weak Valkyrie survivalSACOff-policy, maximum entropyExploration and sample reuse in continuous controlBest Go1 and Valkyrie policiesTD3Off-policy, deterministicTests whether twin critics reduce overestimationStrong Go1 result; Valkyrie later diverged"
+    },
+    {
+      "index": 4,
+      "section": "2.12 Where EasyRTG sits",
+      "text": "PlatformRobot importTraining interfaceReward authoringPrimary trade-offGazebo/ROSRich model ecosystemProgrammaticController/environment codeBroad robotics integration; substantial setupUnity ML-AgentsScene/component basedUnity + PythonAgent scripts and trainer configFlexible visuals; engine-specific authoringIsaac LabUSD/URDF workflowsPython/configurationEnvironment/reward codeHigh throughput; expert-orientedUnity RL PlaygroundImported mobile robotsOne-click task workflowTask frameworkClosest ac"
+    },
+    {
+      "index": 5,
+      "section": "3.3 Functional and non-functional requirements",
+      "text": "IDRequirementVerification evidenceFR1Load and inspect an arbitrary URDF robotRobot panel, morphology tests, A1/ANYmal/Go1/ValkyrieFR2Create observations, actions, rewards and terminations without editing codeConfig panels and expression editorFR3Let an assistant propose and apply configuration through toolsAgent toolbox and confirmation gatesFR4Launch and monitor GPU-parallel trainingIsaac worker and telemetry chartsFR5Replay and compare completed policiesEvaluation worker, videos and run archiv"
+    },
+    {
+      "index": 6,
+      "section": "5.3 Key engineering decisions",
+      "text": "DecisionAlternative encounteredReason retainedTwo simulation lanesUse PyBullet for everythingFast inspection stays lightweight; Isaac provides training throughputExpression rewardsFixed catalogue or arbitrary PythonMore behaviours than a catalogue; safer and more portable than execURDF-derived morphologyJoint-name heuristicsSupports unfamiliar naming and robot-relative measurementsSubprocess Isaac workerEmbed Isaac in FastAPIIsaac uses its own Python and runtime, and can fail without taking the "
+    },
+    {
+      "index": 7,
+      "section": "6.2 Fleet-level results",
+      "text": "RobotAlgorithmBest rewardEpisode length% of capPeak steps/sA1PPO4,767.0967.596.8%32,056.8ANYmalPPO769.8954.695.5%21,055.5Go1PPO2,073.9962.796.3%27,500.0Go1SAC2,250.11000.0100.0%27,840.3Go1TD32,112.7990.999.1%28,975.6ValkyriePPO276.1204.220.4%14,280.0ValkyrieSAC1,283.8821.082.1%11,171.6ValkyrieTD3287.0206.220.6%14,388.8"
+    },
+    {
+      "index": 8,
+      "section": "Bibliography",
+      "text": "[1] R. S. Sutton and A. G. Barto, Reinforcement Learning: An Introduction, 2nd ed., Cambridge, MA: MIT Press, 2018. [2] J. Kober, J. A. Bagnell, and J. Peters, \"Reinforcement learning in robotics: A survey,\" International Journal of Robotics Research, vol. 32, no. 11, pp. 1238-1274, 2013. [3] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, \"Proximal policy optimization algorithms,\" arXiv:1707.06347, 2017.[4] T. Haarnoja, A. Zhou, P. Abbeel, and S. Levine, \"Soft actor-critic: Off-"
+    },
+    {
+      "index": 9,
+      "section": "Appendix B  Experiment Coverage",
+      "text": "RobotPPOSACTD3Total analysableA18008ANYmal100010Go14329Valkyrie3317"
+    },
+    {
+      "index": 10,
+      "section": "Appendix D  Full Run Index",
+      "text": "RunRobotAlgorithmEnvsBest rewardEpisode length% of capPeak steps/s20260713-083121ANYmalPPO512137.0165.916.6%2,09520260713-084227ANYmalPPO256193.4222.222.2%73820260717-093639ANYmalPPO256159.1195.419.5%1,20720260717-093932ANYmalPPO256518.0659.465.9%3,57220260717-102543ANYmalPPO2048769.8954.695.5%21,05620260717-110526ANYmalPPO128738.2771.677.2%59120260722-133515ANYmalPPO2048144.0170.517.0%5,58220260722-140347ANYmalPPO1024174.6219.722.0%2,04720260722-141517ANYmalPPO102493.1112.011.2%4,74520260722-14"
+    },
+    {
+      "index": 11,
+      "section": "Appendix E  Compute Environment and Reproduction Notes",
+      "text": "ComponentVersion or specificationGPUOne NVIDIA RTX 5000Isaac Sim6.0.1-rc.7Isaac Lab3.0.0-beta2 (`v3.0.0-beta2.patch1`)Physics backendNewton (replaces `omni.physics.tensors` from Isaac Sim 6.0)Isaac Sim Python3.12, bundled with Isaac SimApplication Python3.12, project virtual environmentInspection simulatorPyBullet, headlessBackendFastAPIDesktop clientFlutterEpisode cap1,000 steps"
+    }
+  ],
+  "drawing_summaries_a": [
+    {
+      "index": 1,
+      "section": "Front matter",
+      "text": ""
+    },
+    {
+      "index": 2,
+      "section": "1.1 Project motivation",
+      "text": ""
+    },
+    {
+      "index": 3,
+      "section": "4.1 Architectural overview",
+      "text": ""
+    },
+    {
+      "index": 4,
+      "section": "4.4 Assistant and human oversight",
+      "text": ""
+    },
+    {
+      "index": 5,
+      "section": "5.2 Milestone history",
+      "text": ""
+    },
+    {
+      "index": 6,
+      "section": "6.2 Fleet-level results",
+      "text": ""
+    },
+    {
+      "index": 7,
+      "section": "6.3 What the reward actually paid for",
+      "text": ""
+    },
+    {
+      "index": 8,
+      "section": "6.4 Throughput and the GPU lane",
+      "text": ""
+    },
+    {
+      "index": 9,
+      "section": "6.6 Go1: three learners, one solved robot",
+      "text": ""
+    },
+    {
+      "index": 10,
+      "section": "6.7 Go1 walking and galloping",
+      "text": ""
+    },
+    {
+      "index": 11,
+      "section": "6.8 Valkyrie: a controlled algorithm comparison",
+      "text": ""
+    },
+    {
+      "index": 12,
+      "section": "6.8 Valkyrie: a controlled algorithm comparison",
+      "text": ""
+    },
+    {
+      "index": 13,
+      "section": "6.8 Valkyrie: a controlled algorithm comparison",
+      "text": ""
+    },
+    {
+      "index": 14,
+      "section": "Appendix C  Supplementary Figures",
+      "text": ""
+    },
+    {
+      "index": 15,
+      "section": "Appendix C  Supplementary Figures",
+      "text": ""
+    },
+    {
+      "index": 16,
+      "section": "Appendix C  Supplementary Figures",
+      "text": ""
+    },
+    {
+      "index": 17,
+      "section": "Appendix C  Supplementary Figures",
+      "text": ""
+    }
+  ],
+  "drawing_summaries_b": [
+    {
+      "index": 1,
+      "section": "Front matter",
+      "text": ""
+    },
+    {
+      "index": 2,
+      "section": "1.1 Project motivation",
+      "text": ""
+    },
+    {
+      "index": 3,
+      "section": "4.1 Architectural overview",
+      "text": ""
+    },
+    {
+      "index": 4,
+      "section": "4.4 Assistant and human oversight",
+      "text": ""
+    },
+    {
+      "index": 5,
+      "section": "5.2 Milestone history",
+      "text": ""
+    },
+    {
+      "index": 6,
+      "section": "6.2 Fleet-level results",
+      "text": ""
+    },
+    {
+      "index": 7,
+      "section": "6.3 What the reward actually paid for",
+      "text": ""
+    },
+    {
+      "index": 8,
+      "section": "6.4 Throughput and the GPU lane",
+      "text": ""
+    },
+    {
+      "index": 9,
+      "section": "6.6 Go1: three learners, one solved robot",
+      "text": ""
+    },
+    {
+      "index": 10,
+      "section": "6.7 Go1 walking and galloping",
+      "text": ""
+    },
+    {
+      "index": 11,
+      "section": "6.8 Valkyrie: a controlled algorithm comparison",
+      "text": ""
+    },
+    {
+      "index": 12,
+      "section": "6.8 Valkyrie: a controlled algorithm comparison",
+      "text": ""
+    },
+    {
+      "index": 13,
+      "section": "6.8 Valkyrie: a controlled algorithm comparison",
+      "text": ""
+    },
+    {
+      "index": 14,
+      "section": "Appendix C  Supplementary Figures",
+      "text": ""
+    },
+    {
+      "index": 15,
+      "section": "Appendix C  Supplementary Figures",
+      "text": ""
+    },
+    {
+      "index": 16,
+      "section": "Appendix C  Supplementary Figures",
+      "text": ""
+    },
+    {
+      "index": 17,
+      "section": "Appendix C  Supplementary Figures",
+      "text": ""
+    }
+  ],
+  "changed_text_count_common_ids": 9,
+  "changed_style_count_common_ids": 0,
+  "changed_paragraph_properties_count_common_ids": 1,
+  "changed_run_properties_count_common_ids": 25,
+  "changed_text_by_section": {
+    "4.4 Assistant and human oversight": 1,
+    "4.5 Training, monitoring and evaluation": 1,
+    "5.2 Milestone history": 1,
+    "5.4 Security and reliability improvements": 1,
+    "5.5 Role of generative AI in the development process": 1,
+    "6.9 Functional verification": 1,
+    "7.2 What the project learned about abstraction": 1,
+    "7.4 Practical and academic significance": 1,
+    "Appendix E  Compute Environment and Reproduction Notes": 1
+  },
+  "changed_paragraphs_by_section_sequence": {
+    "2.11 Unity RL Playground: the closest accessibility claim": 1,
+    "3.5 Software verification": 1,
+    "4.4 Assistant and human oversight": 2,
+    "4.5 Training, monitoring and evaluation": 2,
+    "5.1 From proposal to working system": 2,
+    "5.2 Milestone history": 5,
+    "5.4 Security and reliability improvements": 1,
+    "5.5 Role of generative AI in the development process": 2,
+    "6.2 Fleet-level results": 2,
+    "6.5 How long learning took": 2,
+    "6.7 Go1 walking and galloping": 2,
+    "6.8 Valkyrie: a controlled algorithm comparison": 2,
+    "6.9 Functional verification": 2,
+    "7.1 Answering the research questions": 4,
+    "7.2 What the project learned about abstraction": 2,
+    "7.4 Practical and academic significance": 2,
+    "8.1 Conclusion": 6,
+    "8.2 Future work": 3,
+    "Appendix E  Compute Environment and Reproduction Notes": 2
+  },
+  "style_changes": [],
+  "position_style_changes": [
+    {
+      "index": 492,
+      "section": "7.1 Answering the research questions",
+      "a_style": "Normal",
+      "b_style": "Heading2",
+      "a_text": "RQ1: configuration with human oversight. EasyRTG breaks configuration into structural checks, relative calibration, and reward writing against an approved vocabulary. Compiling and auditing occur automatically before any tool runs. Users do not edit the underlying environment source code at all. A comparative user study measuring time savings has not yet been conducted.",
+      "b_text": "RQ1: With human supervision configuration. EasyRTG splits configuration up into: structural checks, relative calibration and writing rewards on a ratified word stock. Compiling and auditing is performed automatically, prior to any tool running. The user does not modify in any way the source code of the underlying environment. A comparative user study, measurement of time savings, has not yet been conducted."
+    },
+    {
+      "index": 493,
+      "section": "7.1 Answering the research questions",
+      "a_style": "Normal",
+      "b_style": "Heading2",
+      "a_text": "RQ2: applicability across robot bodies. Treating morphology and state terms as dimensionless values allows one pipeline to generate viable policies for the A1, ANYmal, and Go1 quadrupeds alongside the Valkyrie humanoid. This approach removes fixed geometric constraints that typically constrain standard simulation pipelines. The test results confirm it functions correctly across these specific URDF models. It cannot however support manipulators or wheeled robots without significant architectural changes.",
+      "b_text": "RQ2: applicability with respect to robot bodies. By using the terms of morphology and state as dimensionless values, one pipeline can be used to create policies for the A1 quadruped, the ANYmal quadruped, the Go1 quadruped and the Valkyrie humanoid. This method does away with the rigid geometric restrictions that are typically associated with conventional simulation pipelines. The test results indicate that it works in these particular URDF models. However, without major architectural changes it cannot be used to support manipulators or wheeled robots."
+    },
+    {
+      "index": 494,
+      "section": "7.1 Answering the research questions",
+      "a_style": "Normal",
+      "b_style": "Heading2",
+      "a_text": "RQ3: differences between learners. All three algorithms produced nearly identical performance caps when controlling the Go1 quadruped. PPO, SAC, and TD3 showed negligible variance in final reward values within that specific environment. The Valkyrie results tell a different story entirely. SAC became the only viable option for that platform while neither PPO nor TD3 achieved stable gait patterns. Uneven algorithm coverage and incomplete hyperparameter tuning weaken these conclusions.",
+      "b_text": "RQ3: Differences between Learners. Almost identical performance limits were achieved by all three algorithms in the control of the Go1 quadruped. PPO, SAC and TD3 had very little deviation in the final values of the rewards in that environment. It's a different story when it comes to the Valkyrie results. SAC was the sole stable gait pattern achieved on that platform with PPO and TD3 not producing stable gait patterns. Conclusions are hindered by the lack of even distribution of algorithms and by inadequate hyperparameter tuning."
+    },
+    {
+      "index": 495,
+      "section": "7.1 Answering the research questions",
+      "a_style": "Normal",
+      "b_style": "Heading2",
+      "a_text": "RQ4: simulation throughput. Parallel environments allowed throughput to scale until robot physics created a hard ceiling. A single GPU processed 32,056 steps per second across 4,096 environments for the A1 configuration. Valkyrie performed below that threshold due to increased rigid-body solver latency from its mass and joint count. These figures align with the architectural shifts toward Isaac detailed in Section 5.2, which matches GPU simulation benchmarks published by Castano [10] and Garcia [13].",
+      "b_text": "RQ4: simulation throughput. Throughput was increased up until a hard ceiling arose from robot physics – using parallel environments. For the A1 configuration, a single GPU processed 32,056 steps per second, in 4,096 environments. Valkyrie was below that because of the higher number of masses and joints that it has. The numbers correspond to the architectural changes with respect to Isaac presented in Section 5.2, and are similar to the GPU simulation benchmarks provided by Castano [10] and Garcia [13]."
+    },
+    {
+      "index": 515,
+      "section": "8.1 Conclusion",
+      "a_style": "Normal",
+      "b_style": "Heading2",
+      "a_text": "This work establishes an integrated desktop platform enabling users to import a URDF robot, define a locomotion task in natural language, and train reinforcement learning policies without writing low-level simulator scripts. All five primary objectives outlined in Chapter 1 were satisfied.",
+      "b_text": "This work brings together an integrated desktop platform for taking in one URDF robot file and outputting one locomotion task in natural language, and for training RL policies directly without having to write low level simulator scripts. Each of the five main goals listed in Chapter 1 were met."
+    },
+    {
+      "index": 516,
+      "section": "8.1 Conclusion",
+      "a_style": "Normal",
+      "b_style": "Heading2",
+      "a_text": "The system relies on a Flutter frontend, a FastAPI-orchestrated backend, PyBullet-based parameter inspection, and training within the NVIDIA Isaac Sim simulator using GPU hardware to autonomously extract motion physics directly from the URDF tree. Rewards are captured and audited as evaluated mathematical expressions via an established vocabulary facilitated by an LLM operating under strictly confined user validation protocols. The complete application underwent analysis across thirty-four Isaac Sim runs utilising four distinct robot families and three continuous-control algorithms.",
+      "b_text": "It involves autonomously extracting motion physics from the URDF tree, using NVIDIA Isaac Sim simulator on GPU hardware for training, PyBullet for parameter inspection and a Flutter frontend, and a FastAPI-orchestrated backend. Rewards are expressed using a limited set of vocabulary (assessed math expressions are validated) and an LLM (under user validation process). All the application was analysed using the Isaac Sim running 34 times with four different families of robots and three different continuous control algorithms."
+    },
+    {
+      "index": 517,
+      "section": "8.1 Conclusion",
+      "a_style": "Normal",
+      "b_style": "Heading2",
+      "a_text": "Three significant outcomes defined the experimental trials. Parallel execution on the GPU eliminated the CPU bottleneck for multi-platform learning, achieving a peak throughput of 32,056.8 environment steps per second at a single workstation level using an RTX 5000 GPU. For quadruped models such as the Go1, learner selection exerted minimally significant influence over final outcomes; PPO, SAC, and TD3 achieved greater than ninety-six percent survival episodes and converged upon comparable reward scores. Conversely, algorithm choice directly dictated training viability on higher-dimensional platforms like the Valkyrie humanoid. SAC emerged as the solitary method maintaining stable balance throughout its simulation, reaching an eighty-two point one percent survival score while PPO and TD3 plateaued at twenty percent, with TD3 subsequently degrading into numerical instability.",
+      "b_text": "There were three significant outcomes of the experimental trials. In the case of multi-platform learning, the CPU was eliminated as the learning process' bottleneck, and parallel execution on the GPU was used, where the maximum throughput at the single workstation level with the RTX 5000 GPU was 32,056.8 environment steps per second. The impact of learner selection was at best weakly significant for quadrupedal models such as the Go1 and all three models (PPO, SAC, TD3) achieved a high number of survival episodes with over ninety six percent and converged to similar reward scores. Conversely, algorithm choice was a direct contributor to the training viability of more dimensional platforms, like the Valkyrie humanoid. Among the three methods, only SAC maintained the stable balance throughout the entire simulation and resulted in an eighty two point one percent survival rate, whereas PPO and TD3 had a maximum of twenty percent survival rates but then became numerically unstable at later stages."
+    },
+    {
+      "index": 518,
+      "section": "8.1 Conclusion",
+      "a_style": "Normal",
+      "b_style": "Heading2",
+      "a_text": "The engineering process was fundamentally driven by mitigating failures encountered during iterative integration. Initial challenges necessitated the inclusion of robot-relative floor-falling terminations, while fragile rule-based naming conventions were discarded in favour of a robust kinematic tree traversal mechanism. Directories and safety concerns regarding arbitrary Python execution mandated an AST expression compiler, whereas galloping traversal conditions informed the explicit modelling of foot surface contact states within Isaac Sim.",
+      "b_text": "The iterative integration was mediated by means of failure, as the engineering process was motivated primarily in this way. At first, it was necessary to introduce the robot relative floor falling terminations and to give up fragile rule based naming, in favour of a more powerful traversal mechanism of kinematic tree. The galloping traversal conditions led to the need for explicit foot surface contact states modelling in Isaac Sim; Directories and safety issues around arbitrary Python execution necessitated the need for an AST expression compiler."
+    },
+    {
+      "index": 519,
+      "section": "8.1 Conclusion",
+      "a_style": "Normal",
+      "b_style": "Heading2",
+      "a_text": "A notable limitation arose during the Go1 galloping test, where imprecise reward specifications drove TD3 to emulate a rapid trot movement. This unintended locomotion mode accumulated exceptionally high scalar rewards, causing the platform to entirely omit required airtime during its motion phase. The experiment confirms that unconstrained total reward volumes serve insufficiently as indicators of actual movement behaviour; without monitoring contact signals, episode length, and preliminary videos, unregulated reward accumulation remains practically insignificant. Finally, while the internal AI assistant frequently achieved functional reward functions from natural language inputs, it nonetheless requires a significantly expanded validation set to guarantee robustness in complex engineering scenarios.",
+      "b_text": "One note was that TD3 was not sufficiently \"rewarded\" with the Go1 galloping test and so it was emulating a fast trot gait. This also received an unwanted locomotion mode, and the platform failed to reach required height of airtime during the locomotion phase, which was also given very high scalar reward. As demonstrated in this experiment, unconstrained total reward volumes are not sufficient on their own to indicate the actual movement behaviour – if it is not monitored using contact signals and episode length and seen from the preliminary videos, it is of little consequence. Lastly, although the internal AI assistant was able to sometimes successfully produce functional reward functions from natural language input, it still needs a much larger validation set to ensure it is robust in complex engineering situations."
+    },
+    {
+      "index": 520,
+      "section": "8.1 Conclusion",
+      "a_style": "Normal",
+      "b_style": "Heading2",
+      "a_text": "The application evolved from its initial CPU-based conceptualisation into a fully operational pipeline. This progression demonstrates that robotic locomotion, reward design, and GPU-assisted training can be consolidated into a single no-code desktop platform while maintaining strict user oversight.",
+      "b_text": "The application started as a CPU-based conceptual application, and was developed into an actual pipeline. This route indicates that, this can be combined with a single no code desktop platform, under strict supervision of the users, by incorporating the parts of the robots locomotion, reward design and training by using a GPU."
+    }
+  ],
+  "changed_text": [
+    {
+      "para_id": "14AA345C",
+      "a_index": 337,
+      "b_index": 337,
+      "section": "4.4 Assistant and human oversight",
+      "a_style": "Normal",
+      "b_style": "Normal",
+      "a_text": "Tools that change configuration or control runs remain subject to explicit user approval. This design follows human-AI interaction guidance that recommends communicating system capabilities, making changes visible and preserving correction or undo [26]. The approval step introduces friction, but ensures that consequential actions remain reviewable and recoverable.",
+      "b_text": "Tools that change configuration or control runs continue to be subject to explicit approval from the user. This design has been inspired by human-AI interaction guidance to communicate the capabilities of the system, to make changes visible and to keep the possibility of correction or undo [26]. The approval process adds friction, and makes sure that actions that follow are reviewable and reversible."
+    },
+    {
+      "para_id": "2C9B24C4",
+      "a_index": 342,
+      "b_index": 342,
+      "section": "4.5 Training, monitoring and evaluation",
+      "a_style": "Normal",
+      "b_style": "Normal",
+      "a_text": "Retained evidence is required because a reward curve cannot show whether a humanoid is walking forward, drifting sideways or merely remaining upright. The interpretation of several experiments in Chapter 6 depends on the saved configuration, term-level telemetry and recorded video. Run provenance is therefore part of the evaluation mechanism rather than only a storage feature.",
+      "b_text": "Evidence must be retained because without it, a reward curve cannot indicate if a humanoid is walking forward, drifting sideways or simply standing upright. The interpretation of several experiments in Chapter 6 relies on the use of the saved configuration, telemetry at the term level and recorded video. So run provenance is a feature of the evaluation mechanism as well as a feature for storage."
+    },
+    {
+      "para_id": "5CA1F659",
+      "a_index": 354,
+      "b_index": 354,
+      "section": "5.2 Milestone history",
+      "a_style": "Normal",
+      "b_style": "Normal",
+      "a_text": "Later work focused on interface refinement and error handling. The 30 July commit 'Stop expressions written against observation names from being saved' followed an authoring error and added a further validation boundary. Interface refinement continued until the 7 August commit 'most stable and clean ui'. Commits on 14 August reorganised the architecture notes and updated the presentation and README. Additional run directories created on 18 August expanded the analysable dataset beyond the values reported in the earlier presentation.",
+      "b_text": "Subsequent work was on interface refinement and error handling. The commit on 30 July \"Stop expressions written against observation names from being saved\" was a result of a authoring mistake and provided an additional validation boundary. Changes to the interface were still made up to the 7 August commit 'most stable and clean ui'. On 14th August commits were made to reorganise the architecture notes and update the presentation and README. Additional run directories were created on 18 August, increasing the number of runs which can be analysed."
+    },
+    {
+      "para_id": "4926755D",
+      "a_index": 381,
+      "b_index": 381,
+      "section": "5.4 Security and reliability improvements",
+      "a_style": "Normal",
+      "b_style": "Normal",
+      "a_text": "A no-code interface increases the user's dependence on application-level safeguards. Security and reliability are therefore part of the system design. An internal assessment identified unsafe pickle loading, arbitrary custom reward execution, ungated assistant changes and permissive CORS settings. The highest-priority issues were addressed during July. In particular, the custom-Python reward path was removed rather than protected through an expanding denylist; the expression compiler now excludes dangerous syntax by construction. Training, tuning and evaluation workers also check for conflicting jobs, and the desktop launcher will terminate only the backend process that it started.",
+      "b_text": "A no code interface makes the user more reliant on application level security. Hence as part of the system design, security and reliability are also considered. An internal evaluation has pointed out unsafe pickle loading, arbitrary execution of custom rewards, ungated assistant changes and permissive CORS settings. July was used to solve issues that were prioritized the most. Specifically, the custom-Python reward path was removed and not protected by a growing denylist; dangerous syntax is no longer allowed by the expression compiler. There are also conflicting jobs checks performed by training, tuning and evaluation workers and the desktop launcher will only kill the backend process it started."
+    },
+    {
+      "para_id": "4A931B4F",
+      "a_index": 384,
+      "b_index": 384,
+      "section": "5.5 Role of generative AI in the development process",
+      "a_style": "Normal",
+      "b_style": "Normal",
+      "a_text": "OpenAI Codex was introduced only after the application and evaluation evidence had been produced. It was used to restyle my original report material and to improve document formatting. It did not contribute to the EasyRTG application code, run the experiments or determine the findings. This separation is important because the software-development evidence in this chapter records my decisions and Claude-assisted implementation, whereas the final wording of the report is substantially Codex-assisted.",
+      "b_text": "The application and evidence of evaluation has been completed even before the launch of OpenAI Codex. It was used to rework my original report material, and to enhance document formatting. It didn't help with the development of EasyRTG's applications, or the running of experiments, or the conclusions. Significant about this separation is the software-development evidence in this chapter is mine and Claude's; the wording of the report is much more Codex's, though."
+    },
+    {
+      "para_id": "1F125F6B",
+      "a_index": 489,
+      "b_index": 489,
+      "section": "6.9 Functional verification",
+      "a_style": "Normal",
+      "b_style": "Normal",
+      "a_text": "Neither form of evidence is sufficient in isolation. A visually convincing gait does not guarantee configuration safety, and passing standard checks offers no way to determine whether the output produces useful locomotion or something fundamentally unstable. The galloping result from Section 6.7 demonstrates this clearly, it satisfied every software check yet produced an unintended gait pattern rather than a functional motion. This gap between automated verification and behavioural evaluation confirms that both are required at once.",
+      "b_text": "Both types of evidence are needed alone to be sufficient. Visual realism of gait does not imply gait-safety, and standard gait checks will not reveal if the gait produced by the output is an effective gait or whether it is fundamentally unsafe. This is evident in the galloping result from Section 6.7 which passed all the software tests, but generated an unintended gait pattern instead of a functional gait. This difference between automated verification and behavioural evaluation is a testament to the need for both at the same time."
+    },
+    {
+      "para_id": "66E649B5",
+      "a_index": 498,
+      "b_index": 498,
+      "section": "7.2 What the project learned about abstraction",
+      "a_style": "Normal",
+      "b_style": "Normal",
+      "a_text": "Defining the precise scope of the assistant proved significantly more difficult. The system generates configuration files that must pass validation before execution, functioning strictly as a drafting tool within a framework of human oversight. Project findings rely on concrete metrics, specifically six pre-telemetry failures alongside dozens of short-lived policies. Language models simplify the initial setup phase but cannot replace expert diagnosis; investigation into the Valkyrie TD3 failure confirmed that automated tools miss critical physics errors, ultimately requiring manual inspection of the URDF file.",
+      "b_text": "It was much harder to define exactly what the assistant could do. The system produces configuration files which are then validated prior to being executed and thus remain a drafting tool under human control. Project results are based on hard data, such as six failures before the telemetry and a number of short-term policies. Although language models can help with the initial setup process, they don't provide expert diagnosis: investigation into the Valkyrie TD3 failure revealed that automated tools missed key physics mistakes, and the final conclusion was to manually check the URDF file."
+    },
+    {
+      "para_id": "0E936687",
+      "a_index": 512,
+      "b_index": 512,
+      "section": "7.4 Practical and academic significance",
+      "a_style": "Normal",
+      "b_style": "Normal",
+      "a_text": "The project does not demonstrate that robot learning has become effortless. Its more defensible contribution is that important configuration decisions are made visible, reviewable and repeatable. When a decision is incorrect, as in the galloping reward, the retained evidence makes the error identifiable.",
+      "b_text": "The project does not reflect the simplicity of robot learning. An important contribution it makes is that important configuration decisions are made visible, reviewable and repeatable. Evidence is kept and is evident of the wrong decision (for example the galloping reward)."
+    },
+    {
+      "para_id": "543BA9A1",
+      "a_index": 957,
+      "b_index": 956,
+      "section": "Appendix E  Compute Environment and Reproduction Notes",
+      "a_style": "Normal",
+      "b_style": "Normal",
+      "a_text": "",
+      "b_text": "There are three more conditions on reproduction. Firstly, throughputs are peak measurements, not average ones, and depend on the number of environments. Second, the two 16-environment runs are NOT failed training runs, but instead are diagnostic runs. Third, all figures are re-generated by scripts/make_report_figures.py, a process that is triggered by adding a run and running the scripts that make figures and documents; this means that the reported evidence will be updated without having to edit figures by hand."
+    }
+  ],
+  "sequence_opcodes": [
+    {
+      "tag": "replace",
+      "a_range": [
+        246,
+        247
+      ],
+      "b_range": [
+        246,
+        247
+      ],
+      "a_count": 1,
+      "b_count": 1,
+      "a_sections": [
+        "2.11 Unity RL Playground: the closest accessibility claim"
+      ],
+      "b_sections": [
+        "2.11 Unity RL Playground: the closest accessibility claim"
+      ],
+      "a_styles": {
+        "Normal": 1
+      },
+      "b_styles": {
+        "Normal": 1
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        322,
+        323
+      ],
+      "b_range": [
+        322,
+        323
+      ],
+      "a_count": 1,
+      "b_count": 1,
+      "a_sections": [
+        "3.5 Software verification"
+      ],
+      "b_sections": [
+        "3.5 Software verification"
+      ],
+      "a_styles": {
+        "Normal": 1
+      },
+      "b_styles": {
+        "Normal": 1
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        336,
+        338
+      ],
+      "b_range": [
+        336,
+        338
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "4.4 Assistant and human oversight"
+      ],
+      "b_sections": [
+        "4.4 Assistant and human oversight"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        341,
+        343
+      ],
+      "b_range": [
+        341,
+        343
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "4.5 Training, monitoring and evaluation"
+      ],
+      "b_sections": [
+        "4.5 Training, monitoring and evaluation"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        345,
+        347
+      ],
+      "b_range": [
+        345,
+        347
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "5.1 From proposal to working system"
+      ],
+      "b_sections": [
+        "5.1 From proposal to working system"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        350,
+        355
+      ],
+      "b_range": [
+        350,
+        355
+      ],
+      "a_count": 5,
+      "b_count": 5,
+      "a_sections": [
+        "5.2 Milestone history"
+      ],
+      "b_sections": [
+        "5.2 Milestone history"
+      ],
+      "a_styles": {
+        "Normal": 5
+      },
+      "b_styles": {
+        "Normal": 5
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        381,
+        382
+      ],
+      "b_range": [
+        381,
+        382
+      ],
+      "a_count": 1,
+      "b_count": 1,
+      "a_sections": [
+        "5.4 Security and reliability improvements"
+      ],
+      "b_sections": [
+        "5.4 Security and reliability improvements"
+      ],
+      "a_styles": {
+        "Normal": 1
+      },
+      "b_styles": {
+        "Normal": 1
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        383,
+        385
+      ],
+      "b_range": [
+        383,
+        385
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "5.5 Role of generative AI in the development process"
+      ],
+      "b_sections": [
+        "5.5 Role of generative AI in the development process"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        448,
+        450
+      ],
+      "b_range": [
+        448,
+        450
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "6.2 Fleet-level results"
+      ],
+      "b_sections": [
+        "6.2 Fleet-level results"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        462,
+        464
+      ],
+      "b_range": [
+        462,
+        464
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "6.5 How long learning took"
+      ],
+      "b_sections": [
+        "6.5 How long learning took"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        474,
+        476
+      ],
+      "b_range": [
+        474,
+        476
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "6.7 Go1 walking and galloping"
+      ],
+      "b_sections": [
+        "6.7 Go1 walking and galloping"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        482,
+        484
+      ],
+      "b_range": [
+        482,
+        484
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "6.8 Valkyrie: a controlled algorithm comparison"
+      ],
+      "b_sections": [
+        "6.8 Valkyrie: a controlled algorithm comparison"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        488,
+        490
+      ],
+      "b_range": [
+        488,
+        490
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "6.9 Functional verification"
+      ],
+      "b_sections": [
+        "6.9 Functional verification"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        492,
+        496
+      ],
+      "b_range": [
+        492,
+        496
+      ],
+      "a_count": 4,
+      "b_count": 4,
+      "a_sections": [
+        "7.1 Answering the research questions"
+      ],
+      "b_sections": [
+        "RQ1: With human supervision configuration. EasyRTG splits configuration up into: structural checks, relative calibration and writing rewards on a ratified word stock. Compiling and auditing is performed automatically, prior to any tool running. The user does not modify in any way the source code of the underlying environment. A comparative user study, measurement of time savings, has not yet been conducted.",
+        "RQ2: applicability with respect to robot bodies. By using the terms of morphology and state as dimensionless values, one pipeline can be used to create policies for the A1 quadruped, the ANYmal quadruped, the Go1 quadruped and the Valkyrie humanoid. This method does away with the rigid geometric restrictions that are typically associated with conventional simulation pipelines. The test results indicate that it works in these particular URDF models. However, without major architectural changes it cannot be used to support manipulators or wheeled robots.",
+        "RQ3: Differences between Learners. Almost identical performance limits were achieved by all three algorithms in the control of the Go1 quadruped. PPO, SAC and TD3 had very little deviation in the final values of the rewards in that environment. It's a different story when it comes to the Valkyrie results. SAC was the sole stable gait pattern achieved on that platform with PPO and TD3 not producing stable gait patterns. Conclusions are hindered by the lack of even distribution of algorithms and by inadequate hyperparameter tuning.",
+        "RQ4: simulation throughput. Throughput was increased up until a hard ceiling arose from robot physics – using parallel environments. For the A1 configuration, a single GPU processed 32,056 steps per second, in 4,096 environments. Valkyrie was below that because of the higher number of masses and joints that it has. The numbers correspond to the architectural changes with respect to Isaac presented in Section 5.2, and are similar to the GPU simulation benchmarks provided by Castano [10] and Garcia [13]."
+      ],
+      "a_styles": {
+        "Normal": 4
+      },
+      "b_styles": {
+        "Heading2": 4
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        497,
+        499
+      ],
+      "b_range": [
+        497,
+        499
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "7.2 What the project learned about abstraction"
+      ],
+      "b_sections": [
+        "7.2 What the project learned about abstraction"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        511,
+        513
+      ],
+      "b_range": [
+        511,
+        513
+      ],
+      "a_count": 2,
+      "b_count": 2,
+      "a_sections": [
+        "7.4 Practical and academic significance"
+      ],
+      "b_sections": [
+        "7.4 Practical and academic significance"
+      ],
+      "a_styles": {
+        "Normal": 2
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        515,
+        521
+      ],
+      "b_range": [
+        515,
+        521
+      ],
+      "a_count": 6,
+      "b_count": 6,
+      "a_sections": [
+        "8.1 Conclusion"
+      ],
+      "b_sections": [
+        "It involves autonomously extracting motion physics from the URDF tree, using NVIDIA Isaac Sim simulator on GPU hardware for training, PyBullet for parameter inspection and a Flutter frontend, and a FastAPI-orchestrated backend. Rewards are expressed using a limited set of vocabulary (assessed math expressions are validated) and an LLM (under user validation process). All the application was analysed using the Isaac Sim running 34 times with four different families of robots and three different continuous control algorithms.",
+        "One note was that TD3 was not sufficiently \"rewarded\" with the Go1 galloping test and so it was emulating a fast trot gait. This also received an unwanted locomotion mode, and the platform failed to reach required height of airtime during the locomotion phase, which was also given very high scalar reward. As demonstrated in this experiment, unconstrained total reward volumes are not sufficient on their own to indicate the actual movement behaviour – if it is not monitored using contact signals and episode length and seen from the preliminary videos, it is of little consequence. Lastly, although the internal AI assistant was able to sometimes successfully produce functional reward functions from natural language input, it still needs a much larger validation set to ensure it is robust in complex engineering situations.",
+        "The application started as a CPU-based conceptual application, and was developed into an actual pipeline. This route indicates that, this can be combined with a single no code desktop platform, under strict supervision of the users, by incorporating the parts of the robots locomotion, reward design and training by using a GPU.",
+        "The iterative integration was mediated by means of failure, as the engineering process was motivated primarily in this way. At first, it was necessary to introduce the robot relative floor falling terminations and to give up fragile rule based naming, in favour of a more powerful traversal mechanism of kinematic tree. The galloping traversal conditions led to the need for explicit foot surface contact states modelling in Isaac Sim; Directories and safety issues around arbitrary Python execution necessitated the need for an AST expression compiler.",
+        "There were three significant outcomes of the experimental trials. In the case of multi-platform learning, the CPU was eliminated as the learning process' bottleneck, and parallel execution on the GPU was used, where the maximum throughput at the single workstation level with the RTX 5000 GPU was 32,056.8 environment steps per second. The impact of learner selection was at best weakly significant for quadrupedal models such as the Go1 and all three models (PPO, SAC, TD3) achieved a high number of survival episodes with over ninety six percent and converged to similar reward scores. Conversely, algorithm choice was a direct contributor to the training viability of more dimensional platforms, like the Valkyrie humanoid. Among the three methods, only SAC maintained the stable balance throughout the entire simulation and resulted in an eighty two point one percent survival rate, whereas PPO and TD3 had a maximum of twenty percent survival rates but then became numerically unstable at later stages.",
+        "This work brings together an integrated desktop platform for taking in one URDF robot file and outputting one locomotion task in natural language, and for training RL policies directly without having to write low level simulator scripts. Each of the five main goals listed in Chapter 1 were met."
+      ],
+      "a_styles": {
+        "Normal": 6
+      },
+      "b_styles": {
+        "Heading2": 6
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        522,
+        525
+      ],
+      "b_range": [
+        522,
+        525
+      ],
+      "a_count": 3,
+      "b_count": 3,
+      "a_sections": [
+        "8.2 Future work"
+      ],
+      "b_sections": [
+        "8.2 Future work"
+      ],
+      "a_styles": {
+        "Normal": 3
+      },
+      "b_styles": {
+        "Normal": 3
+      }
+    },
+    {
+      "tag": "replace",
+      "a_range": [
+        955,
+        958
+      ],
+      "b_range": [
+        955,
+        957
+      ],
+      "a_count": 3,
+      "b_count": 2,
+      "a_sections": [
+        "Appendix E  Compute Environment and Reproduction Notes"
+      ],
+      "b_sections": [
+        "Appendix E  Compute Environment and Reproduction Notes"
+      ],
+      "a_styles": {
+        "Normal": 3
+      },
+      "b_styles": {
+        "Normal": 2
+      }
+    }
+  ],
+  "only_a_para_ids": [
+    "0359FB34",
+    "039DC3DF",
+    "047103FC",
+    "0B1FE6E9",
+    "0F69E367",
+    "100AD0F9",
+    "1AD3BD41",
+    "1D5F9F0B",
+    "1E670434",
+    "20D2BFD7",
+    "22EAC684",
+    "2826BDB3",
+    "2BBD7D27",
+    "2C8FEEBC",
+    "2EA33E61",
+    "368797F7",
+    "3730532F",
+    "385626D7",
+    "3A2EBD5B",
+    "3AF46AB8",
+    "3B70E704",
+    "3C3027BB",
+    "4803243B",
+    "48AFE469",
+    "518B1FB9",
+    "5264992C",
+    "53DEAA6E",
+    "565795B2",
+    "5D0B2CF0",
+    "5EB62B32",
+    "63160673",
+    "6A342832",
+    "6EE0F84F",
+    "6FBE3E5A",
+    "7AA63461",
+    "7B15D010",
+    "7BE73A78"
+  ],
+  "only_b_para_ids": [
+    "00086E5E",
+    "000B6F47",
+    "0610BA07",
+    "0BC72720",
+    "0E9BFAC8",
+    "103F80E1",
+    "18134F1D",
+    "1D39BBDE",
+    "20B9A87C",
+    "225FE2D0",
+    "2DD0F54D",
+    "31187DE4",
+    "31F4F3CD",
+    "3264ADBE",
+    "362D39A0",
+    "37CEB772",
+    "3D2A4E15",
+    "44256FF5",
+    "445F5381",
+    "478D9B45",
+    "4ABD5098",
+    "4AE8F68F",
+    "4CAA3CD8",
+    "4E8F14A0",
+    "5015050C",
+    "530DA435",
+    "6193325D",
+    "6322AEA2",
+    "6647ADA7",
+    "664BD3FF",
+    "66DDDA79",
+    "69EBEF12",
+    "6EF07C7A",
+    "7254AA13",
+    "77B91F94",
+    "79CBD30A"
+  ]
+}

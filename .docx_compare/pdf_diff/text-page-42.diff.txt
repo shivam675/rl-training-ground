@@ -1,0 +1,32 @@
+--- A/page-42
++++ B/page-42
+@@ -1,4 +1,14 @@
+ 41
++[5] S. Fujimoto, H. van Hoof, and D. Meger, "Addressing function approximation error in 
++actor-critic methods," in Proceedings of ICML, pp. 1587-1596, 2018. 
++[6] G. Brockman et al., "OpenAI Gym," arXiv:1606.01540, 2016.
++[7] M. Towers et al., "Gymnasium: A standard interface for reinforcement learning 
++environments," arXiv:2407.17032, 2024.
++[8] A. Raffin et al., "Stable-Baselines3: Reliable reinforcement learning implementations," 
++Journal of Machine Learning Research, vol. 22, no. 268, pp. 1-8, 2021. 
++[9] E. Coumans and Y. Bai, "PyBullet, a Python module for physics simulation for games, 
++robotics and machine learning," 2016-2021. [Online]. Available: 
++https://pybullet.org/.
+ [10] V. Makoviychuk et al., "Isaac Gym: High performance GPU-based physics simulation for 
+ robot learning," arXiv:2108.10470, 2021.
+ [11] M. Mittal et al., "Orbit: A unified simulation framework for interactive robot learning 
+@@ -23,14 +33,3 @@
+ [20] A. Juliani et al., "Unity: A general platform for intelligent agents," arXiv:1809.02627, 2020.
+ [21] L. Ye et al., "Unity RL Playground: A versatile reinforcement learning framework for 
+ mobile robots," arXiv:2503.05146, 2025.
+-[22] A. R. Hevner, S. T. March, J. Park, and S. Ram, "Design science in information systems 
+-research," MIS Quarterly, vol. 28, no. 1, pp. 75-105, 2004. 
+-[23] K. Peffers, T. Tuunanen, M. A. Rothenberger, and S. Chatterjee, "A design science 
+-research methodology for information systems research," Journal of Management 
+-Information Systems, vol. 24, no. 3, pp. 45-77, 2007. 
+-[24] Flutter, "Flutter desktop documentation," 2026. [Online]. Available: 
+-https://docs.flutter.dev/platform-integration/desktop.
+-[25] FastAPI, "FastAPI documentation," 2026. [Online]. Available: 
+-https://fastapi.tiangolo.com/.
+-[26] S. Amershi et al., "Guidelines for human-AI interaction," in Proceedings of CHI, paper 3, 
+-pp. 1-13, 2019. 

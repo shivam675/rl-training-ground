@@ -1,0 +1,34 @@
+--- A/page-38
++++ B/page-38
+@@ -1,15 +1,11 @@
+ 37
+-state mutations that compromise the runtime, while a static reward catalogue avoids these 
+-security risks but remains insufficient for environments requiring complex logic. EasyRTG 
+-resolved this by exposing only the inputs that drive learning, observations, actions, and 
+-termination signals, while compiling the rest of the execution logic into a controlled backend.
+-Defining the precise scope of the assistant proved significantly more difficult. The system 
+-generates configuration files that must pass validation before execution, functioning strictly as 
+-a drafting tool within a framework of human oversight. Project findings rely on concrete metrics, 
+-specifically six pre-telemetry failures alongside dozens of short-lived policies. Language 
+-models simplify the initial setup phase but cannot replace expert diagnosis; investigation into 
+-the Valkyrie TD3 failure confirmed that automated tools miss critical physics errors, ultimately 
+-requiring manual inspection of the URDF file.
++It was much harder to define exactly what the assistant could do. The system produces 
++configuration files which are then validated prior to being executed and thus remain a drafting 
++tool under human control. Project results are based on hard data, such as six failures before 
++the telemetry and a number of short-term policies. Although language models can help with 
++the initial setup process, they don't provide expert diagnosis: investigation into the Valkyrie TD3 
++failure revealed that automated tools missed key physics mistakes, and the final conclusion 
++was to manually check the URDF file.
+ 7.3 Limitations and threats to validity
+ • The testing matrix favors certain configurations over others.
+ • SAC and TD3 targeted the Go1 and Valkyrie platforms while A1 and ANYmal were limited to 
+@@ -28,3 +24,8 @@
+ cannot fix bad mass distribution or incorrect joint limits hidden inside it.
+ • Observations remained locked at seven keys despite flexible rewards; camera feeds, 
+ terrain mapping, ROS networking, and multi-agent support remain unimplemented.
++• Final verification focused strictly on backend logic because the Flutter tool failed to run 
++properly in the test environment, leaving frontend status completely unconfirmed.
++7.4 Practical and academic significance
++EasyRTG's bottom-line is a step from a robot file to a recorded policy, one application for 
++configuration, training and supporting evidence. It is a case study of design of an unstrict code-

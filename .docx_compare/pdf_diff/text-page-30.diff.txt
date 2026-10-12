@@ -1,0 +1,25 @@
+--- A/page-30
++++ B/page-30
+@@ -1,14 +1,14 @@
+ 29
+ Figure 5. Episode survival for the best observed run in each robot and algorithm pairing.
+-The quadruped policies achieved the highest episode survival. A1 under PPO reached 967.5 
+-steps and produced the highest reward in the archive, 4,767.0. ANYmal under PPO reached 
++The highest episode survival was obtained from the quadruped policies. The best score 
++achieved by A1 under PPO is 967.5 steps with a total reward of 4,767.0. PPO ANYmal achieved 
+ 954.6 steps. Go1 reached 962.7 steps under PPO, the full 1,000 under SAC and 990.9 under 
+-TD3. The Valkyrie results were lower and differed by learner: PPO reached 204.2 steps, SAC 
+-reached 821.0 and TD3 reached 206.2.
+-Interpretation. Reward functions differ between robots and tasks, so reward totals are not 
+-comparable across rows. A1's reward of 4,767.0 does not establish that it learned better than 
+-Go1; its reward expression assigns a different value per step. The % of cap column provides the 
+-directly comparable measure of episode survival.
++TD3. The results from the Valkyrie were lower and varied by learner: PPO scored 204.2 steps, 
++SAC scored 821.0 and TD3 scored 206.2 steps.
++Interpretation. There are different reward functions for robots and tasks and the reward totals 
++are not comparable by row. A1's reward of 4,767.0 don't imply that it learned better than Go1, 
++its reward expression assigns different value per step. Directly comparable measure of episode 
++survival is the % of cap column.
+ 6.3 What the reward actually paid for
+ Because reward totals are not comparable across robots, the more informative question is 
+ which terms produced a policy's score. EasyRTG logs every reward term separately, allowing 

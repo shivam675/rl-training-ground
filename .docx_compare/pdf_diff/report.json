@@ -1,0 +1,749 @@
+{
+  "page_count_a": 49,
+  "page_count_b": 49,
+  "changed_text_pages": [
+    9,
+    10,
+    19,
+    22,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    32,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    49
+  ],
+  "changed_visual_pages": [
+    9,
+    10,
+    14,
+    15,
+    19,
+    20,
+    22,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    32,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    49
+  ],
+  "pages": [
+    {
+      "page": 1,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 249,
+      "text_chars_b": 249,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 2,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 1030,
+      "text_chars_b": 1030,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 3,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2200,
+      "text_chars_b": 2200,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 4,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 256,
+      "text_chars_b": 256,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 5,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 1206,
+      "text_chars_b": 1206,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 6,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2344,
+      "text_chars_b": 2344,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 7,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2469,
+      "text_chars_b": 2469,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 8,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2695,
+      "text_chars_b": 2695,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 9,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1576,
+      "text_chars_b": 1576,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        959,
+        259,
+        972,
+        815
+      ]
+    },
+    {
+      "page": 10,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2566,
+      "text_chars_b": 2566,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        963,
+        1149,
+        976,
+        1166
+      ]
+    },
+    {
+      "page": 11,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 980,
+      "text_chars_b": 980,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 12,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 453,
+      "text_chars_b": 453,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 13,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2010,
+      "text_chars_b": 2010,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 14,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 1725,
+      "text_chars_b": 1725,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        301,
+        325,
+        1077,
+        431
+      ]
+    },
+    {
+      "page": 15,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2104,
+      "text_chars_b": 2104,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        466,
+        1386,
+        725,
+        1408
+      ]
+    },
+    {
+      "page": 16,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2178,
+      "text_chars_b": 2178,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 17,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2375,
+      "text_chars_b": 2375,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 18,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2323,
+      "text_chars_b": 2323,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 19,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1776,
+      "text_chars_b": 1780,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        533,
+        1077,
+        775
+      ]
+    },
+    {
+      "page": 20,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2156,
+      "text_chars_b": 2156,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        802,
+        1253,
+        1077,
+        1406
+      ]
+    },
+    {
+      "page": 21,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2294,
+      "text_chars_b": 2294,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 22,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1501,
+      "text_chars_b": 1505,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        311,
+        1077,
+        593
+      ]
+    },
+    {
+      "page": 23,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 2504,
+      "text_chars_b": 2504,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 24,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1187,
+      "text_chars_b": 1257,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        399,
+        1078,
+        865
+      ]
+    },
+    {
+      "page": 25,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 925,
+      "text_chars_b": 978,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        1129,
+        1078,
+        1510
+      ]
+    },
+    {
+      "page": 26,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1652,
+      "text_chars_b": 1671,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        150,
+        1078,
+        1509
+      ]
+    },
+    {
+      "page": 27,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2655,
+      "text_chars_b": 2704,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        150,
+        1078,
+        1522
+      ]
+    },
+    {
+      "page": 28,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2452,
+      "text_chars_b": 2433,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        521,
+        1078,
+        1535
+      ]
+    },
+    {
+      "page": 29,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2008,
+      "text_chars_b": 1970,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        150,
+        1078,
+        391
+      ]
+    },
+    {
+      "page": 30,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1130,
+      "text_chars_b": 1130,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        113,
+        551,
+        1077,
+        933
+      ]
+    },
+    {
+      "page": 31,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 965,
+      "text_chars_b": 965,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 32,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2024,
+      "text_chars_b": 2127,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        671,
+        1078,
+        1346
+      ]
+    },
+    {
+      "page": 33,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 1470,
+      "text_chars_b": 1470,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 34,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 968,
+      "text_chars_b": 954,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        672,
+        1077,
+        1537
+      ]
+    },
+    {
+      "page": 35,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1085,
+      "text_chars_b": 1131,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        144,
+        1078,
+        1379
+      ]
+    },
+    {
+      "page": 36,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1352,
+      "text_chars_b": 1394,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        144,
+        1077,
+        1387
+      ]
+    },
+    {
+      "page": 37,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2399,
+      "text_chars_b": 2890,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        262,
+        1078,
+        1525
+      ]
+    },
+    {
+      "page": 38,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2281,
+      "text_chars_b": 2299,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        150,
+        1078,
+        1522
+      ]
+    },
+    {
+      "page": 39,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2285,
+      "text_chars_b": 498,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        150,
+        1077,
+        1519
+      ]
+    },
+    {
+      "page": 40,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2618,
+      "text_chars_b": 3337,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        150,
+        1078,
+        1500
+      ]
+    },
+    {
+      "page": 41,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2255,
+      "text_chars_b": 2427,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        150,
+        1078,
+        1522
+      ]
+    },
+    {
+      "page": 42,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 2454,
+      "text_chars_b": 2420,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        118,
+        153,
+        1073,
+        1518
+      ]
+    },
+    {
+      "page": 43,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1629,
+      "text_chars_b": 1890,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        153,
+        1077,
+        1506
+      ]
+    },
+    {
+      "page": 44,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1115,
+      "text_chars_b": 1326,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        151,
+        1078,
+        1372
+      ]
+    },
+    {
+      "page": 45,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 863,
+      "text_chars_b": 754,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        144,
+        1078,
+        1535
+      ]
+    },
+    {
+      "page": 46,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 599,
+      "text_chars_b": 964,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        149,
+        1078,
+        1536
+      ]
+    },
+    {
+      "page": 47,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 1598,
+      "text_chars_b": 1598,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 48,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": true,
+      "text_chars_a": 1658,
+      "text_chars_b": 1658,
+      "same_dimensions": true,
+      "visual_equal": true,
+      "diff_bbox": null
+    },
+    {
+      "page": 49,
+      "in_a": true,
+      "in_b": true,
+      "text_equal": false,
+      "text_chars_a": 1254,
+      "text_chars_b": 1338,
+      "same_dimensions": true,
+      "visual_equal": false,
+      "diff_bbox": [
+        112,
+        457,
+        1078,
+        971
+      ]
+    }
+  ]
+}

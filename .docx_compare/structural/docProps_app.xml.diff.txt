@@ -1,0 +1,26 @@
+--- A/docProps/app.xml
++++ B/docProps/app.xml
+@@ -1,17 +1,17 @@
+ <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+   <Template>Normal</Template>
+-  <TotalTime>61</TotalTime>
++  <TotalTime>79</TotalTime>
+   <Pages>49</Pages>
+-  <Words>12678</Words>
+-  <Characters>70997</Characters>
++  <Words>12555</Words>
++  <Characters>71570</Characters>
+   <Application>Microsoft Office Word</Application>
+   <DocSecurity>0</DocSecurity>
+-  <Lines>1972</Lines>
+-  <Paragraphs>1212</Paragraphs>
++  <Lines>596</Lines>
++  <Paragraphs>167</Paragraphs>
+   <ScaleCrop>false</ScaleCrop>
+   <Company/>
+   <LinksUpToDate>false</LinksUpToDate>
+-  <CharactersWithSpaces>82463</CharactersWithSpaces>
++  <CharactersWithSpaces>83958</CharactersWithSpaces>
+   <SharedDoc>false</SharedDoc>
+   <HyperlinksChanged>false</HyperlinksChanged>
+   <AppVersion>16.0000</AppVersion>

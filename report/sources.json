@@ -1,0 +1,254 @@
+{
+  "_comment": [
+    "Bibliography data for report/report.md, in Word's own bibliography field names.",
+    "scripts/write_report.py loads this, registers each entry as a Word Source and",
+    "turns the [n] markers in the prose into Word CITATION fields, so the reference",
+    "list is a live Word BIBLIOGRAPHY field in IEEE style rather than typed text.",
+    "",
+    "Word's IEEE renderer numbers entries by FIRST APPEARANCE in the document, so the",
+    "printed numbers need not match the src<n> tags below. The tags exist only to link",
+    "a [n] marker in report.md to its entry here; keep them stable.",
+    "",
+    "Two renderer quirks are worked around in the data rather than in code:",
+    "  - Word ignores Pages for ConferenceProceedings, so page ranges are written into",
+    "    ConferenceName.",
+    "  - arXiv preprints use SourceType Report with the arXiv id as Publisher, which is",
+    "    what produces the IEEE 'Title, arXiv:xxxx.xxxxx, year' form."
+  ],
+
+  "sources": [
+    {
+      "tag": "src1",
+      "type": "Book",
+      "author": "R. S. Sutton and A. G. Barto",
+      "Title": "Reinforcement Learning: An Introduction",
+      "Edition": "2nd",
+      "City": "Cambridge, MA",
+      "Publisher": "MIT Press",
+      "Year": "2018"
+    },
+    {
+      "tag": "src2",
+      "type": "JournalArticle",
+      "author": "J. Kober, J. A. Bagnell, and J. Peters",
+      "Title": "Reinforcement learning in robotics: A survey",
+      "JournalName": "International Journal of Robotics Research",
+      "Volume": "32",
+      "Issue": "11",
+      "Pages": "1238-1274",
+      "Year": "2013"
+    },
+    {
+      "tag": "src3",
+      "type": "Report",
+      "author": "J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov",
+      "Title": "Proximal policy optimization algorithms",
+      "Publisher": "arXiv:1707.06347",
+      "Year": "2017"
+    },
+    {
+      "tag": "src4",
+      "type": "ConferenceProceedings",
+      "author": "T. Haarnoja, A. Zhou, P. Abbeel, and S. Levine",
+      "Title": "Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor",
+      "ConferenceName": "Proceedings of ICML, pp. 1861-1870",
+      "Year": "2018"
+    },
+    {
+      "tag": "src5",
+      "type": "ConferenceProceedings",
+      "author": "S. Fujimoto, H. van Hoof, and D. Meger",
+      "Title": "Addressing function approximation error in actor-critic methods",
+      "ConferenceName": "Proceedings of ICML, pp. 1587-1596",
+      "Year": "2018"
+    },
+    {
+      "tag": "src6",
+      "type": "Report",
+      "author": "G. Brockman et al.",
+      "Title": "OpenAI Gym",
+      "Publisher": "arXiv:1606.01540",
+      "Year": "2016"
+    },
+    {
+      "tag": "src7",
+      "type": "Report",
+      "author": "M. Towers et al.",
+      "Title": "Gymnasium: A standard interface for reinforcement learning environments",
+      "Publisher": "arXiv:2407.17032",
+      "Year": "2024"
+    },
+    {
+      "tag": "src8",
+      "type": "JournalArticle",
+      "author": "A. Raffin et al.",
+      "Title": "Stable-Baselines3: Reliable reinforcement learning implementations",
+      "JournalName": "Journal of Machine Learning Research",
+      "Volume": "22",
+      "Issue": "268",
+      "Pages": "1-8",
+      "Year": "2021"
+    },
+    {
+      "tag": "src9",
+      "type": "InternetSite",
+      "author": "E. Coumans and Y. Bai",
+      "Title": "PyBullet, a Python module for physics simulation for games, robotics and machine learning",
+      "URL": "https://pybullet.org/",
+      "Year": "2016-2021"
+    },
+    {
+      "tag": "src10",
+      "type": "Report",
+      "author": "V. Makoviychuk et al.",
+      "Title": "Isaac Gym: High performance GPU-based physics simulation for robot learning",
+      "Publisher": "arXiv:2108.10470",
+      "Year": "2021"
+    },
+    {
+      "tag": "src11",
+      "type": "JournalArticle",
+      "author": "M. Mittal et al.",
+      "Title": "Orbit: A unified simulation framework for interactive robot learning environments",
+      "JournalName": "IEEE Robotics and Automation Letters",
+      "Volume": "8",
+      "Issue": "6",
+      "Pages": "3740-3747",
+      "Year": "2023"
+    },
+    {
+      "tag": "src12",
+      "type": "ConferenceProceedings",
+      "author": "N. Rudin, D. Hoeller, P. Reist, and M. Hutter",
+      "Title": "Learning to walk in minutes using massively parallel deep reinforcement learning",
+      "ConferenceName": "Proceedings of CoRL, PMLR vol. 164, pp. 91-100",
+      "Year": "2022"
+    },
+    {
+      "tag": "src13",
+      "type": "ConferenceProceedings",
+      "author": "A. Y. Ng, D. Harada, and S. Russell",
+      "Title": "Policy invariance under reward transformations: Theory and application to reward shaping",
+      "ConferenceName": "Proceedings of ICML, pp. 278-287",
+      "Year": "1999"
+    },
+    {
+      "tag": "src14",
+      "type": "ConferenceProceedings",
+      "author": "P. Henderson et al.",
+      "Title": "Deep reinforcement learning that matters",
+      "ConferenceName": "Proceedings of AAAI, vol. 32, no. 1",
+      "Year": "2018"
+    },
+    {
+      "tag": "src15",
+      "type": "ConferenceProceedings",
+      "author": "L. Engstrom et al.",
+      "Title": "Implementation matters in deep policy gradients: A case study on PPO and TRPO",
+      "ConferenceName": "Proceedings of ICLR",
+      "Year": "2020"
+    },
+    {
+      "tag": "src16",
+      "type": "Report",
+      "author": "Y. J. Ma et al.",
+      "Title": "Eureka: Human-level reward design via coding large language models",
+      "Publisher": "arXiv:2310.12931",
+      "Year": "2023"
+    },
+    {
+      "tag": "src17",
+      "type": "ConferenceProceedings",
+      "author": "Y. J. Ma et al.",
+      "Title": "DrEureka: Language model guided sim-to-real transfer",
+      "ConferenceName": "Proceedings of Robotics: Science and Systems",
+      "Year": "2024"
+    },
+    {
+      "tag": "src18",
+      "type": "ConferenceProceedings",
+      "author": "N. Koenig and A. Howard",
+      "Title": "Design and use paradigms for Gazebo, an open-source multi-robot simulator",
+      "ConferenceName": "Proceedings of IEEE/RSJ IROS, pp. 2149-2154",
+      "Year": "2004"
+    },
+    {
+      "tag": "src19",
+      "type": "Report",
+      "author": "A. Juliani et al.",
+      "Title": "Unity: A general platform for intelligent agents",
+      "Publisher": "arXiv:1809.02627",
+      "Year": "2020"
+    },
+    {
+      "tag": "src20",
+      "type": "Report",
+      "author": "L. Ye et al.",
+      "Title": "Unity RL Playground: A versatile reinforcement learning framework for mobile robots",
+      "Publisher": "arXiv:2503.05146",
+      "Year": "2025"
+    },
+    {
+      "tag": "src21",
+      "type": "JournalArticle",
+      "author": "A. R. Hevner, S. T. March, J. Park, and S. Ram",
+      "Title": "Design science in information systems research",
+      "JournalName": "MIS Quarterly",
+      "Volume": "28",
+      "Issue": "1",
+      "Pages": "75-105",
+      "Year": "2004"
+    },
+    {
+      "tag": "src22",
+      "type": "JournalArticle",
+      "author": "K. Peffers, T. Tuunanen, M. A. Rothenberger, and S. Chatterjee",
+      "Title": "A design science research methodology for information systems research",
+      "JournalName": "Journal of Management Information Systems",
+      "Volume": "24",
+      "Issue": "3",
+      "Pages": "45-77",
+      "Year": "2007"
+    },
+    {
+      "tag": "src23",
+      "type": "ConferenceProceedings",
+      "author": "S. Amershi et al.",
+      "Title": "Guidelines for human-AI interaction",
+      "ConferenceName": "Proceedings of CHI, paper 3, pp. 1-13",
+      "Year": "2019"
+    },
+    {
+      "tag": "src24",
+      "type": "ConferenceProceedings",
+      "author": "T. Akiba, S. Sano, T. Yanase, T. Ohta, and M. Koyama",
+      "Title": "Optuna: A next-generation hyperparameter optimization framework",
+      "ConferenceName": "Proceedings of KDD, pp. 2623-2631",
+      "Year": "2019"
+    },
+    {
+      "tag": "src25",
+      "type": "InternetSite",
+      "author": "NVIDIA",
+      "Title": "Isaac Lab documentation",
+      "URL": "https://isaac-sim.github.io/IsaacLab/",
+      "Year": "2026"
+    },
+    {
+      "tag": "src26",
+      "type": "InternetSite",
+      "author": "Flutter",
+      "Title": "Flutter desktop documentation",
+      "URL": "https://docs.flutter.dev/platform-integration/desktop",
+      "Year": "2026"
+    },
+    {
+      "tag": "src27",
+      "type": "InternetSite",
+      "author": "FastAPI",
+      "Title": "FastAPI documentation",
+      "URL": "https://fastapi.tiangolo.com/",
+      "Year": "2026"
+    }
+  ]
+}

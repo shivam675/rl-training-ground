@@ -1,0 +1,27 @@
+--- A/table-11
++++ B/table-11
+@@ -246,19 +246,11 @@
+           <w:t>Newton (replaces `</w:t>
+         </w:r>
+         <w:proofErr w:type="spellStart"/>
+-        <w:proofErr w:type="gramStart"/>
+-        <w:r>
+-          <w:rPr>
+-            <w:sz w:val="20"/>
+-          </w:rPr>
+-          <w:t>omni.physics</w:t>
+-        </w:r>
+-        <w:proofErr w:type="gramEnd"/>
+-        <w:r>
+-          <w:rPr>
+-            <w:sz w:val="20"/>
+-          </w:rPr>
+-          <w:t>.tensors</w:t>
++        <w:r>
++          <w:rPr>
++            <w:sz w:val="20"/>
++          </w:rPr>
++          <w:t>omni.physics.tensors</w:t>
+         </w:r>
+         <w:proofErr w:type="spellEnd"/>
+         <w:r>

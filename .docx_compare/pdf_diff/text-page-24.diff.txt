@@ -1,0 +1,27 @@
+--- A/page-24
++++ B/page-24
+@@ -4,13 +4,14 @@
+ guarantee successful learning, but they detect several expensive failure classes before a GPU 
+ run begins.
+ 4.4 Assistant and human oversight
+-The assistant makes expression-based configuration accessible to users who would not write 
+-the expressions directly. It can inspect robot details, calibrate a goal, patch a configuration, test 
+-a reward, start or stop training and inspect previous runs. Basic requests can be routed to a 
+-local Ollama model, while more complex goal interpretation can use an OpenAI-compatible 
+-endpoint. The system prompt provides the robot-specific vocabulary and available reward 
+-priors.
+-Tools that change configuration or control runs remain subject to explicit user approval. This 
+-design follows human-AI interaction guidance that recommends communicating system 
+-capabilities, making changes visible and preserving correction or undo [26]. The approval step 
+-introduces friction, but ensures that consequential actions remain reviewable and recoverable.
++The assistant makes expression typed configuration accessible to the user that would not write 
++the expressions directly. It can look up robot information, set a goal, adjust a configuration, run 
++a test of a reward, and start or stop training, as well as look at previous runs. Simple requests 
++can be directed to a local Ollama model, and complex goal interpretation can be done via an 
++OpenAI-compatible endpoint. The available reward priors and robot specific vocabulary is 
++given by the system prompt.
++Tools that change configuration or control runs continue to be subject to explicit approval from 
++the user. This design has been inspired by human-AI interaction guidance to communicate the 
++capabilities of the system, to make changes visible and to keep the possibility of correction or 
++undo [26]. The approval process adds friction, and makes sure that actions that follow are 
++reviewable and reversible.

@@ -1,0 +1,23 @@
+--- A/page-22
++++ B/page-22
+@@ -2,13 +2,13 @@
+ with the highest observed reward for each robot-algorithm pairing. This improves readability 
+ but introduces best-run selection bias, which is addressed in Section 7.3.
+ 3.5 Software verification
+-Software verification was performed by running the backend test suite in a new temporary 
+-directory with third-party pytest plugin autoloading disabled. The result was 256 passing tests, 
+-one skipped test and no failures. The tests cover configuration phases, expression compilation, 
+-morphology, contact state, episode timing, Isaac bridge calculations, action authoring, spawn 
+-height and smoke behaviour. The Flutter command-line tool did not return in the available 
+-environment; consequently, no current claim is made about frontend analysis or test status. 
+-This limitation is recorded in Section 7.3.
++The backend test suite was executed in a new temporary directory with third-party pytest plugin 
++autoloading disabled, to verify the software. The outcome was 256 successful passes, 1 test 
++was skipped and there was no failure. Testing includes configuration stages, compiling 
++expressions, morphology, contact state, episode timing, calculations for the Isaac bridge, 
++authoring actions and spawn height/smoke behaviour. No current claim about the state of 
++frontend analysis and test is made because the Flutter command-line tool is not available in 
++the environment. This restriction is noted in Section 7.3.
+ 4 System Design and Architecture
+ 4.1 Architectural overview
+ The architecture must support thousands of parallel GPU environments while keeping the 

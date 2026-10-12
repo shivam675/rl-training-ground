@@ -1,0 +1,18 @@
+--- A/page-45
++++ B/page-45
+@@ -1,11 +1,11 @@
+ 44
++Appendix C Supplementary Figures
++The following figures support the analysis in Chapter 6 and were placed in the appendix to keep 
++the main body within the page limit. Each figure is generated from the same run archive as the 
++figures in the main text.
+ Figure 13. Best mean episode length for every analysable Isaac run, in chronological order.
+ The chronological view describes the development history rather than a single experimental 
+ outcome. Early ANYmal runs cluster at low episode lengths, while A1 and Go1 runs from late 
+ July onwards cluster near the episode limit. The two runs at 16 environments were added on 18 
+ August as diagnostic experiments and establish the lower end of the throughput relationship 
+ discussed in Section 6.4.
+-Figure 14. Reward against environment steps for the best run of each robot family.
+-The best run for each robot is plotted using the same scale within its panel. A1 improves rapidly 
+-and increases again near 16M steps, while Go1 improves in visible stages. ANYmal remains 
+-unstable and decreases by approximately half between 3M and 5M steps before recovering, 

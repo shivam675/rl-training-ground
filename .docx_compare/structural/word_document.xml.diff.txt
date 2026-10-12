@@ -1,0 +1,2355 @@
+--- A/word/document.xml
++++ B/word/document.xml
+@@ -7598,13 +7598,11 @@
+         <w:pStyle w:val="Heading1"/>
+       </w:pPr>
+       <w:bookmarkStart w:id="0" w:name="_Toc238915415"/>
+-      <w:proofErr w:type="gramStart"/>
+       <w:r>
+         <w:lastRenderedPageBreak/>
+         <w:t>1  Introduction</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="0"/>
+-      <w:proofErr w:type="gramEnd"/>
+     </w:p>
+     <w:p w14:paraId="0F351C06" w14:textId="726EF4C3" w:rsidR="006F502F" w:rsidRDefault="006F502F" w:rsidP="006F502F">
+       <w:pPr>
+@@ -7618,15 +7616,7 @@
+     </w:p>
+     <w:p w14:paraId="0945ACFA" w14:textId="1B8D6853" w:rsidR="006F502F" w:rsidRDefault="006F502F" w:rsidP="006F502F">
+       <w:r>
+-        <w:t xml:space="preserve">Reinforcement learning is closed loop in which an agent observes the state of an environment </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>its</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> put into, selects an action form the available options, and receives a reward based on the selected action </w:t>
++        <w:t xml:space="preserve">Reinforcement learning is closed loop in which an agent observes the state of an environment its put into, selects an action form the available options, and receives a reward based on the selected action </w:t>
+       </w:r>
+       <w:sdt>
+         <w:sdtPr>
+@@ -7801,15 +7791,7 @@
+       </w:r>
+       <w:r>
+         <w:lastRenderedPageBreak/>
+-        <w:t xml:space="preserve">configured, and they rely on convention that varies based on the simulator. A standard URDF file specifies physical geometry and the hierarchy of the joints, but it does not specify the most important learning parameters: which degrees of freedom to actuate, allowed contact links, reset distributions, reward formulation.  The robot's physical structure and the desired movement </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>needs</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> to be manually translated into environmental code which ensures reliable training. In this project, it is explored if this translation can be achieved by an integrated and inspectable desktop GUI, without resorting to low-level simulator programming, while maintaining the control of the user.</w:t>
++        <w:t>configured, and they rely on convention that varies based on the simulator. A standard URDF file specifies physical geometry and the hierarchy of the joints, but it does not specify the most important learning parameters: which degrees of freedom to actuate, allowed contact links, reset distributions, reward formulation.  The robot's physical structure and the desired movement needs to be manually translated into environmental code which ensures reliable training. In this project, it is explored if this translation can be achieved by an integrated and inspectable desktop GUI, without resorting to low-level simulator programming, while maintaining the control of the user.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="2E252A78" w14:textId="0610A0A5" w:rsidR="00734593" w:rsidRDefault="00734593" w:rsidP="00734593">
+@@ -8200,15 +8182,7 @@
+     </w:p>
+     <w:p w14:paraId="04FDAA1F" w14:textId="6BC5BEBB" w:rsidR="00DE28E8" w:rsidRDefault="00DE28E8" w:rsidP="00DE28E8">
+       <w:r>
+-        <w:t xml:space="preserve">Chapter 2 provides an overview of the reinforcement-learning and GPU-native simulation algorithms, reward-design research and related accessibility platforms used in this work. In the 3rd chapter, the design-science methodology, sources of evidence, requirements and experimental protocol are described. The system architecture and the main technical mechanisms are presented in Chapter 4. The iterative development process has been explained in Chapter 5. The experiments and results of my simulation runs are shown in Chapter 6. The research questions are answered along with the limitations of study in Chapter 7. The conclusion and future work </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>is</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> presented in chapter 8.</w:t>
++        <w:t>Chapter 2 provides an overview of the reinforcement-learning and GPU-native simulation algorithms, reward-design research and related accessibility platforms used in this work. In the 3rd chapter, the design-science methodology, sources of evidence, requirements and experimental protocol are described. The system architecture and the main technical mechanisms are presented in Chapter 4. The iterative development process has been explained in Chapter 5. The experiments and results of my simulation runs are shown in Chapter 6. The research questions are answered along with the limitations of study in Chapter 7. The conclusion and future work is presented in chapter 8.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="6B6B8338" w14:textId="6ADA3CF5" w:rsidR="00DE28E8" w:rsidRDefault="00DE28E8" w:rsidP="00DE28E8">
+@@ -8216,14 +8190,9 @@
+         <w:pStyle w:val="Heading1"/>
+       </w:pPr>
+       <w:bookmarkStart w:id="9" w:name="_Toc238915422"/>
+-      <w:proofErr w:type="gramStart"/>
+       <w:r>
+         <w:lastRenderedPageBreak/>
+-        <w:t>2  Background</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> and Literature Survey</w:t>
++        <w:t>2  Background and Literature Survey</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="9"/>
+     </w:p>
+@@ -8914,15 +8883,7 @@
+         </w:sdtContent>
+       </w:sdt>
+       <w:r>
+-        <w:t xml:space="preserve">. These tools were suitable for checking individual robot </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>instances, but</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> could not provide the volume of experience required by the final locomotion experiments. This limitation motivated the GPU training architecture described in Chapter 4.</w:t>
++        <w:t>. These tools were suitable for checking individual robot instances, but could not provide the volume of experience required by the final locomotion experiments. This limitation motivated the GPU training architecture described in Chapter 4.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="03DE2223" w14:textId="5D970C09" w:rsidR="00CB7C75" w:rsidRDefault="00CB7C75" w:rsidP="00CB7C75">
+@@ -9104,7 +9065,15 @@
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t xml:space="preserve"> in this project. However, the reported speed relied on an environment, reward and curriculum designed specifically for that robot. EasyRTG required ten </w:t>
++        <w:t xml:space="preserve"> in this project. However, the reported speed relied on an environment, reward and curriculum designed specifically for that robot. </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r>
++        <w:t>EasyRTG</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r>
++        <w:t xml:space="preserve"> required ten </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+       <w:r>
+@@ -9387,47 +9356,44 @@
+       </w:r>
+       <w:bookmarkEnd w:id="21"/>
+     </w:p>
+-    <w:p w14:paraId="1E670434" w14:textId="6E533F61" w:rsidR="00176BB1" w:rsidRDefault="00176BB1" w:rsidP="00176BB1">
+-      <w:r>
+-        <w:t xml:space="preserve">The Unity RL Playground presented by Ye et al. is the closest published system to the accessibility objective of EasyRTG, providing one-click locomotion training for imported mobile robots </w:t>
+-      </w:r>
+-      <w:sdt>
+-        <w:sdtPr>
+-          <w:id w:val="1108082006"/>
+-          <w:citation/>
+-        </w:sdtPr>
+-        <w:sdtContent>
+-          <w:r>
+-            <w:fldChar w:fldCharType="begin"/>
+-          </w:r>
+-          <w:r>
+-            <w:instrText xml:space="preserve"> CITATION src20 \l 1033 </w:instrText>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="separate"/>
+-          </w:r>
+-          <w:r w:rsidR="00666F21" w:rsidRPr="00666F21">
+-            <w:rPr>
+-              <w:noProof/>
+-            </w:rPr>
+-            <w:t>[21]</w:t>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="end"/>
+-          </w:r>
+-        </w:sdtContent>
+-      </w:sdt>
+-      <w:r>
+-        <w:t>. EasyRTG differs by exposing a shared state vocabulary for reward authoring, performing a reward audit before training, and retaining a run archive for later examination. The published description of Unity RL Playground does not report reward authoring at the same level of detail, although its stated scope is narrower.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="55747A24" w14:textId="007CE461" w:rsidR="00176BB1" w:rsidRDefault="00176BB1" w:rsidP="00176BB1">
++    <w:p w14:paraId="0E9BFAC8" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:pPr>
++        <w:rPr>
++          <w:b/>
++        </w:rPr>
++      </w:pPr>
++      <w:bookmarkStart w:id="22" w:name="_Toc238915434"/>
++      <w:proofErr w:type="spellStart"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t>EasyRTG's</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve"> goal of accessibility is closest to the Unity RL Playground presented by Ye et al. which gives one-click locomotion training to mobile robots imported into the Unity platform [21]. </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t>EasyRTG</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve"> is different in that it provides a common vocabulary of states for writing the rewards, it conducts a reward audit prior to training, and it maintains a history of runs for analysis. The published description of Unity RL Playground is available and does not detail reward authoring as much as its scope is more limited.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="55747A24" w14:textId="403A109C" w:rsidR="00176BB1" w:rsidRDefault="00176BB1" w:rsidP="00176BB1">
+       <w:pPr>
+         <w:pStyle w:val="Heading2"/>
+       </w:pPr>
+-      <w:bookmarkStart w:id="22" w:name="_Toc238915434"/>
+-      <w:r>
+-        <w:t>2.12 Where EasyRTG sits</w:t>
++      <w:r>
++        <w:t xml:space="preserve">2.12 Where </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r>
++        <w:t>EasyRTG</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r>
++        <w:t xml:space="preserve"> sits</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="22"/>
+     </w:p>
+@@ -10168,13 +10134,8 @@
+         <w:pStyle w:val="Heading1"/>
+       </w:pPr>
+       <w:bookmarkStart w:id="24" w:name="_Toc238915435"/>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>3  Research</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> Methodology and Requirements</w:t>
++      <w:r>
++        <w:t>3  Research Methodology and Requirements</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="24"/>
+     </w:p>
+@@ -10263,15 +10224,7 @@
+     </w:p>
+     <w:p w14:paraId="69CEA23C" w14:textId="4E04225D" w:rsidR="0007037D" w:rsidRDefault="0007037D" w:rsidP="0007037D">
+       <w:r>
+-        <w:t xml:space="preserve">The evaluation used four evidence sources. First, 50 Git commits between 11 </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>June</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> and 14 August 2026 record the sequence of architectural changes. Second, the source code and automated tests establish which functions were implemented. Third, each Isaac run retains its configuration and telemetry, allowing the numerical results in Chapter 6 to be recomputed from the archive. Finally, recorded policy videos provide behavioural evidence that cannot be obtained from reward and episode statistics alone.</w:t>
++        <w:t>The evaluation used four evidence sources. First, 50 Git commits between 11 June and 14 August 2026 record the sequence of architectural changes. Second, the source code and automated tests establish which functions were implemented. Third, each Isaac run retains its configuration and telemetry, allowing the numerical results in Chapter 6 to be recomputed from the archive. Finally, recorded policy videos provide behavioural evidence that cannot be obtained from reward and episode statistics alone.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="1884B484" w14:textId="7DAB5402" w:rsidR="0007037D" w:rsidRDefault="0007037D" w:rsidP="0007037D">
+@@ -11027,31 +10980,31 @@
+       </w:r>
+       <w:bookmarkEnd w:id="30"/>
+     </w:p>
+-    <w:p w14:paraId="3B70E704" w14:textId="29FED7E3" w:rsidR="00FB1214" w:rsidRDefault="00FB1214" w:rsidP="00FB1214">
+-      <w:r>
+-        <w:t xml:space="preserve">Software verification was performed by running the backend test suite in a new temporary directory with third-party </w:t>
++    <w:p w14:paraId="31187DE4" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:pPr>
++        <w:rPr>
++          <w:b/>
++        </w:rPr>
++      </w:pPr>
++      <w:bookmarkStart w:id="31" w:name="_Toc238915441"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve">The backend test suite was executed in a new temporary directory with third-party </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+-      <w:r>
++      <w:r w:rsidRPr="005369DE">
+         <w:t>pytest</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> plugin autoloading disabled. The result was 256 passing tests, one skipped test and no failures. The tests cover configuration phases, expression compilation, morphology, contact state, episode timing, Isaac bridge calculations, action authoring, spawn height and smoke behaviour. The Flutter command-line tool did not return in the available environment; consequently, no current claim is made about frontend analysis or test status. This limitation is recorded in Section 7.3.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="71EBA74D" w14:textId="05811B36" w:rsidR="00FB1214" w:rsidRDefault="00FB1214" w:rsidP="00FB1214">
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve"> plugin autoloading disabled, to verify the software. The outcome was 256 successful passes, 1 test was skipped and there was no failure. Testing includes configuration stages, compiling expressions, morphology, contact state, episode timing, calculations for the Isaac bridge, authoring actions and spawn height/smoke behaviour. No current claim about the state of frontend analysis and test is made because the Flutter command-line tool is not available in the environment. This restriction is noted in Section 7.3.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="71EBA74D" w14:textId="34DD83DD" w:rsidR="00FB1214" w:rsidRDefault="00FB1214" w:rsidP="00FB1214">
+       <w:pPr>
+         <w:pStyle w:val="Heading1"/>
+       </w:pPr>
+-      <w:bookmarkStart w:id="31" w:name="_Toc238915441"/>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>4  System</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> Design and Architecture</w:t>
++      <w:r>
++        <w:t>4  System Design and Architecture</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="31"/>
+     </w:p>
+@@ -11146,7 +11099,7 @@
+           <w:noProof/>
+         </w:rPr>
+         <w:drawing>
+-          <wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="337B3AEB" wp14:editId="25556B80">
++          <wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="337B3AEB" wp14:editId="05ACAB18">
+             <wp:extent cx="5669280" cy="2788920"/>
+             <wp:effectExtent l="0" t="0" r="7620" b="0"/>
+             <wp:docPr id="1234664959" name="Picture 2"/>
+@@ -11368,9 +11321,9 @@
+       </w:r>
+       <w:bookmarkEnd w:id="36"/>
+     </w:p>
+-    <w:p w14:paraId="2C8FEEBC" w14:textId="2D4208DE" w:rsidR="006B6027" w:rsidRDefault="006B6027" w:rsidP="006B6027">
+-      <w:r>
+-        <w:t xml:space="preserve">The assistant makes expression-based configuration accessible to users who would not write the expressions directly. It can inspect robot details, calibrate a goal, patch a configuration, test a reward, start or stop training and inspect previous runs. Basic requests can be routed to a local </w:t>
++    <w:p w14:paraId="7254AA13" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t xml:space="preserve">The assistant makes expression typed configuration accessible to the user that would not write the expressions directly. It can look up robot information, set a goal, adjust a configuration, run a test of a reward, and start or stop training, as well as look at previous runs. Simple requests can be directed to a local </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+       <w:r>
+@@ -11378,49 +11331,12 @@
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t xml:space="preserve"> model, while more complex goal interpretation can use an OpenAI-compatible endpoint. The system prompt provides the robot-specific vocabulary and available reward priors.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="14AA345C" w14:textId="4E84829D" w:rsidR="006B6027" w:rsidRDefault="00EF05EE" w:rsidP="00EF05EE">
+-      <w:r>
+-        <w:t xml:space="preserve">Tools that change configuration or control runs remain subject to explicit user approval. This design follows human-AI interaction guidance that recommends communicating system capabilities, making changes visible and preserving correction or undo </w:t>
+-      </w:r>
+-      <w:sdt>
+-        <w:sdtPr>
+-          <w:id w:val="-1584141437"/>
+-          <w:citation/>
+-        </w:sdtPr>
+-        <w:sdtContent>
+-          <w:r>
+-            <w:fldChar w:fldCharType="begin"/>
+-          </w:r>
+-          <w:r>
+-            <w:instrText xml:space="preserve"> CITATION src23 \l 1033 </w:instrText>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="separate"/>
+-          </w:r>
+-          <w:r w:rsidR="00666F21" w:rsidRPr="00666F21">
+-            <w:rPr>
+-              <w:noProof/>
+-            </w:rPr>
+-            <w:t>[26]</w:t>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="end"/>
+-          </w:r>
+-        </w:sdtContent>
+-      </w:sdt>
+-      <w:r>
+-        <w:t xml:space="preserve">. The approval step introduces </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>friction, but</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> ensures that consequential actions remain reviewable and recoverable.</w:t>
++        <w:t xml:space="preserve"> model, and complex goal interpretation can be done via an OpenAI-compatible endpoint. The available reward priors and robot specific vocabulary is given by the system prompt.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="14AA345C" w14:textId="6471BEA9" w:rsidR="006B6027" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t>Tools that change configuration or control runs continue to be subject to explicit approval from the user. This design has been inspired by human-AI interaction guidance to communicate the capabilities of the system, to make changes visible and to keep the possibility of correction or undo [26]. The approval process adds friction, and makes sure that actions that follow are reviewable and reversible.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="49D9D289" w14:textId="65E543E4" w:rsidR="00EF05EE" w:rsidRDefault="00EF05EE" w:rsidP="00EF05EE">
+@@ -11434,7 +11350,7 @@
+         </w:rPr>
+         <w:lastRenderedPageBreak/>
+         <w:drawing>
+-          <wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="276A7AFD" wp14:editId="57AD1041">
++          <wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="276A7AFD" wp14:editId="17F3F939">
+             <wp:extent cx="3657600" cy="5321808"/>
+             <wp:effectExtent l="0" t="0" r="0" b="0"/>
+             <wp:docPr id="1624481367" name="Picture 3"/>
+@@ -11506,55 +11422,26 @@
+       </w:r>
+       <w:bookmarkEnd w:id="38"/>
+     </w:p>
+-    <w:p w14:paraId="5264992C" w14:textId="1A6D6288" w:rsidR="00EF05EE" w:rsidRDefault="00EF05EE" w:rsidP="00EF05EE">
+-      <w:r>
+-        <w:t xml:space="preserve">After a configuration is approved, Isaac training runs in a separate subprocess under Isaac Sim's Python environment and follows the installed Isaac Lab workflow </w:t>
+-      </w:r>
+-      <w:sdt>
+-        <w:sdtPr>
+-          <w:id w:val="762954408"/>
+-          <w:citation/>
+-        </w:sdtPr>
+-        <w:sdtContent>
+-          <w:r>
+-            <w:fldChar w:fldCharType="begin"/>
+-          </w:r>
+-          <w:r>
+-            <w:instrText xml:space="preserve"> CITATION src25 \l 1033 </w:instrText>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="separate"/>
+-          </w:r>
+-          <w:r w:rsidR="00666F21" w:rsidRPr="00666F21">
+-            <w:rPr>
+-              <w:noProof/>
+-            </w:rPr>
+-            <w:t>[12]</w:t>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="end"/>
+-          </w:r>
+-        </w:sdtContent>
+-      </w:sdt>
+-      <w:r>
+-        <w:t xml:space="preserve">. The worker writes telemetry to a file, which the backend follows and streams to the Flutter charts. Every run retains its environment configuration, observation and action contracts, checkpoints, log and evaluation video. Live evaluation can launch NVIDIA's WebRTC client, while recorded evaluation runs </w:t>
++    <w:p w14:paraId="3D2A4E15" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t xml:space="preserve">Once a configuration has been approved Isaac training runs in a separate subprocess within the Isaac Sim Python environment and proceeds with the same flow as the installed Isaac Lab workflow [12]. The worker writes telemetry to a file, then the backend follows it on the file and streams it to </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+       <w:r>
+-        <w:t>headlessly</w:t>
++        <w:t>theflutter</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t xml:space="preserve"> and produces an MP4 file that can be replayed inside the desktop application.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="2C9B24C4" w14:textId="5E31085E" w:rsidR="00EF05EE" w:rsidRDefault="003C3665" w:rsidP="003C3665">
+-      <w:r>
+-        <w:t xml:space="preserve">Retained evidence is required because a reward curve cannot show whether a humanoid is walking forward, drifting sideways or merely remaining upright. The interpretation of several </w:t>
++        <w:t xml:space="preserve"> charts. Environment configuration, observation and action contracts, checkpoints, log and evaluation video are all saved for each run. Live evaluation starts NVIDIA's WebRTC client and recorded evaluation is executed headless and generates an MP4 file which can be replayed in the desktop application.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="2C9B24C4" w14:textId="438A2EC8" w:rsidR="00EF05EE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t xml:space="preserve">Evidence must be retained because without it, a reward curve cannot indicate if a humanoid is walking forward, drifting sideways or simply standing upright. The interpretation of several </w:t>
+       </w:r>
+       <w:r>
+         <w:lastRenderedPageBreak/>
+-        <w:t>experiments in Chapter 6 depends on the saved configuration, term-level telemetry and recorded video. Run provenance is therefore part of the evaluation mechanism rather than only a storage feature.</w:t>
++        <w:t>experiments in Chapter 6 relies on the use of the saved configuration, telemetry at the term level and recorded video. So run provenance is a feature of the evaluation mechanism as well as a feature for storage.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="151BBCB8" w14:textId="361BDB6B" w:rsidR="003C3665" w:rsidRDefault="003C3665" w:rsidP="003C3665">
+@@ -11562,13 +11449,8 @@
+         <w:pStyle w:val="Heading1"/>
+       </w:pPr>
+       <w:bookmarkStart w:id="39" w:name="_Toc238915447"/>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>5  Implementation</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> and Iterative Development</w:t>
++      <w:r>
++        <w:t>5  Implementation and Iterative Development</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="39"/>
+     </w:p>
+@@ -11582,21 +11464,34 @@
+       </w:r>
+       <w:bookmarkEnd w:id="40"/>
+     </w:p>
+-    <w:p w14:paraId="6EE0F84F" w14:textId="5947DC62" w:rsidR="003C3665" w:rsidRDefault="003C3665" w:rsidP="003C3665">
+-      <w:r>
+-        <w:t>The original proposal described a six-week, CPU-first application based on PyBullet, Gymnasium and PPO from Stable-Baselines3. It was intended to run on an average laptop and to use predefined reward components with optional custom Python. The completed system differs from this plan in each area that introduced significant technical risk. Training moved to NVIDIA Isaac Sim on a GPU, custom Python rewards were removed, predefined reward components became audited expressions, and joint-name rules were replaced by morphology inference. The evaluation also expanded from PPO on sample robots to three algorithms across four robot families.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="565795B2" w14:textId="286F0CAE" w:rsidR="003C3665" w:rsidRDefault="003C3665" w:rsidP="003C3665">
+-      <w:r>
+-        <w:t>These changes do not indicate that the proposal failed. Instead, the prototype exposed requirements that could not have been established from the initial design alone. The following development history identifies the failures and observations that produced each major revision.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="6DE06FBB" w14:textId="6AD2D46B" w:rsidR="003C3665" w:rsidRDefault="003C3665" w:rsidP="003C3665">
++    <w:p w14:paraId="6193325D" w14:textId="77777777" w:rsidR="005369DE" w:rsidRPr="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:bookmarkStart w:id="41" w:name="_Toc238915449"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve">The original idea was to use a six-week, CPU-first application using </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t>PyBullet</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t>, Gymnasium and PPO in Stable Baselines3. It was supposed to be deployed on a typical laptop and to utilize reward components that are predefined, and optionally custom Python. In each area where there was an element of significant technical risk, the completed system differs from this plan. Training was switched to NVIDIA Isaac Sim on a GPU, the custom Python rewards were replaced with and become audited expressions, and the joint-name rules were replaced with morphology inference. The evaluation was also expanded to three algorithms for four robot families, instead of PPO on sample robots.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="000B6F47" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:pPr>
++        <w:rPr>
++          <w:b/>
++        </w:rPr>
++      </w:pPr>
++      <w:r w:rsidRPr="005369DE">
++        <w:t>The changes do not mean that the proposal failed. Rather the prototype revealed the needs that could not have been determined from the original design. The development history below lists the errors and observations that led to each of the major revisions.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="6DE06FBB" w14:textId="245F88AF" w:rsidR="003C3665" w:rsidRDefault="003C3665" w:rsidP="005369DE">
+       <w:pPr>
+         <w:pStyle w:val="Heading2"/>
+       </w:pPr>
+-      <w:bookmarkStart w:id="41" w:name="_Toc238915449"/>
+       <w:r>
+         <w:t>5.2 Milestone history</w:t>
+       </w:r>
+@@ -11612,7 +11507,7 @@
+           <w:noProof/>
+         </w:rPr>
+         <w:drawing>
+-          <wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="290DBC32" wp14:editId="692BFD9B">
++          <wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="290DBC32" wp14:editId="39B2B5C4">
+             <wp:extent cx="5669280" cy="1901952"/>
+             <wp:effectExtent l="0" t="0" r="7620" b="3175"/>
+             <wp:docPr id="1391964789" name="Picture 4"/>
+@@ -11674,18 +11569,18 @@
+       </w:r>
+       <w:bookmarkEnd w:id="42"/>
+     </w:p>
+-    <w:p w14:paraId="518B1FB9" w14:textId="63DE4AC5" w:rsidR="003C3665" w:rsidRDefault="003C3665" w:rsidP="003C3665">
+-      <w:r>
+-        <w:t xml:space="preserve">The commits dated 11 June, 'initial 300x300 30fps stream' and 'most of the app is working and is stable', established the first visible prototype. On 14 June, 'most of the agent is working' and 'Make Windows build/run work; stream JPEG sim frames' connected the assistant to a desktop </w:t>
++    <w:p w14:paraId="2DD0F54D" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t xml:space="preserve">The commits on 11 June - 'initial 300x300 30fps stream' and 'most of the app is working and is stable' - were the first to show a prototype that was visible. On 14 June the assistant was connected to a desktop build with ‘most of the agent is working’ and ‘Make Windows build/run </w:t>
+       </w:r>
+       <w:r>
+         <w:lastRenderedPageBreak/>
+-        <w:t>build. Although the commit messages are informal, this phase established one complete user interaction before the underlying components were refined.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="0359FB34" w14:textId="1AB739DB" w:rsidR="003C3665" w:rsidRDefault="003C3665" w:rsidP="003C3665">
+-      <w:r>
+-        <w:t xml:space="preserve">The commit 'Add MJX backend, config revisions, and agent routing' on 29 June introduced an alternative high-performance backend. The following day's commit, 'switching to </w:t>
++        <w:t>work; stream JPEG sim frames’. The commit messages are informal, but this stage provided one full interaction with the user, before any of the components were broken down.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="445F5381" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t xml:space="preserve">The commit 'Add MJX backend, config revisions, and agent routing' dated 29th June added another high-performance backend. The next day's commit, 'switching to </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+       <w:r>
+@@ -11709,41 +11604,41 @@
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t xml:space="preserve"> working good on win', records the operating-system difficulty that prevented this branch from becoming the final training lane. The attempt demonstrated that simulator and operating-system constraints remain present even when hidden by a desktop interface. EasyRTG subsequently adopted Isaac Sim as a separate GPU subprocess, allowing the main application to remain cross-platform while the training lane retained its required platform-specific runtime.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="047103FC" w14:textId="154A8383" w:rsidR="003C3665" w:rsidRDefault="003C3665" w:rsidP="003C3665">
+-      <w:r>
+-        <w:t xml:space="preserve">The locomotion case study began on 27 July with 'added unitree go1 robot as </w:t>
++        <w:t xml:space="preserve"> working good on win', includes the operating-system problem that precluded this branch from being the final training lane. The try proved that limitations of the simulator and operating system are still there, even if not obvious through the desktop interface. </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+       <w:r>
++        <w:t>EasyRTG</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r>
++        <w:t xml:space="preserve"> then introduced a new GPU subprocess, Isaac Sim, which would maintain its platform-specific runtime while the cross-platform </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r>
++        <w:t>EasyRTG</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r>
++        <w:t xml:space="preserve"> stayed alive.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="18134F1D" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t xml:space="preserve">The locomotion case study was started on 27 July with 'added unitree go1 robot as </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r>
+         <w:t>casestudy</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t>'. The first walking reward produced a low crawling behaviour because this was an easier way to gain forward velocity. The commit 'fix: reject crawling in walk goals' introduced robot-relative height termination to prevent this outcome. On 28 July, 'Derive robot structure from URDF, not joint names; add expression layer' removed a second source of robot-specific assumptions.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="3AF46AB8" w14:textId="4E7F8D01" w:rsidR="003C3665" w:rsidRDefault="003C3665" w:rsidP="003C3665">
+-      <w:r>
+-        <w:t xml:space="preserve">The most substantial redesign occurred on 29 July through four commits: 'Evaluate rewards as expressions on the </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>Isaac lane</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve">', 'Give the </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>Isaac lane</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> real contact state, so a flight phase is expressible', 'Let the agent author the reward; delete the 4-keyword goal </w:t>
++        <w:t>'. The first walking reward resulted in a low crawling behaviour because it was a more easy way of obtaining forward velocity. Widely recognized as a poor state of affairs, the commit 'fix: reject crawling in walk goals' introduced robot-relative height termination to prevent that. On 28 July, 'Derive robot structure from URDF, not joint names; add expression layer' eliminated yet another source of robot-specific assumptions.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="37CEB772" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t xml:space="preserve">The biggest rework was done on 29 July with the following four commits: 'Evaluate rewards as expressions on the Isaac lane', 'Give the Isaac lane real contact state, so a flight phase is expressible', 'Let the agent author the reward; delete the 4-keyword goal </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+       <w:r>
+@@ -11751,12 +11646,12 @@
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t>', and 'Delete the reward catalogue: expressions are the only reward path'. The final commit that day, 'Record the gallop result; gait is no longer inexpressible', captured the significance of these changes. Galloping cannot be defined by forward velocity alone because it requires a flight phase in which all four feet leave the ground. The task therefore required both Isaac contact state and a reward language capable of expressing that state. Before these mechanisms existed, the behaviour could not be specified by the application.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="5CA1F659" w14:textId="12A63671" w:rsidR="003C3665" w:rsidRDefault="003C3665" w:rsidP="003C3665">
+-      <w:r>
+-        <w:t xml:space="preserve">Later work focused on interface refinement and error handling. The 30 July commit 'Stop expressions written against observation names from being saved' followed an authoring error and added a further validation boundary. Interface refinement continued until the 7 August commit 'most stable and clean </w:t>
++        <w:t>', and 'Delete the reward catalogue: expressions are the only reward path'. The last commit of the day was 'Record the gallop result; gait is no longer inexpressible', which encapsulates the meaning of these changes. To describe galloping by forward velocity is too simple as this gait must have a flight phase when all four feet are off the ground. Thus, both Isaac contact state and a reward language which can represent this contact state were required. Prior to these mechanisms, the application was not able to specify the behaviour.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="5CA1F659" w14:textId="5AA2F645" w:rsidR="003C3665" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t xml:space="preserve">Subsequent work was on interface refinement and error handling. The commit on 30 July "Stop expressions written against observation names from being saved" was a result of a authoring mistake and provided an additional validation boundary. Changes to the interface were still made up to the 7 August commit 'most stable and clean </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+       <w:r>
+@@ -11764,7 +11659,7 @@
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t>'. Commits on 14 August reorganised the architecture notes and updated the presentation and README. Additional run directories created on 18 August expanded the analysable dataset beyond the values reported in the earlier presentation.</w:t>
++        <w:t>'. On 14th August commits were made to reorganise the architecture notes and update the presentation and README. Additional run directories were created on 18 August, increasing the number of runs which can be analysed.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="7E7A9648" w14:textId="213B72CD" w:rsidR="003C3665" w:rsidRDefault="00521687" w:rsidP="00521687">
+@@ -12348,9 +12243,9 @@
+       </w:r>
+       <w:bookmarkEnd w:id="45"/>
+     </w:p>
+-    <w:p w14:paraId="4926755D" w14:textId="495CFE55" w:rsidR="00521687" w:rsidRDefault="00521687" w:rsidP="00521687">
+-      <w:r>
+-        <w:t>A no-code interface increases the user's dependence on application-level safeguards. Security and reliability are therefore part of the system design. An internal assessment identified unsafe pickle loading, arbitrary custom reward execution, ungated assistant changes and permissive CORS settings. The highest-priority issues were addressed during July. In particular, the custom-Python reward path was removed rather than protected through an expanding denylist; the expression compiler now excludes dangerous syntax by construction. Training, tuning and evaluation workers also check for conflicting jobs, and the desktop launcher will terminate only the backend process that it started.</w:t>
++    <w:p w14:paraId="4926755D" w14:textId="0995634D" w:rsidR="00521687" w:rsidRDefault="00554652" w:rsidP="00521687">
++      <w:r w:rsidRPr="00554652">
++        <w:t>A no code interface makes the user more reliant on application level security. Hence as part of the system design, security and reliability are also considered. An internal evaluation has pointed out unsafe pickle loading, arbitrary execution of custom rewards, ungated assistant changes and permissive CORS settings. July was used to solve issues that were prioritized the most. Specifically, the custom-Python reward path was removed and not protected by a growing denylist; dangerous syntax is no longer allowed by the expression compiler. There are also conflicting jobs checks performed by training, tuning and evaluation workers and the desktop launcher will only kill the backend process it started.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="02AEB71E" w14:textId="2F1965D4" w:rsidR="00521687" w:rsidRDefault="00521687" w:rsidP="00521687">
+@@ -12363,23 +12258,23 @@
+       </w:r>
+       <w:bookmarkEnd w:id="46"/>
+     </w:p>
+-    <w:p w14:paraId="2EA33E61" w14:textId="0A79D0FB" w:rsidR="00521687" w:rsidRDefault="00521687" w:rsidP="00521687">
+-      <w:r>
+-        <w:t>Claude accelerated prototyping by translating my interface specifications into Dart code, drafting parts of the backend and helping diagnose failures. This support changed the speed of implementation, but not the allocation of responsibility. I determined what the application should do, selected the architecture, defined the interfaces and validation rules, integrated the generated code and decided which suggestions to retain. Git commits record the resulting sequence of changes, while the automated tests, run telemetry and evaluation videos show how proposed implementations were checked against the working system.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="4A931B4F" w14:textId="42B632A0" w:rsidR="00521687" w:rsidRDefault="00521687" w:rsidP="00521687">
++    <w:p w14:paraId="6322AEA2" w14:textId="77777777" w:rsidR="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:r>
++        <w:t>Claude was able to rapidly prototype my interface specifications and write portions of the backend, as well as help diagnose failures, for me. This support impacted the implementation progress and not the responsibility. I made up my mind on the functionality of the application, architecture, interfaces and validation rules, integrated the generated code and chose what suggestions to keep. The resulting series of changes are captured in git commits; the automatic tests, telemetry and evaluation videos demonstrate how a proposed implementation was tested against the working system.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="4A931B4F" w14:textId="423EDA7C" w:rsidR="00521687" w:rsidRDefault="00554652" w:rsidP="00554652">
+       <w:r>
+         <w:lastRenderedPageBreak/>
+-        <w:t xml:space="preserve">OpenAI Codex was introduced only after the </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>application</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> and evaluation evidence had been produced. It was used to restyle my original report material and to improve document formatting. It did not contribute to the EasyRTG application code, run the experiments or determine the findings. This separation is important because the software-development evidence in this chapter records my decisions and Claude-assisted implementation, whereas the final wording of the report is substantially Codex-assisted.</w:t>
++        <w:t xml:space="preserve">The application and evidence of evaluation has been completed even before the launch of OpenAI Codex. It was used to rework my original report material, and to enhance document formatting. It didn't help with the development of </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r>
++        <w:t>EasyRTG's</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r>
++        <w:t xml:space="preserve"> applications, or the running of experiments, or the conclusions. Significant about this separation is the software-development evidence in this chapter is mine and Claude's; the wording of the report is much more Codex's, though.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="22D5B548" w14:textId="1B7963A7" w:rsidR="00521687" w:rsidRDefault="00872C95" w:rsidP="00872C95">
+@@ -12387,13 +12282,8 @@
+         <w:pStyle w:val="Heading1"/>
+       </w:pPr>
+       <w:bookmarkStart w:id="47" w:name="_Toc238915453"/>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>6  Experiments</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t>, Results and Findings</w:t>
++      <w:r>
++        <w:t>6  Experiments, Results and Findings</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="47"/>
+     </w:p>
+@@ -13772,45 +13662,34 @@
+       </w:r>
+       <w:bookmarkEnd w:id="51"/>
+     </w:p>
+-    <w:p w14:paraId="20D2BFD7" w14:textId="2FF8C0C7" w:rsidR="00872C95" w:rsidRDefault="00872C95" w:rsidP="00872C95">
+-      <w:r>
+-        <w:t xml:space="preserve">The quadruped policies achieved the highest episode survival. A1 under PPO reached 967.5 steps and produced the highest reward in the archive, 4,767.0. </w:t>
++    <w:p w14:paraId="478D9B45" w14:textId="77777777" w:rsidR="00554652" w:rsidRPr="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:bookmarkStart w:id="52" w:name="_Toc238915456"/>
++      <w:r w:rsidRPr="00554652">
++        <w:t xml:space="preserve">The highest episode survival was obtained from the quadruped policies. The best score achieved by A1 under PPO is 967.5 steps with a total reward of 4,767.0. PPO </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+-      <w:r>
++      <w:r w:rsidRPr="00554652">
+         <w:t>ANYmal</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> under PPO reached 954.6 steps. Go1 reached 962.7 steps under PPO, the full 1,000 under SAC and 990.9 under TD3. The Valkyrie results were lower and differed by learner: PPO reached 204.2 steps, SAC reached 821.0 and TD3 reached 206.2.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="5EB62B32" w14:textId="6D5C9D3A" w:rsidR="00872C95" w:rsidRDefault="00872C95" w:rsidP="00872C95">
+-      <w:r>
++      <w:r w:rsidRPr="00554652">
++        <w:t xml:space="preserve"> achieved 954.6 steps. Go1 reached 962.7 steps under PPO, the full 1,000 under SAC and 990.9 under TD3. The results from the Valkyrie were lower and varied by learner: PPO scored 204.2 steps, SAC scored 821.0 and TD3 scored 206.2 steps.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="5015050C" w14:textId="77777777" w:rsidR="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:pPr>
+         <w:rPr>
+           <w:b/>
+         </w:rPr>
+-        <w:t>Interpretation.</w:t>
+-      </w:r>
+-      <w:r>
+-        <w:t xml:space="preserve"> Reward functions differ between robots and tasks, so reward totals are not comparable across rows. A1's reward of 4,767.0 does not establish that it learned better than Go1; its reward expression assigns a different value per step. The </w:t>
+-      </w:r>
+-      <w:r>
+-        <w:rPr>
+-          <w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>
+-          <w:sz w:val="21"/>
+-        </w:rPr>
+-        <w:t>% of cap</w:t>
+-      </w:r>
+-      <w:r>
+-        <w:t xml:space="preserve"> column provides the directly comparable measure of episode survival.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="0694D295" w14:textId="7B732E64" w:rsidR="00872C95" w:rsidRDefault="00AB7032" w:rsidP="00AB7032">
++      </w:pPr>
++      <w:r w:rsidRPr="00554652">
++        <w:t>Interpretation. There are different reward functions for robots and tasks and the reward totals are not comparable by row. A1's reward of 4,767.0 don't imply that it learned better than Go1, its reward expression assigns different value per step. Directly comparable measure of episode survival is the % of cap column.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="0694D295" w14:textId="293ACE9C" w:rsidR="00872C95" w:rsidRDefault="00AB7032" w:rsidP="00554652">
+       <w:pPr>
+         <w:pStyle w:val="Heading2"/>
+       </w:pPr>
+-      <w:bookmarkStart w:id="52" w:name="_Toc238915456"/>
+       <w:r>
+         <w:t>6.3 What the reward actually paid for</w:t>
+       </w:r>
+@@ -14013,29 +13892,34 @@
+       </w:r>
+       <w:bookmarkEnd w:id="56"/>
+     </w:p>
+-    <w:p w14:paraId="7B15D010" w14:textId="1A557061" w:rsidR="00AB7032" w:rsidRDefault="00AB7032" w:rsidP="00AB7032">
+-      <w:r>
+-        <w:t>Experiment cost depends on both simulation throughput and the number of steps required for learning. Learning time was measured as the number of environment steps before the smoothed mean episode length first remained above 900. This threshold indicates sustained stability rather than a single favourable logging interval.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="53DEAA6E" w14:textId="645DF0CB" w:rsidR="00AB7032" w:rsidRDefault="00AB7032" w:rsidP="00AB7032">
+-      <w:r>
+-        <w:t xml:space="preserve">Exactly twelve runs crossed this threshold, matching the twelve runs that reached 95% of the episode limit through a separately calculated measure. Appendix C provides the complete ordering. The best </w:t>
++    <w:p w14:paraId="6EF07C7A" w14:textId="77777777" w:rsidR="00554652" w:rsidRPr="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:bookmarkStart w:id="57" w:name="_Toc238915459"/>
++      <w:r w:rsidRPr="00554652">
++        <w:t>The amount of simulation throughput and the number of steps needed to learn affects experiment cost. The number of environment steps before the first time the smoothed mean episode length exceeded 900 was used as a metric for learning time. This threshold represents a 'stable interval' and not a single favourable logging interval.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="0BC72720" w14:textId="77777777" w:rsidR="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:pPr>
++        <w:rPr>
++          <w:b/>
++        </w:rPr>
++      </w:pPr>
++      <w:r w:rsidRPr="00554652">
++        <w:t xml:space="preserve">This number of runs has been exceeded exactly 12 times (twelve runs in the same measure with a separate calculation which is equal to 95% of the limit for the episode). A full ordering is given in Appendix C. The best </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+-      <w:r>
++      <w:r w:rsidRPr="00554652">
+         <w:t>ANYmal</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> run crossed after 2.51M steps, while the slowest successful Go1 run required 17.60M steps. Faster stabilisation did not imply a higher final reward. The highest-reward A1 run (20260728-202311; reward 4,767.0) required 16.42M steps to stabilise, whereas an earlier A1 run stabilised after 4.03M steps and achieved less than half that reward. Learning speed and final score must therefore be reported separately.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="1E89477A" w14:textId="73B57D00" w:rsidR="00AB7032" w:rsidRDefault="00AB7032" w:rsidP="00AB7032">
++      <w:r w:rsidRPr="00554652">
++        <w:t xml:space="preserve"> run was achieved after 2.51M steps and the slowest successful run with Go1 was after 17.60M steps. This did not mean that the reward was greater if the stabilisation was completed more quickly. The most rewarding A1 run (20260728-202311; reward 4,767.0) took 16.42M steps to stabilise, while a previous A1 run took less than half that number of steps and had a reward of only 2,102.5. The learning speed and score at the end of the learning need to be reported separately, therefore.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="1E89477A" w14:textId="6D19A476" w:rsidR="00AB7032" w:rsidRDefault="00AB7032" w:rsidP="00554652">
+       <w:pPr>
+         <w:pStyle w:val="Heading2"/>
+       </w:pPr>
+-      <w:bookmarkStart w:id="57" w:name="_Toc238915459"/>
+       <w:r>
+         <w:t>6.6 Go1: three learners, one solved robot</w:t>
+       </w:r>
+@@ -14223,56 +14107,26 @@
+       </w:r>
+       <w:bookmarkEnd w:id="60"/>
+     </w:p>
+-    <w:p w14:paraId="63160673" w14:textId="1FDB2FEE" w:rsidR="004D65F8" w:rsidRDefault="004D65F8" w:rsidP="004D65F8">
+-      <w:r>
+-        <w:t>The three-algorithm comparison exposed a limitation in the galloping reward. TD3 achieved the highest velocity, approximately 1.65 m/s, but had the lowest flight fraction at 29%. SAC was slower at 1.52 m/s but achieved a 52% flight fraction. TD3 had therefore learned a fast trot that scored well without producing the intended gallop.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="100AD0F9" w14:textId="0B591FF2" w:rsidR="004D65F8" w:rsidRDefault="00955473" w:rsidP="00955473">
+-      <w:r>
++    <w:p w14:paraId="4E8F14A0" w14:textId="77777777" w:rsidR="00554652" w:rsidRPr="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:bookmarkStart w:id="61" w:name="_Toc238915461"/>
++      <w:r w:rsidRPr="00554652">
++        <w:t>A three-algorithm comparison revealed one caveat of the galloping reward. TD3 had the highest velocity, ~1.65 m/s, and lowest flight fraction, 29%. SAC was slower at 1.52 m/s and was able to reach a flight fraction of 52%. TD3 had consequently developed a quick trot that gained good marks without the desired gallop.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="79CBD30A" w14:textId="77777777" w:rsidR="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:pPr>
+         <w:rPr>
+           <w:b/>
+         </w:rPr>
+-        <w:t>Interpretation.</w:t>
+-      </w:r>
+-      <w:r>
+-        <w:t xml:space="preserve"> This outcome is the reward-misspecification failure predicted by the literature </w:t>
+-      </w:r>
+-      <w:sdt>
+-        <w:sdtPr>
+-          <w:id w:val="6499681"/>
+-          <w:citation/>
+-        </w:sdtPr>
+-        <w:sdtContent>
+-          <w:r>
+-            <w:fldChar w:fldCharType="begin"/>
+-          </w:r>
+-          <w:r>
+-            <w:instrText xml:space="preserve"> CITATION src13 \m src14 \l 1033 </w:instrText>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="separate"/>
+-          </w:r>
+-          <w:r w:rsidR="00666F21" w:rsidRPr="00666F21">
+-            <w:rPr>
+-              <w:noProof/>
+-            </w:rPr>
+-            <w:t>[14, 15]</w:t>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="end"/>
+-          </w:r>
+-        </w:sdtContent>
+-      </w:sdt>
+-      <w:r>
+-        <w:t>. It demonstrates why contact-state measurements and video inspection must accompany reward. A high reward alone is insufficient evidence that the intended task has been learned.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="29CED15F" w14:textId="6045AE53" w:rsidR="00955473" w:rsidRDefault="00955473" w:rsidP="00955473">
++      </w:pPr>
++      <w:r w:rsidRPr="00554652">
++        <w:t>Interpretation. This is the result of the failure to specify rewards as predicted by the literature [14, 15]. It helps to illustrate the need to use contact-state measurement and video inspection in combination with reward. A high reward does not mean the task to be performed is learned.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="29CED15F" w14:textId="5304CA25" w:rsidR="00955473" w:rsidRDefault="00955473" w:rsidP="00554652">
+       <w:pPr>
+         <w:pStyle w:val="Heading2"/>
+       </w:pPr>
+-      <w:bookmarkStart w:id="61" w:name="_Toc238915461"/>
+       <w:r>
+         <w:t>6.8 Valkyrie: a controlled algorithm comparison</w:t>
+       </w:r>
+@@ -14292,7 +14146,6 @@
+         <w:rPr>
+           <w:noProof/>
+         </w:rPr>
+-        <w:lastRenderedPageBreak/>
+         <w:drawing>
+           <wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="104C997D" wp14:editId="09262AC7">
+             <wp:extent cx="5669280" cy="2167128"/>
+@@ -14341,6 +14194,7 @@
+       </w:pPr>
+       <w:bookmarkStart w:id="62" w:name="_Toc238915489"/>
+       <w:r>
++        <w:lastRenderedPageBreak/>
+         <w:t xml:space="preserve">Figure </w:t>
+       </w:r>
+       <w:fldSimple w:instr=" SEQ Figure \* ARABIC ">
+@@ -14428,9 +14282,12 @@
+       </w:r>
+       <w:bookmarkEnd w:id="63"/>
+     </w:p>
+-    <w:p w14:paraId="7AA63461" w14:textId="691B23A4" w:rsidR="00955473" w:rsidRDefault="00955473" w:rsidP="00955473">
+-      <w:r>
+-        <w:t xml:space="preserve">Both learners initially improved and remained similar for approximately 20 million steps. Their behaviour then diverged. SAC reached a best mean reward of 1,283.8 with a mean episode length of 821.0 steps. TD3 remained near 200 steps of survival, reached a best reward of 287.0 and later stopped after producing </w:t>
++    <w:p w14:paraId="103F80E1" w14:textId="77777777" w:rsidR="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:pPr>
++        <w:spacing w:after="60"/>
++      </w:pPr>
++      <w:r>
++        <w:t xml:space="preserve">For around 20 million steps, there was no significant difference between both learners in both methods. They are then diverged in their behaviour. SAC achieved its highest average reward at 1283.8 and the average episode length was 821.0 steps. TD3 stayed around 200 steps of survival, got to 287.0 of best reward, and then stalled afterwards, producing </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+       <w:r>
+@@ -14438,18 +14295,20 @@
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t xml:space="preserve"> observations. The dotted line in the figures marks the point of failure.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="3730532F" w14:textId="072CBF18" w:rsidR="00955473" w:rsidRDefault="00955473" w:rsidP="00955473">
+-      <w:r>
+-        <w:t>At their best checkpoints, the policies received broadly similar reward per step. SAC achieved a larger total because it accumulated these terms for approximately four times as many steps before falling. Its advantage was therefore episode survival rather than a higher scoring rate. TD3 telemetry also showed several reward terms increasing by orders of magnitude before failure, indicating critic or numerical instability rather than only a failure to move forward.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="09894A87" w14:textId="66A79DB2" w:rsidR="00955473" w:rsidRDefault="00955473" w:rsidP="00955473">
++        <w:t xml:space="preserve"> observations. The dotted line in the figures is the failure line.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="69EBEF12" w14:textId="77777777" w:rsidR="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
+       <w:pPr>
+         <w:spacing w:after="60"/>
+-        <w:jc w:val="center"/>
++      </w:pPr>
++      <w:r>
++        <w:t>The policies were compared at their best checkpoints, for which they received broadly similar reward per step. SAC got a bigger total because it added these up for about four times as many steps before it dropped out. So it wasn't a more points-per-minute advantage, it was about saving the episode. Before failure, TD3 also revealed several orders of magnitude growth in reward terms, which suggest a critic or numerical failure and not just a failure to take a step forward.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="09894A87" w14:textId="5FEB88CC" w:rsidR="00955473" w:rsidRDefault="00955473" w:rsidP="00554652">
++      <w:pPr>
++        <w:spacing w:after="60"/>
+       </w:pPr>
+       <w:r>
+         <w:rPr>
+@@ -14540,14 +14399,14 @@
+       </w:r>
+       <w:bookmarkEnd w:id="65"/>
+     </w:p>
+-    <w:p w14:paraId="2BBD7D27" w14:textId="68A3B7BB" w:rsidR="00955473" w:rsidRDefault="00955473" w:rsidP="00955473">
+-      <w:r>
+-        <w:t>The 256 passing backend tests provide a second form of evidence. They do not demonstrate learned robot behaviour. Instead, they verify the mechanisms required to interpret the training results: morphology handling, action mapping, state vocabulary, expression guards, episode clocks, contact signals, Isaac bridge calculations, configuration phases, and failure handling.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="1F125F6B" w14:textId="1662EC44" w:rsidR="00955473" w:rsidRDefault="00955473" w:rsidP="00955473">
+-      <w:r>
+-        <w:t>Neither form of evidence is sufficient in isolation. A visually convincing gait does not guarantee configuration safety, and passing standard checks offers no way to determine whether the output produces useful locomotion or something fundamentally unstable. The galloping result from Section 6.7 demonstrates this clearly, it satisfied every software check yet produced an unintended gait pattern rather than a functional motion. This gap between automated verification and behavioural evaluation confirms that both are required at once.</w:t>
++    <w:p w14:paraId="20B9A87C" w14:textId="77777777" w:rsidR="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:r>
++        <w:t>The other evidence is from the 256 passing backend unit tests. Not exhibiting learned robot behaviours. Rather, they check the mechanisms that need to be interpreted in order to translate the results of the training: handling of morphology, mapping of actions, vocabulary of the states, action guards, episode timers, contact signals, calculations of the Isaac bridge, configuration phases, and failure handling.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="1F125F6B" w14:textId="37341CBF" w:rsidR="00955473" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:r>
++        <w:t>Both types of evidence are needed alone to be sufficient. Visual realism of gait does not imply gait-safety, and standard gait checks will not reveal if the gait produced by the output is an effective gait or whether it is fundamentally unsafe. This is evident in the galloping result from Section 6.7 which passed all the software tests, but generated an unintended gait pattern instead of a functional gait. This difference between automated verification and behavioural evaluation is a testament to the need for both at the same time.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="08DBCE1C" w14:textId="1F486A83" w:rsidR="00955473" w:rsidRDefault="003459D7" w:rsidP="003459D7">
+@@ -14555,13 +14414,11 @@
+         <w:pStyle w:val="Heading1"/>
+       </w:pPr>
+       <w:bookmarkStart w:id="66" w:name="_Toc238915463"/>
+-      <w:proofErr w:type="gramStart"/>
+       <w:r>
+         <w:lastRenderedPageBreak/>
+         <w:t>7  Discussion</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="66"/>
+-      <w:proofErr w:type="gramEnd"/>
+     </w:p>
+     <w:p w14:paraId="5E94F854" w14:textId="6EBC9A0A" w:rsidR="003459D7" w:rsidRDefault="003459D7" w:rsidP="003459D7">
+       <w:pPr>
+@@ -14573,481 +14430,568 @@
+       </w:r>
+       <w:bookmarkEnd w:id="67"/>
+     </w:p>
+-    <w:p w14:paraId="2826BDB3" w14:textId="3E3BB5FA" w:rsidR="003459D7" w:rsidRDefault="003459D7" w:rsidP="003459D7">
+-      <w:r>
++    <w:p w14:paraId="664BD3FF" w14:textId="77777777" w:rsidR="00554652" w:rsidRPr="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++      </w:pPr>
++      <w:bookmarkStart w:id="68" w:name="_Toc238915465"/>
++      <w:r w:rsidRPr="00554652">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t xml:space="preserve">RQ1: With human supervision configuration. </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r w:rsidRPr="00554652">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>EasyRTG</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r w:rsidRPr="00554652">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t xml:space="preserve"> splits configuration up into: structural checks, relative calibration and writing rewards on a ratified word stock. Compiling and auditing is performed automatically, prior to any tool running. The user does not modify in any way the source code of the underlying environment. A comparative user study, measurement of time savings, has not yet been conducted.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="0610BA07" w14:textId="77777777" w:rsidR="00554652" w:rsidRPr="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++      </w:pPr>
++      <w:r w:rsidRPr="00554652">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t xml:space="preserve">RQ2: applicability with respect to robot bodies. By using the terms of morphology and state as dimensionless values, one pipeline can be used to create policies for the A1 quadruped, the </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r w:rsidRPr="00554652">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>ANYmal</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r w:rsidRPr="00554652">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t xml:space="preserve"> quadruped, the Go1 quadruped and the Valkyrie humanoid. This method does away with the rigid geometric restrictions that are typically associated with conventional simulation pipelines. The test results indicate that it works in these particular URDF models. However, without major architectural changes it cannot be used to support manipulators or wheeled robots.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="4ABD5098" w14:textId="77777777" w:rsidR="00554652" w:rsidRPr="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++      </w:pPr>
++      <w:r w:rsidRPr="00554652">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>RQ3: Differences between Learners. Almost identical performance limits were achieved by all three algorithms in the control of the Go1 quadruped. PPO, SAC and TD3 had very little deviation in the final values of the rewards in that environment. It's a different story when it comes to the Valkyrie results. SAC was the sole stable gait pattern achieved on that platform with PPO and TD3 not producing stable gait patterns. Conclusions are hindered by the lack of even distribution of algorithms and by inadequate hyperparameter tuning.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="530DA435" w14:textId="77777777" w:rsidR="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++      </w:pPr>
++      <w:r w:rsidRPr="00554652">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>RQ4: simulation throughput. Throughput was increased up until a hard ceiling arose from robot physics – using parallel environments. For the A1 configuration, a single GPU processed 32,056 steps per second, in 4,096 environments. Valkyrie was below that because of the higher number of masses and joints that it has. The numbers correspond to the architectural changes with respect to Isaac presented in Section 5.2, and are similar to the GPU simulation benchmarks provided by Castano [10] and Garcia [13].</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="7A30F90B" w14:textId="0A46A3FC" w:rsidR="003459D7" w:rsidRDefault="003459D7" w:rsidP="00554652">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++      </w:pPr>
++      <w:r>
++        <w:t>7.2 What the project learned about abstraction</w:t>
++      </w:r>
++      <w:bookmarkEnd w:id="68"/>
++    </w:p>
++    <w:p w14:paraId="77B91F94" w14:textId="77777777" w:rsidR="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:r>
++        <w:t xml:space="preserve">The biggest design problem was what layers of complexity needed to be exposed. But hiding simulator installation did not remove hardware limitations or OS dependency as with the MJX experiment which could not separate itself from the host GPU drivers through sandboxed execution. Arbitrary Python enables unrestricted state changes which make the runtime unsafe, while a static reward catalogue is safe, but too simple to handle environments where more advanced logic is required. </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r>
++        <w:t>EasyRTG</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r>
++        <w:t xml:space="preserve"> solved this by only exposing those inputs that are used to stimulate learning, observations, actions and termination signals, and the remainder of the logic to be executed by the agent was compiled into a controlled backend.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="66E649B5" w14:textId="13FD5639" w:rsidR="003459D7" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:r>
++        <w:lastRenderedPageBreak/>
++        <w:t>It was much harder to define exactly what the assistant could do. The system produces configuration files which are then validated prior to being executed and thus remain a drafting tool under human control. Project results are based on hard data, such as six failures before the telemetry and a number of short-term policies. Although language models can help with the initial setup process, they don't provide expert diagnosis: investigation into the Valkyrie TD3 failure revealed that automated tools missed key physics mistakes, and the final conclusion was to manually check the URDF file.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="00D97852" w14:textId="11A80DC4" w:rsidR="003459D7" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++      </w:pPr>
++      <w:bookmarkStart w:id="69" w:name="_Toc238915466"/>
++      <w:r>
++        <w:t>7.3 Limitations and threats to validity</w:t>
++      </w:r>
++      <w:bookmarkEnd w:id="69"/>
++    </w:p>
++    <w:p w14:paraId="5975C615" w14:textId="295B150D" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="ListBullet"/>
++        <w:jc w:val="left"/>
++      </w:pPr>
++      <w:r>
++        <w:t xml:space="preserve">The testing matrix </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r w:rsidR="000A4C90">
++        <w:t>favors</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r>
++        <w:t xml:space="preserve"> certain configurations over others.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="70B2A9E3" w14:textId="3B871A6E" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="ListBullet"/>
++        <w:jc w:val="left"/>
++      </w:pPr>
++      <w:r>
++        <w:t xml:space="preserve">SAC and TD3 targeted the Go1 and Valkyrie platforms while A1 and </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r>
++        <w:t>ANYmal</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r>
++        <w:t xml:space="preserve"> were limited to PPO alone, preventing any broad claims about cross-robot algorithm consistency.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="2E2A5281" w14:textId="06A00096" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="ListBullet"/>
++        <w:jc w:val="left"/>
++      </w:pPr>
++      <w:r>
++        <w:t>Fleet summaries highlight the single most successful run per pairing rather than tracking an average across random seeds.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="017B6976" w14:textId="4025A08A" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="ListBullet"/>
++        <w:jc w:val="left"/>
++      </w:pPr>
++      <w:r>
++        <w:t>These metrics reflect peak observed capability rather than expected typical performance.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="7417D882" w14:textId="4C2C4A0B" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="ListBullet"/>
++        <w:jc w:val="left"/>
++      </w:pPr>
++      <w:r>
++        <w:t>Throughput tests relied on one RTX 5000, so those numbers cannot be treated as universal benchmarks for other hardware.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="4ED2937B" w14:textId="5AAC25B1" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="ListBullet"/>
++        <w:jc w:val="left"/>
++      </w:pPr>
++      <w:r>
++        <w:t>Every policy was evaluated strictly in simulation, omitting domain randomization or physical transfer.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="34DD9AF5" w14:textId="7ABA4642" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="ListBullet"/>
++        <w:jc w:val="left"/>
++      </w:pPr>
++      <w:r>
++        <w:t>The no-code argument stands as an architectural benefit at this stage rather than a verified fact; without user studies measuring task completion or errors, empirical validation remains unestablished.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="72BE70CE" w14:textId="79D47E44" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="ListBullet"/>
++        <w:jc w:val="left"/>
++      </w:pPr>
++      <w:r>
++        <w:t>Training outcomes remain dependent on the URDF file itself because automatic inference cannot fix bad mass distribution or incorrect joint limits hidden inside it.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="6FD525CD" w14:textId="048B170C" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="ListBullet"/>
++        <w:jc w:val="left"/>
++      </w:pPr>
++      <w:r>
++        <w:t>Observations remained locked at seven keys despite flexible rewards; camera feeds, terrain mapping, ROS networking, and multi-agent support remain unimplemented.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="7F336427" w14:textId="73C7343F" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="ListBullet"/>
++        <w:jc w:val="left"/>
++      </w:pPr>
++      <w:r>
++        <w:t>Final verification focused strictly on backend logic because the Flutter tool failed to run properly in the test environment, leaving frontend status completely unconfirmed.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="08F1E5E6" w14:textId="6959E382" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++      </w:pPr>
++      <w:bookmarkStart w:id="70" w:name="_Toc238915467"/>
++      <w:r>
++        <w:t>7.4 Practical and academic significance</w:t>
++      </w:r>
++      <w:bookmarkEnd w:id="70"/>
++    </w:p>
++    <w:p w14:paraId="3264ADBE" w14:textId="77777777" w:rsidR="00554652" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:proofErr w:type="spellStart"/>
++      <w:r>
++        <w:t>EasyRTG's</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r>
++        <w:t xml:space="preserve"> bottom-line is a step from a robot file to a recorded policy, one application for configuration, training and supporting evidence. It is a case study of design of an unstrict code-</w:t>
++      </w:r>
++      <w:r>
++        <w:lastRenderedPageBreak/>
++        <w:t>executing reward system that is based on language, academically. The heterogeneous run archive also shows the importance of separately and task-specifically evaluating reward and episode survival and behaviour.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="0E936687" w14:textId="5B6A1755" w:rsidR="009758EB" w:rsidRDefault="00554652" w:rsidP="00554652">
++      <w:r>
++        <w:t>The project does not reflect the simplicity of robot learning. An important contribution it makes is that important configuration decisions are made visible, reviewable and repeatable. Evidence is kept and is evident of the wrong decision (for example the galloping reward)</w:t>
++      </w:r>
++      <w:r w:rsidR="004D21A2">
++        <w:t>.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="7991E948" w14:textId="00BC37EF" w:rsidR="004D21A2" w:rsidRDefault="004D21A2" w:rsidP="004D21A2">
++      <w:pPr>
++        <w:pStyle w:val="Heading1"/>
++      </w:pPr>
++      <w:bookmarkStart w:id="71" w:name="_Toc238915468"/>
++      <w:r>
++        <w:lastRenderedPageBreak/>
++        <w:t>8  Conclusion and Future Work</w:t>
++      </w:r>
++      <w:bookmarkEnd w:id="71"/>
++    </w:p>
++    <w:p w14:paraId="3DFDBDD0" w14:textId="28B8AD59" w:rsidR="004D21A2" w:rsidRDefault="004D21A2" w:rsidP="004D21A2">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++      </w:pPr>
++      <w:bookmarkStart w:id="72" w:name="_Toc238915469"/>
++      <w:r>
++        <w:t>8.1 Conclusion</w:t>
++      </w:r>
++      <w:bookmarkEnd w:id="72"/>
++    </w:p>
++    <w:p w14:paraId="31F4F3CD" w14:textId="77777777" w:rsidR="005369DE" w:rsidRPr="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++      </w:pPr>
++      <w:bookmarkStart w:id="73" w:name="_Toc238915470"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>This work brings together an integrated desktop platform for taking in one URDF robot file and outputting one locomotion task in natural language, and for training RL policies directly without having to write low level simulator scripts. Each of the five main goals listed in Chapter 1 were met.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="1D39BBDE" w14:textId="77777777" w:rsidR="005369DE" w:rsidRPr="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++      </w:pPr>
++      <w:r w:rsidRPr="005369DE">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t xml:space="preserve">It involves autonomously extracting motion physics from the URDF tree, using NVIDIA Isaac Sim simulator on GPU hardware for training, </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>PyBullet</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t xml:space="preserve"> for parameter inspection and a Flutter frontend, and a </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>FastAPI</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>-orchestrated backend. Rewards are expressed using a limited set of vocabulary (assessed math expressions are validated) and an LLM (under user validation process). All the application was analysed using the Isaac Sim running 34 times with four different families of robots and three different continuous control algorithms.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="4AE8F68F" w14:textId="77777777" w:rsidR="005369DE" w:rsidRPr="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++      </w:pPr>
++      <w:r w:rsidRPr="005369DE">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>There were three significant outcomes of the experimental trials. In the case of multi-platform learning, the CPU was eliminated as the learning process' bottleneck, and parallel execution on the GPU was used, where the maximum throughput at the single workstation level with the RTX 5000 GPU was 32,056.8 environment steps per second. The impact of learner selection was at best weakly significant for quadrupedal models such as the Go1 and all three models (PPO, SAC, TD3) achieved a high number of survival episodes with over ninety six percent and converged to similar reward scores. Conversely, algorithm choice was a direct contributor to the training viability of more dimensional platforms, like the Valkyrie humanoid. Among the three methods, only SAC maintained the stable balance throughout the entire simulation and resulted in an eighty two point one percent survival rate, whereas PPO and TD3 had a maximum of twenty percent survival rates but then became numerically unstable at later stages.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="6647ADA7" w14:textId="77777777" w:rsidR="005369DE" w:rsidRPr="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++      </w:pPr>
++      <w:r w:rsidRPr="005369DE">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>The iterative integration was mediated by means of failure, as the engineering process was motivated primarily in this way. At first, it was necessary to introduce the robot relative floor falling terminations and to give up fragile rule based naming, in favour of a more powerful traversal mechanism of kinematic tree. The galloping traversal conditions led to the need for explicit foot surface contact states modelling in Isaac Sim; Directories and safety issues around arbitrary Python execution necessitated the need for an AST expression compiler.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="66DDDA79" w14:textId="77777777" w:rsidR="005369DE" w:rsidRPr="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++      </w:pPr>
++      <w:r w:rsidRPr="005369DE">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:t>One note was that TD3 was not sufficiently "rewarded" with the Go1 galloping test and so it was emulating a fast trot gait. This also received an unwanted locomotion mode, and the platform failed to reach required height of airtime during the locomotion phase, which was also given very high scalar reward. As demonstrated in this experiment, unconstrained total reward volumes are not sufficient on their own to indicate the actual movement behaviour – if it is not monitored using contact signals and episode length and seen from the preliminary videos, it is of little consequence. Lastly, although the internal AI assistant was able to sometimes successfully produce functional reward functions from natural language input, it still needs a much larger validation set to ensure it is robust in complex engineering situations.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="44256FF5" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++      </w:pPr>
++      <w:r w:rsidRPr="005369DE">
++        <w:rPr>
++          <w:rFonts w:eastAsiaTheme="minorHAnsi" w:cstheme="minorBidi"/>
++          <w:b w:val="0"/>
++          <w:color w:val="auto"/>
++          <w:sz w:val="24"/>
++          <w:szCs w:val="24"/>
++        </w:rPr>
++        <w:lastRenderedPageBreak/>
++        <w:t>The application started as a CPU-based conceptual application, and was developed into an actual pipeline. This route indicates that, this can be combined with a single no code desktop platform, under strict supervision of the users, by incorporating the parts of the robots locomotion, reward design and training by using a GPU.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="69E110AF" w14:textId="5A3526FC" w:rsidR="00A3372A" w:rsidRDefault="00A3372A" w:rsidP="005369DE">
++      <w:pPr>
++        <w:pStyle w:val="Heading2"/>
++      </w:pPr>
++      <w:r>
++        <w:t>8.2 Future work</w:t>
++      </w:r>
++      <w:bookmarkEnd w:id="73"/>
++    </w:p>
++    <w:p w14:paraId="362D39A0" w14:textId="77777777" w:rsidR="005369DE" w:rsidRPr="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:bookmarkStart w:id="74" w:name="_Toc238915471"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve">A controlled usability test is the number one priority. When using the </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t>EasyRTG</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve"> workflow, the time to complete the task, number of configuration errors, and the need for assistance and a validated usability scale should be compared to a baseline documented code. This no-code claim would need to be verified in the course of this study, and it does not appear this can be taken for granted from the architecture.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="00086E5E" w14:textId="77777777" w:rsidR="005369DE" w:rsidRPr="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r w:rsidRPr="005369DE">
++        <w:t>Also, a policy should only be sensitive to changes in instructions – not a fixed goal – otherwise, observe and velocity commands should be introduced at the same time within a single episode. Then a campaign worker could propose and run tests/ audits of changes to the rewards (but would still have to have a user-approval process as described in 4.4.).</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="4CAA3CD8" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:pPr>
+         <w:rPr>
+           <w:b/>
+         </w:rPr>
+-        <w:t>RQ1: configuration with human oversight.</w:t>
+-      </w:r>
+-      <w:r>
+-        <w:t xml:space="preserve"> EasyRTG breaks configuration into structural checks, relative calibration, and reward writing against an approved vocabulary. Compiling and auditing occur automatically before any tool runs. Users do not edit the underlying environment source code at all. A comparative user study measuring time savings has not yet been conducted.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="6FBE3E5A" w14:textId="4CADAEB3" w:rsidR="003459D7" w:rsidRDefault="003459D7" w:rsidP="003459D7">
+-      <w:r>
+-        <w:rPr>
+-          <w:b/>
+-        </w:rPr>
+-        <w:t>RQ2: applicability across robot bodies.</w:t>
+-      </w:r>
+-      <w:r>
+-        <w:t xml:space="preserve"> Treating morphology and state terms as dimensionless values allows one pipeline to generate viable policies for the A1, </w:t>
++      </w:pPr>
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve">Other items to consider for future research include including terrain and sensor observations, enhancing automatic dynamics checks, testing additional robots with similar seeds and algorithm budgets, and quantifying the throughput on other GPUs. Instead of just exploring by individual experiments, hyperparameters should be explored from a reproducible optimisation perspective, e.g., </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+-      <w:r>
+-        <w:t>ANYmal</w:t>
++      <w:r w:rsidRPr="005369DE">
++        <w:t>Optuna</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+-      <w:r>
+-        <w:t>, and Go1 quadrupeds alongside the Valkyrie humanoid. This approach removes fixed geometric constraints that typically constrain standard simulation pipelines. The test results confirm it functions correctly across these specific URDF models. It cannot however support manipulators or wheeled robots without significant architectural changes.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="1AD3BD41" w14:textId="2F4A5570" w:rsidR="003459D7" w:rsidRDefault="003459D7" w:rsidP="003459D7">
+-      <w:r>
+-        <w:rPr>
+-          <w:b/>
+-        </w:rPr>
+-        <w:t>RQ3: differences between learners.</w:t>
+-      </w:r>
+-      <w:r>
+-        <w:t xml:space="preserve"> All three algorithms produced nearly identical performance caps when controlling the Go1 quadruped. PPO, SAC, and TD3 showed negligible variance in final reward values within that specific environment. The Valkyrie results tell a different story entirely. SAC became the only viable option for that platform while neither PPO nor TD3 achieved stable gait patterns. Uneven algorithm coverage and incomplete hyperparameter tuning weaken these conclusions.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="4803243B" w14:textId="45C72C10" w:rsidR="003459D7" w:rsidRDefault="003459D7" w:rsidP="003459D7">
+-      <w:r>
+-        <w:rPr>
+-          <w:b/>
+-        </w:rPr>
+-        <w:t>RQ4: simulation throughput.</w:t>
+-      </w:r>
+-      <w:r>
+-        <w:t xml:space="preserve"> Parallel environments allowed throughput to scale until robot physics created a hard ceiling. A single GPU processed 32,056 steps per second across 4,096 environments for the A1 configuration. Valkyrie performed below that threshold due to increased rigid-body solver latency from its mass and joint count. These figures align with the architectural shifts toward Isaac detailed in Section 5.2, which matches GPU simulation benchmarks published by Castano </w:t>
+-      </w:r>
+-      <w:sdt>
+-        <w:sdtPr>
+-          <w:id w:val="521823415"/>
+-          <w:citation/>
+-        </w:sdtPr>
+-        <w:sdtContent>
+-          <w:r>
+-            <w:fldChar w:fldCharType="begin"/>
+-          </w:r>
+-          <w:r>
+-            <w:instrText xml:space="preserve"> CITATION src10 \l 1033 </w:instrText>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="separate"/>
+-          </w:r>
+-          <w:r w:rsidR="00666F21" w:rsidRPr="00666F21">
+-            <w:rPr>
+-              <w:noProof/>
+-            </w:rPr>
+-            <w:t>[10]</w:t>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="end"/>
+-          </w:r>
+-        </w:sdtContent>
+-      </w:sdt>
+-      <w:r>
+-        <w:t xml:space="preserve"> and Garcia </w:t>
+-      </w:r>
+-      <w:sdt>
+-        <w:sdtPr>
+-          <w:id w:val="2111305143"/>
+-          <w:citation/>
+-        </w:sdtPr>
+-        <w:sdtContent>
+-          <w:r>
+-            <w:fldChar w:fldCharType="begin"/>
+-          </w:r>
+-          <w:r>
+-            <w:instrText xml:space="preserve"> CITATION src12 \l 1033 </w:instrText>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="separate"/>
+-          </w:r>
+-          <w:r w:rsidR="00666F21" w:rsidRPr="00666F21">
+-            <w:rPr>
+-              <w:noProof/>
+-            </w:rPr>
+-            <w:t>[13]</w:t>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="end"/>
+-          </w:r>
+-        </w:sdtContent>
+-      </w:sdt>
+-      <w:r>
+-        <w:t>.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="7A30F90B" w14:textId="5AE539AA" w:rsidR="003459D7" w:rsidRDefault="003459D7" w:rsidP="003459D7">
+-      <w:pPr>
+-        <w:pStyle w:val="Heading2"/>
+-      </w:pPr>
+-      <w:bookmarkStart w:id="68" w:name="_Toc238915465"/>
+-      <w:r>
+-        <w:t>7.2 What the project learned about abstraction</w:t>
+-      </w:r>
+-      <w:bookmarkEnd w:id="68"/>
+-    </w:p>
+-    <w:p w14:paraId="48AFE469" w14:textId="6FD037F5" w:rsidR="003459D7" w:rsidRDefault="003459D7" w:rsidP="003459D7">
+-      <w:r>
+-        <w:t xml:space="preserve">The core design challenge involved determining exactly which layers of complexity must remain visible. Obscuring simulator installation failed to eliminate underlying hardware constraints or operating system dependencies; the MJX experiment demonstrated this when sandboxed execution could not isolate itself from host GPU drivers. Arbitrary Python allows unconstrained </w:t>
+-      </w:r>
+-      <w:r>
+-        <w:lastRenderedPageBreak/>
+-        <w:t>state mutations that compromise the runtime, while a static reward catalogue avoids these security risks but remains insufficient for environments requiring complex logic. EasyRTG resolved this by exposing only the inputs that drive learning, observations, actions, and termination signals, while compiling the rest of the execution logic into a controlled backend.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="66E649B5" w14:textId="51753506" w:rsidR="003459D7" w:rsidRDefault="003459D7" w:rsidP="003459D7">
+-      <w:r>
+-        <w:t>Defining the precise scope of the assistant proved significantly more difficult. The system generates configuration files that must pass validation before execution, functioning strictly as a drafting tool within a framework of human oversight. Project findings rely on concrete metrics, specifically six pre-telemetry failures alongside dozens of short-lived policies. Language models simplify the initial setup phase but cannot replace expert diagnosis; investigation into the Valkyrie TD3 failure confirmed that automated tools miss critical physics errors, ultimately requiring manual inspection of the URDF file.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="00D97852" w14:textId="11A80DC4" w:rsidR="003459D7" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="Heading2"/>
+-      </w:pPr>
+-      <w:bookmarkStart w:id="69" w:name="_Toc238915466"/>
+-      <w:r>
+-        <w:t>7.3 Limitations and threats to validity</w:t>
+-      </w:r>
+-      <w:bookmarkEnd w:id="69"/>
+-    </w:p>
+-    <w:p w14:paraId="5975C615" w14:textId="295B150D" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="ListBullet"/>
+-        <w:jc w:val="left"/>
+-      </w:pPr>
+-      <w:r>
+-        <w:t xml:space="preserve">The testing matrix </w:t>
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve"> [27]. Lastly, it is required to have domain randomisation (and hardware export) before </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+-      <w:r w:rsidR="000A4C90">
+-        <w:t>favors</w:t>
++      <w:r w:rsidRPr="005369DE">
++        <w:t>EasyRTG</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> certain configurations over others.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="70B2A9E3" w14:textId="3B871A6E" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="ListBullet"/>
+-        <w:jc w:val="left"/>
+-      </w:pPr>
+-      <w:r>
+-        <w:t xml:space="preserve">SAC and TD3 targeted the Go1 and Valkyrie platforms while A1 and </w:t>
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve"> can boast of having a complete simulation to real robot behaviour path. This stage is provided with a model relevant to </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+-      <w:r>
+-        <w:t>ANYmal</w:t>
++      <w:r w:rsidRPr="005369DE">
++        <w:t>DrEureka</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> were limited to PPO alone, preventing any broad claims about cross-robot algorithm consistency.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="2E2A5281" w14:textId="06A00096" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="ListBullet"/>
+-        <w:jc w:val="left"/>
+-      </w:pPr>
+-      <w:r>
+-        <w:t>Fleet summaries highlight the single most successful run per pairing rather than tracking an average across random seeds.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="017B6976" w14:textId="4025A08A" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="ListBullet"/>
+-        <w:jc w:val="left"/>
+-      </w:pPr>
+-      <w:r>
+-        <w:t>These metrics reflect peak observed capability rather than expected typical performance.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="7417D882" w14:textId="4C2C4A0B" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="ListBullet"/>
+-        <w:jc w:val="left"/>
+-      </w:pPr>
+-      <w:r>
+-        <w:t>Throughput tests relied on one RTX 5000, so those numbers cannot be treated as universal benchmarks for other hardware.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="4ED2937B" w14:textId="5AAC25B1" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="ListBullet"/>
+-        <w:jc w:val="left"/>
+-      </w:pPr>
+-      <w:r>
+-        <w:t>Every policy was evaluated strictly in simulation, omitting domain randomization or physical transfer.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="34DD9AF5" w14:textId="7ABA4642" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="ListBullet"/>
+-        <w:jc w:val="left"/>
+-      </w:pPr>
+-      <w:r>
+-        <w:t>The no-code argument stands as an architectural benefit at this stage rather than a verified fact; without user studies measuring task completion or errors, empirical validation remains unestablished.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="72BE70CE" w14:textId="79D47E44" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="ListBullet"/>
+-        <w:jc w:val="left"/>
+-      </w:pPr>
+-      <w:r>
+-        <w:t>Training outcomes remain dependent on the URDF file itself because automatic inference cannot fix bad mass distribution or incorrect joint limits hidden inside it.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="6FD525CD" w14:textId="048B170C" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="ListBullet"/>
+-        <w:jc w:val="left"/>
+-      </w:pPr>
+-      <w:r>
+-        <w:t>Observations remained locked at seven keys despite flexible rewards; camera feeds, terrain mapping, ROS networking, and multi-agent support remain unimplemented.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="7F336427" w14:textId="73C7343F" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="ListBullet"/>
+-        <w:jc w:val="left"/>
+-      </w:pPr>
+-      <w:r>
+-        <w:lastRenderedPageBreak/>
+-        <w:t>Final verification focused strictly on backend logic because the Flutter tool failed to run properly in the test environment, leaving frontend status completely unconfirmed.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="08F1E5E6" w14:textId="6959E382" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:pPr>
+-        <w:pStyle w:val="Heading2"/>
+-      </w:pPr>
+-      <w:bookmarkStart w:id="70" w:name="_Toc238915467"/>
+-      <w:r>
+-        <w:t>7.4 Practical and academic significance</w:t>
+-      </w:r>
+-      <w:bookmarkEnd w:id="70"/>
+-    </w:p>
+-    <w:p w14:paraId="368797F7" w14:textId="465F5BE6" w:rsidR="009758EB" w:rsidRDefault="009758EB" w:rsidP="009758EB">
+-      <w:r>
+-        <w:t xml:space="preserve">The practical contribution of EasyRTG is an integrated path from a robot file to a recorded policy, combining configuration, training and supporting evidence within one application. Its academic contribution is a case study of language-assisted reward design without unrestricted code execution. The heterogeneous run archive also demonstrates why </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>reward,</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> episode survival and task-specific behaviour must be evaluated together.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="0E936687" w14:textId="0EBF66E6" w:rsidR="009758EB" w:rsidRDefault="004D21A2" w:rsidP="004D21A2">
+-      <w:r>
+-        <w:t>The project does not demonstrate that robot learning has become effortless. Its more defensible contribution is that important configuration decisions are made visible, reviewable and repeatable. When a decision is incorrect, as in the galloping reward, the retained evidence makes the error identifiable.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="7991E948" w14:textId="00BC37EF" w:rsidR="004D21A2" w:rsidRDefault="004D21A2" w:rsidP="004D21A2">
++      <w:r w:rsidRPr="005369DE">
++        <w:t xml:space="preserve"> [18].</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="0578590F" w14:textId="3693517F" w:rsidR="00A3372A" w:rsidRDefault="00A3372A" w:rsidP="005369DE">
+       <w:pPr>
+         <w:pStyle w:val="Heading1"/>
+       </w:pPr>
+-      <w:bookmarkStart w:id="71" w:name="_Toc238915468"/>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>8  Conclusion</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> and Future Work</w:t>
+-      </w:r>
+-      <w:bookmarkEnd w:id="71"/>
+-    </w:p>
+-    <w:p w14:paraId="3DFDBDD0" w14:textId="28B8AD59" w:rsidR="004D21A2" w:rsidRDefault="004D21A2" w:rsidP="004D21A2">
+-      <w:pPr>
+-        <w:pStyle w:val="Heading2"/>
+-      </w:pPr>
+-      <w:bookmarkStart w:id="72" w:name="_Toc238915469"/>
+-      <w:r>
+-        <w:t>8.1 Conclusion</w:t>
+-      </w:r>
+-      <w:bookmarkEnd w:id="72"/>
+-    </w:p>
+-    <w:p w14:paraId="385626D7" w14:textId="5A916F95" w:rsidR="004D21A2" w:rsidRDefault="004D21A2" w:rsidP="004D21A2">
+-      <w:r>
+-        <w:t>This work establishes an integrated desktop platform enabling users to import a URDF robot, define a locomotion task in natural language, and train reinforcement learning policies without writing low-level simulator scripts. All five primary objectives outlined in Chapter 1 were satisfied.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="7BE73A78" w14:textId="3DE7BB72" w:rsidR="004D21A2" w:rsidRDefault="004D21A2" w:rsidP="004D21A2">
+-      <w:r>
+-        <w:t xml:space="preserve">The system relies on a Flutter frontend, a </w:t>
+-      </w:r>
+-      <w:proofErr w:type="spellStart"/>
+-      <w:r>
+-        <w:t>FastAPI</w:t>
+-      </w:r>
+-      <w:proofErr w:type="spellEnd"/>
+-      <w:r>
+-        <w:t>-orchestrated backend, PyBullet-based parameter inspection, and training within the NVIDIA Isaac Sim simulator using GPU hardware to autonomously extract motion physics directly from the URDF tree. Rewards are captured and audited as evaluated mathematical expressions via an established vocabulary facilitated by an LLM operating under strictly confined user validation protocols. The complete application underwent analysis across thirty-four Isaac Sim runs utilising four distinct robot families and three continuous-control algorithms.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="1D5F9F0B" w14:textId="598E13E7" w:rsidR="004D21A2" w:rsidRDefault="004D21A2" w:rsidP="004D21A2">
+-      <w:r>
+-        <w:t xml:space="preserve">Three significant outcomes defined the experimental trials. Parallel execution on the GPU eliminated the CPU bottleneck for multi-platform learning, achieving a peak throughput of 32,056.8 environment steps per second at a single workstation level using an RTX 5000 GPU. For quadruped models such as the Go1, learner selection exerted minimally significant </w:t>
+-      </w:r>
+-      <w:r>
+-        <w:lastRenderedPageBreak/>
+-        <w:t xml:space="preserve">influence over final outcomes; PPO, SAC, and TD3 achieved greater than ninety-six percent survival episodes and converged upon comparable reward scores. Conversely, algorithm choice directly dictated training viability on higher-dimensional platforms like the Valkyrie humanoid. SAC emerged as the solitary method maintaining stable balance throughout its simulation, reaching an </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>eighty-two point</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> one percent survival score while PPO and TD3 plateaued at twenty percent, with TD3 subsequently degrading into numerical instability.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="6A342832" w14:textId="528000E9" w:rsidR="004D21A2" w:rsidRDefault="004D21A2" w:rsidP="004D21A2">
+-      <w:r>
+-        <w:t>The engineering process was fundamentally driven by mitigating failures encountered during iterative integration. Initial challenges necessitated the inclusion of robot-relative floor-falling terminations, while fragile rule-based naming conventions were discarded in favour of a robust kinematic tree traversal mechanism. Directories and safety concerns regarding arbitrary Python execution mandated an AST expression compiler, whereas galloping traversal conditions informed the explicit modelling of foot surface contact states within Isaac Sim.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="5D0B2CF0" w14:textId="6F873DAC" w:rsidR="004D21A2" w:rsidRDefault="00A3372A" w:rsidP="00A3372A">
+-      <w:r>
+-        <w:t>A notable limitation arose during the Go1 galloping test, where imprecise reward specifications drove TD3 to emulate a rapid trot movement. This unintended locomotion mode accumulated exceptionally high scalar rewards, causing the platform to entirely omit required airtime during its motion phase. The experiment confirms that unconstrained total reward volumes serve insufficiently as indicators of actual movement behaviour; without monitoring contact signals, episode length, and preliminary videos, unregulated reward accumulation remains practically insignificant. Finally, while the internal AI assistant frequently achieved functional reward functions from natural language inputs, it nonetheless requires a significantly expanded validation set to guarantee robustness in complex engineering scenarios.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="22EAC684" w14:textId="2838F34A" w:rsidR="00A3372A" w:rsidRDefault="00A3372A" w:rsidP="00A3372A">
+-      <w:r>
+-        <w:t>The application evolved from its initial CPU-based conceptualisation into a fully operational pipeline. This progression demonstrates that robotic locomotion, reward design, and GPU-assisted training can be consolidated into a single no-code desktop platform while maintaining strict user oversight.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="69E110AF" w14:textId="0BFA6DA9" w:rsidR="00A3372A" w:rsidRDefault="00A3372A" w:rsidP="00A3372A">
+-      <w:pPr>
+-        <w:pStyle w:val="Heading2"/>
+-      </w:pPr>
+-      <w:bookmarkStart w:id="73" w:name="_Toc238915470"/>
+-      <w:r>
+-        <w:t>8.2 Future work</w:t>
+-      </w:r>
+-      <w:bookmarkEnd w:id="73"/>
+-    </w:p>
+-    <w:p w14:paraId="3A2EBD5B" w14:textId="554FDDD9" w:rsidR="00A3372A" w:rsidRDefault="00A3372A" w:rsidP="00A3372A">
+-      <w:r>
+-        <w:t xml:space="preserve">The </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>first priority</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> is a controlled usability study. A comparison between the EasyRTG workflow and a documented code-based baseline should measure task completion time, configuration errors, requests for assistance and a validated usability scale. This study is required to evaluate the no-code claim empirically rather than infer it from the architecture.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="0B1FE6E9" w14:textId="3EBC7A93" w:rsidR="00A3372A" w:rsidRDefault="00A3372A" w:rsidP="00A3372A">
+-      <w:r>
+-        <w:lastRenderedPageBreak/>
+-        <w:t xml:space="preserve">Observation expressions and per-episode velocity commands should also be introduced together, allowing one policy to respond to changing instructions rather than a fixed goal. A campaign worker could then </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>propose,</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> audit and test reward revisions automatically while retaining the user-approval mechanism described in Section 4.4.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="0F69E367" w14:textId="3E3DF8D7" w:rsidR="00A3372A" w:rsidRDefault="00A3372A" w:rsidP="00A3372A">
+-      <w:r>
+-        <w:t xml:space="preserve">Further work should add terrain and sensor observations, improve automatic dynamics checks, evaluate more robots with balanced seeds and algorithm budgets, and measure throughput on additional GPUs. Hyperparameters should be studied through a reproducible optimisation framework such as </w:t>
+-      </w:r>
+-      <w:proofErr w:type="spellStart"/>
+-      <w:r>
+-        <w:t>Optuna</w:t>
+-      </w:r>
+-      <w:proofErr w:type="spellEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> </w:t>
+-      </w:r>
+-      <w:sdt>
+-        <w:sdtPr>
+-          <w:id w:val="842053054"/>
+-          <w:citation/>
+-        </w:sdtPr>
+-        <w:sdtContent>
+-          <w:r>
+-            <w:fldChar w:fldCharType="begin"/>
+-          </w:r>
+-          <w:r>
+-            <w:instrText xml:space="preserve"> CITATION src24 \l 1033 </w:instrText>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="separate"/>
+-          </w:r>
+-          <w:r w:rsidR="00666F21" w:rsidRPr="00666F21">
+-            <w:rPr>
+-              <w:noProof/>
+-            </w:rPr>
+-            <w:t>[27]</w:t>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="end"/>
+-          </w:r>
+-        </w:sdtContent>
+-      </w:sdt>
+-      <w:r>
+-        <w:t xml:space="preserve"> rather than through individual experiments alone. Finally, domain randomisation and hardware export are required before EasyRTG can claim a complete route from simulation to physical robot behaviour. </w:t>
+-      </w:r>
+-      <w:proofErr w:type="spellStart"/>
+-      <w:r>
+-        <w:t>DrEureka</w:t>
+-      </w:r>
+-      <w:proofErr w:type="spellEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> provides a relevant model for this stage </w:t>
+-      </w:r>
+-      <w:sdt>
+-        <w:sdtPr>
+-          <w:id w:val="-734777117"/>
+-          <w:citation/>
+-        </w:sdtPr>
+-        <w:sdtContent>
+-          <w:r>
+-            <w:fldChar w:fldCharType="begin"/>
+-          </w:r>
+-          <w:r>
+-            <w:instrText xml:space="preserve"> CITATION src17 \l 1033 </w:instrText>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="separate"/>
+-          </w:r>
+-          <w:r w:rsidR="00666F21" w:rsidRPr="00666F21">
+-            <w:rPr>
+-              <w:noProof/>
+-            </w:rPr>
+-            <w:t>[18]</w:t>
+-          </w:r>
+-          <w:r>
+-            <w:fldChar w:fldCharType="end"/>
+-          </w:r>
+-        </w:sdtContent>
+-      </w:sdt>
+-      <w:r>
+-        <w:t>.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="0578590F" w14:textId="6E5480CA" w:rsidR="00A3372A" w:rsidRDefault="00A3372A" w:rsidP="00A3372A">
+-      <w:pPr>
+-        <w:pStyle w:val="Heading1"/>
+-      </w:pPr>
+-      <w:bookmarkStart w:id="74" w:name="_Toc238915471"/>
+       <w:r>
+         <w:t>Bibliography</w:t>
+       </w:r>
+@@ -15344,6 +15288,7 @@
+                 <w:noProof/>
+                 <w:lang w:val="en-US"/>
+               </w:rPr>
++              <w:lastRenderedPageBreak/>
+               <w:t xml:space="preserve">[5] </w:t>
+             </w:r>
+           </w:p>
+@@ -15626,7 +15571,6 @@
+                 <w:noProof/>
+                 <w:lang w:val="en-US"/>
+               </w:rPr>
+-              <w:lastRenderedPageBreak/>
+               <w:t xml:space="preserve">[10] </w:t>
+             </w:r>
+           </w:p>
+@@ -16339,6 +16283,7 @@
+                 <w:noProof/>
+                 <w:lang w:val="en-US"/>
+               </w:rPr>
++              <w:lastRenderedPageBreak/>
+               <w:t xml:space="preserve">[22] </w:t>
+             </w:r>
+           </w:p>
+@@ -16637,7 +16582,6 @@
+                 <w:noProof/>
+                 <w:lang w:val="en-US"/>
+               </w:rPr>
+-              <w:lastRenderedPageBreak/>
+               <w:t xml:space="preserve">[27] </w:t>
+             </w:r>
+           </w:p>
+@@ -16705,15 +16649,7 @@
+       </w:pPr>
+       <w:bookmarkStart w:id="75" w:name="_Toc238915472"/>
+       <w:r>
+-        <w:t xml:space="preserve">Appendix </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>A  GitLab</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> Repository and Running the Project</w:t>
++        <w:t>Appendix A  GitLab Repository and Running the Project</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="75"/>
+     </w:p>
+@@ -16752,15 +16688,7 @@
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t xml:space="preserve"> orchestration service, robot inspection, configuration services, reinforcement-learning logic, Isaac subprocess workers and assistant tools. The Flutter desktop application </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>is located in</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> </w:t>
++        <w:t xml:space="preserve"> orchestration service, robot inspection, configuration services, reinforcement-learning logic, Isaac subprocess workers and assistant tools. The Flutter desktop application is located in </w:t>
+       </w:r>
+       <w:r>
+         <w:rPr>
+@@ -16806,15 +16734,7 @@
+         <w:t>scripts</w:t>
+       </w:r>
+       <w:r>
+-        <w:t xml:space="preserve"> </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>contains</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> the Windows and Linux launchers, build tools and media generators. The </w:t>
++        <w:t xml:space="preserve"> contains the Windows and Linux launchers, build tools and media generators. The </w:t>
+       </w:r>
+       <w:r>
+         <w:rPr>
+@@ -16881,6 +16801,7 @@
+         <w:jc w:val="left"/>
+       </w:pPr>
+       <w:r>
++        <w:lastRenderedPageBreak/>
+         <w:t xml:space="preserve">Create the Python environment using </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+@@ -16957,13 +16878,8 @@
+         <w:t>$</w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>env:PYTEST</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t>_DISABLE_PLUGIN_AUTOLOAD</w:t>
++      <w:r>
++        <w:t>env:PYTEST_DISABLE_PLUGIN_AUTOLOAD</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+@@ -16990,23 +16906,17 @@
+         <w:t>basetemp</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+-      <w:proofErr w:type="gramStart"/>
+       <w:r>
+         <w:t>=.</w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+       <w:r>
+-        <w:t>pytest</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t>_tmp</w:t>
++        <w:t>pytest_tmp</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+     </w:p>
+     <w:p w14:paraId="4EB65AD9" w14:textId="23A58ED6" w:rsidR="00893DD0" w:rsidRDefault="00893DD0" w:rsidP="00893DD0">
+       <w:r>
+-        <w:lastRenderedPageBreak/>
+         <w:t>Frontend:</w:t>
+       </w:r>
+     </w:p>
+@@ -17095,15 +17005,7 @@
+       </w:pPr>
+       <w:bookmarkStart w:id="79" w:name="_Toc238915476"/>
+       <w:r>
+-        <w:t xml:space="preserve">Appendix </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>B  Experiment</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> Coverage</w:t>
++        <w:t>Appendix B  Experiment Coverage</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="79"/>
+     </w:p>
+@@ -17769,15 +17671,8 @@
+       </w:pPr>
+       <w:bookmarkStart w:id="81" w:name="_Toc238915477"/>
+       <w:r>
+-        <w:t xml:space="preserve">Appendix </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>C  Supplementary</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> Figures</w:t>
++        <w:lastRenderedPageBreak/>
++        <w:t>Appendix C  Supplementary Figures</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="81"/>
+     </w:p>
+@@ -17795,7 +17690,6 @@
+         <w:rPr>
+           <w:noProof/>
+         </w:rPr>
+-        <w:lastRenderedPageBreak/>
+         <w:drawing>
+           <wp:inline distT="0" distB="0" distL="0" distR="0" wp14:anchorId="3D729CF2" wp14:editId="03C79D99">
+             <wp:extent cx="5669280" cy="2167128"/>
+@@ -17929,6 +17823,7 @@
+       </w:pPr>
+       <w:bookmarkStart w:id="83" w:name="_Toc238915493"/>
+       <w:r>
++        <w:lastRenderedPageBreak/>
+         <w:t xml:space="preserve">Figure </w:t>
+       </w:r>
+       <w:fldSimple w:instr=" SEQ Figure \* ARABIC ">
+@@ -17954,11 +17849,7 @@
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t xml:space="preserve"> remains unstable and decreases by approximately half between 3M and 5M steps before recovering, </w:t>
+-      </w:r>
+-      <w:r>
+-        <w:lastRenderedPageBreak/>
+-        <w:t>illustrating why ten attempts were required. Valkyrie improves slowly for 25M steps before accelerating; a shorter training budget would therefore have produced a different conclusion about humanoid learning.</w:t>
++        <w:t xml:space="preserve"> remains unstable and decreases by approximately half between 3M and 5M steps before recovering, illustrating why ten attempts were required. Valkyrie improves slowly for 25M steps before accelerating; a shorter training budget would therefore have produced a different conclusion about humanoid learning.</w:t>
+       </w:r>
+     </w:p>
+     <w:p w14:paraId="2792B84A" w14:textId="2C5A14D2" w:rsidR="004C1D38" w:rsidRDefault="004C1D38" w:rsidP="004C1D38">
+@@ -18117,15 +18008,7 @@
+       <w:bookmarkStart w:id="86" w:name="_Toc238915478"/>
+       <w:r>
+         <w:lastRenderedPageBreak/>
+-        <w:t xml:space="preserve">Appendix </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>D  Full</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> Run Index</w:t>
++        <w:t>Appendix D  Full Run Index</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="86"/>
+     </w:p>
+@@ -24290,15 +24173,7 @@
+       </w:pPr>
+       <w:bookmarkStart w:id="88" w:name="_Toc238915479"/>
+       <w:r>
+-        <w:t xml:space="preserve">Appendix </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>E  Compute</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> Environment and Reproduction Notes</w:t>
++        <w:t>Appendix E  Compute Environment and Reproduction Notes</w:t>
+       </w:r>
+       <w:bookmarkEnd w:id="88"/>
+     </w:p>
+@@ -24577,19 +24452,11 @@
+               <w:t>Newton (replaces `</w:t>
+             </w:r>
+             <w:proofErr w:type="spellStart"/>
+-            <w:proofErr w:type="gramStart"/>
+-            <w:r>
+-              <w:rPr>
+-                <w:sz w:val="20"/>
+-              </w:rPr>
+-              <w:t>omni.physics</w:t>
+-            </w:r>
+-            <w:proofErr w:type="gramEnd"/>
+-            <w:r>
+-              <w:rPr>
+-                <w:sz w:val="20"/>
+-              </w:rPr>
+-              <w:t>.tensors</w:t>
++            <w:r>
++              <w:rPr>
++                <w:sz w:val="20"/>
++              </w:rPr>
++              <w:t>omni.physics.tensors</w:t>
+             </w:r>
+             <w:proofErr w:type="spellEnd"/>
+             <w:r>
+@@ -24890,66 +24757,32 @@
+       </w:tr>
+     </w:tbl>
+     <w:p w14:paraId="2DFF97F4" w14:textId="77777777" w:rsidR="00666F21" w:rsidRDefault="00666F21" w:rsidP="00666F21"/>
+-    <w:p w14:paraId="039DC3DF" w14:textId="714E0D47" w:rsidR="00666F21" w:rsidRDefault="00666F21" w:rsidP="00666F21">
+-      <w:r>
+-        <w:t xml:space="preserve">Isaac Sim is a release </w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:t>candidate</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:t xml:space="preserve"> and Isaac Lab is a beta. Isaac Sim 6.0 also replaces the earlier </w:t>
++    <w:p w14:paraId="225FE2D0" w14:textId="77777777" w:rsidR="005369DE" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t xml:space="preserve">Isaac Sim is a release candidate, Isaac Lab is a beta. The old </w:t>
+       </w:r>
+       <w:proofErr w:type="spellStart"/>
+-      <w:proofErr w:type="gramStart"/>
+-      <w:r>
+-        <w:rPr>
+-          <w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>
+-          <w:sz w:val="21"/>
+-        </w:rPr>
+-        <w:t>omni.physics</w:t>
+-      </w:r>
+-      <w:proofErr w:type="gramEnd"/>
+-      <w:r>
+-        <w:rPr>
+-          <w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>
+-          <w:sz w:val="21"/>
+-        </w:rPr>
+-        <w:t>.tensors</w:t>
++      <w:r>
++        <w:t>omni.physics.tensors</w:t>
+       </w:r>
+       <w:proofErr w:type="spellEnd"/>
+       <w:r>
+-        <w:t xml:space="preserve"> implementation with the Newton physics backend. Results from an earlier build should therefore not be expected to match those reported here. Isaac Sim uses its own bundled Python and cannot run inside the application virtual environment, which is the practical reason for the subprocess architecture described in Section 4.5.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="3C3027BB" w14:textId="04745F36" w:rsidR="00666F21" w:rsidRDefault="00666F21" w:rsidP="00666F21">
+-      <w:r>
+-        <w:t xml:space="preserve">Three additional conditions apply to reproduction. First, throughput values are peak observations rather than sustained averages and vary with environment count. Second, the two 16-environment runs are diagnostic experiments rather than failed training attempts. Third, every figure is regenerated from </w:t>
+-      </w:r>
+-      <w:r>
+-        <w:rPr>
+-          <w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>
+-          <w:sz w:val="21"/>
+-        </w:rPr>
+-        <w:t>backend/runs</w:t>
+-      </w:r>
+-      <w:r>
+-        <w:t xml:space="preserve"> by </w:t>
+-      </w:r>
+-      <w:r>
+-        <w:rPr>
+-          <w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>
+-          <w:sz w:val="21"/>
+-        </w:rPr>
+-        <w:t>scripts/make_report_figures.py</w:t>
+-      </w:r>
+-      <w:r>
+-        <w:t>; adding a run and executing the figure and document scripts updates the reported evidence without manual editing.</w:t>
+-      </w:r>
+-    </w:p>
+-    <w:p w14:paraId="543BA9A1" w14:textId="77777777" w:rsidR="00666F21" w:rsidRPr="00666F21" w:rsidRDefault="00666F21" w:rsidP="00666F21"/>
++        <w:t xml:space="preserve"> backend has also been replaced with the Newton physics backend in Isaac Sim 6.0. Thus, previous versions of the build should not be expected to have the same results as reported here. The practical reason for the subprocess architecture described in Section 4.5 is that Isaac Sim is built with a </w:t>
++      </w:r>
++      <w:proofErr w:type="spellStart"/>
++      <w:r>
++        <w:t>packageset</w:t>
++      </w:r>
++      <w:proofErr w:type="spellEnd"/>
++      <w:r>
++        <w:t xml:space="preserve"> of its own Python and it does not run inside the application virtual environment.</w:t>
++      </w:r>
++    </w:p>
++    <w:p w14:paraId="543BA9A1" w14:textId="538D0CD2" w:rsidR="00666F21" w:rsidRPr="00666F21" w:rsidRDefault="005369DE" w:rsidP="005369DE">
++      <w:r>
++        <w:t>There are three more conditions on reproduction. Firstly, throughputs are peak measurements, not average ones, and depend on the number of environments. Second, the two 16-environment runs are NOT failed training runs, but instead are diagnostic runs. Third, all figures are re-generated by scripts/make_report_figures.py, a process that is triggered by adding a run and running the scripts that make figures and documents; this means that the reported evidence will be updated without having to edit figures by hand.</w:t>
++      </w:r>
++    </w:p>
+     <w:sectPr w:rsidR="00666F21" w:rsidRPr="00666F21" w:rsidSect="00AA08FE">
+       <w:headerReference w:type="default" r:id="rId33"/>
+       <w:footerReference w:type="default" r:id="rId34"/>

@@ -1,0 +1,23 @@
+--- A/page-34
++++ B/page-34
+@@ -1,13 +1,12 @@
+ 33
+ Figure 9. The Unitree Go1 during recorded policy evaluation.
+-The three-algorithm comparison exposed a limitation in the galloping reward. TD3 achieved the 
+-highest velocity, approximately 1.65 m/s, but had the lowest flight fraction at 29%. SAC was 
+-slower at 1.52 m/s but achieved a 52% flight fraction. TD3 had therefore learned a fast trot that 
+-scored well without producing the intended gallop.
+-Interpretation. This outcome is the reward-misspecification failure predicted by the literature 
+-[14, 15]. It demonstrates why contact-state measurements and video inspection must 
+-accompany reward. A high reward alone is insufficient evidence that the intended task has 
+-been learned.
++A three-algorithm comparison revealed one caveat of the galloping reward. TD3 had the highest 
++velocity, ~1.65 m/s, and lowest flight fraction, 29%. SAC was slower at 1.52 m/s and was able 
++to reach a flight fraction of 52%. TD3 had consequently developed a quick trot that gained good 
++marks without the desired gallop.
++Interpretation. This is the result of the failure to specify rewards as predicted by the literature 
++[14, 15]. It helps to illustrate the need to use contact-state measurement and video inspection 
++in combination with reward. A high reward does not mean the task to be performed is learned.
+ 6.8 Valkyrie: a controlled algorithm comparison
+ The strongest controlled comparison in the archive is between SAC and TD3 on Valkyrie. Both 
+ runs use the same reward expression and a 40M-step budget, holding the tested configuration 

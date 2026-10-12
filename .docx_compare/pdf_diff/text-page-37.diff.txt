@@ -1,0 +1,67 @@
+--- A/page-37
++++ B/page-37
+@@ -1,31 +1,37 @@
+ 36
+ 7 Discussion
+ 7.1 Answering the research questions
+-RQ1: configuration with human oversight. EasyRTG breaks configuration into structural 
+-checks, relative calibration, and reward writing against an approved vocabulary. Compiling and 
+-auditing occur automatically before any tool runs. Users do not edit the underlying environment 
+-source code at all. A comparative user study measuring time savings has not yet been 
+-conducted.
+-RQ2: applicability across robot bodies. Treating morphology and state terms as 
+-dimensionless values allows one pipeline to generate viable policies for the A1, ANYmal, and 
+-Go1 quadrupeds alongside the Valkyrie humanoid. This approach removes fixed geometric 
+-constraints that typically constrain standard simulation pipelines. The test results confirm it 
+-functions correctly across these specific URDF models. It cannot however support 
+-manipulators or wheeled robots without significant architectural changes.
+-RQ3: differences between learners. All three algorithms produced nearly identical 
+-performance caps when controlling the Go1 quadruped. PPO, SAC, and TD3 showed negligible 
+-variance in final reward values within that specific environment. The Valkyrie results tell a 
+-different story entirely. SAC became the only viable option for that platform while neither PPO 
+-nor TD3 achieved stable gait patterns. Uneven algorithm coverage and incomplete 
+-hyperparameter tuning weaken these conclusions.
+-RQ4: simulation throughput. Parallel environments allowed throughput to scale until robot 
+-physics created a hard ceiling. A single GPU processed 32,056 steps per second across 4,096 
+-environments for the A1 configuration. Valkyrie performed below that threshold due to 
+-increased rigid-body solver latency from its mass and joint count. These figures align with the 
+-architectural shifts toward Isaac detailed in Section 5.2, which matches GPU simulation 
+-benchmarks published by Castano [10] and Garcia [13].
++RQ1: With human supervision configuration. EasyRTG splits configuration up into: 
++structural checks, relative calibration and writing rewards on a ratified word stock. 
++Compiling and auditing is performed automatically, prior to any tool running. The user 
++does not modify in any way the source code of the underlying environment. A 
++comparative user study, measurement of time savings, has not yet been conducted.
++RQ2: applicability with respect to robot bodies. By using the terms of morphology and 
++state as dimensionless values, one pipeline can be used to create policies for the A1 
++quadruped, the ANYmal quadruped, the Go1 quadruped and the Valkyrie humanoid. This 
++method does away with the rigid geometric restrictions that are typically associated with 
++conventional simulation pipelines. The test results indicate that it works in these 
++particular URDF models. However, without major architectural changes it cannot be 
++used to support manipulators or wheeled robots.
++RQ3: Differences between Learners. Almost identical performance limits were achieved 
++by all three algorithms in the control of the Go1 quadruped. PPO, SAC and TD3 had very 
++little deviation in the final values of the rewards in that environment. It's a different story 
++when it comes to the Valkyrie results. SAC was the sole stable gait pattern achieved on 
++that platform with PPO and TD3 not producing stable gait patterns. Conclusions are 
++hindered by the lack of even distribution of algorithms and by inadequate
++hyperparameter tuning.
++RQ4: simulation throughput. Throughput was increased up until a hard ceiling arose from 
++robot physics – using parallel environments. For the A1 configuration, a single GPU 
++processed 32,056 steps per second, in 4,096 environments. Valkyrie was below that 
++because of the higher number of masses and joints that it has. The numbers correspond 
++to the architectural changes with respect to Isaac presented in Section 5.2, and are 
++similar to the GPU simulation benchmarks provided by Castano [10] and Garcia [13].
+ 7.2 What the project learned about abstraction
+-The core design challenge involved determining exactly which layers of complexity must remain 
+-visible. Obscuring simulator installation failed to eliminate underlying hardware constraints or 
+-operating system dependencies; the MJX experiment demonstrated this when sandboxed 
+-execution could not isolate itself from host GPU drivers. Arbitrary Python allows unconstrained 
++The biggest design problem was what layers of complexity needed to be exposed. But hiding 
++simulator installation did not remove hardware limitations or OS dependency as with the MJX 
++experiment which could not separate itself from the host GPU drivers through sandboxed 
++execution. Arbitrary Python enables unrestricted state changes which make the runtime 
++unsafe, while a static reward catalogue is safe, but too simple to handle environments where 
++more advanced logic is required. EasyRTG solved this by only exposing those inputs that are 
++used to stimulate learning, observations, actions and termination signals, and the remainder 
++of the logic to be executed by the agent was compiled into a controlled backend.

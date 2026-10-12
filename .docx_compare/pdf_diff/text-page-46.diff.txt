@@ -1,0 +1,11 @@
+--- A/page-46
++++ B/page-46
+@@ -1,4 +1,8 @@
+ 45
++Figure 14. Reward against environment steps for the best run of each robot family.
++The best run for each robot is plotted using the same scale within its panel. A1 improves rapidly 
++and increases again near 16M steps, while Go1 improves in visible stages. ANYmal remains 
++unstable and decreases by approximately half between 3M and 5M steps before recovering, 
+ illustrating why ten attempts were required. Valkyrie improves slowly for 25M steps before 
+ accelerating; a shorter training budget would therefore have produced a different conclusion 
+ about humanoid learning.

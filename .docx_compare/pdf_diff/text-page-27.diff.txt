@@ -1,0 +1,62 @@
+--- A/page-27
++++ B/page-27
+@@ -1,30 +1,32 @@
+ 26
+-build. Although the commit messages are informal, this phase established one complete user 
+-interaction before the underlying components were refined.
+-The commit 'Add MJX backend, config revisions, and agent routing' on 29 June introduced an 
+-alternative high-performance backend. The following day's commit, 'switching to linux as 
+-mujoco isnt working good on win', records the operating-system difficulty that prevented this 
+-branch from becoming the final training lane. The attempt demonstrated that simulator and 
+-operating-system constraints remain present even when hidden by a desktop interface. 
+-EasyRTG subsequently adopted Isaac Sim as a separate GPU subprocess, allowing the main 
+-application to remain cross-platform while the training lane retained its required platform￾specific runtime.
+-The locomotion case study began on 27 July with 'added unitree go1 robot as casestudy'. The 
+-first walking reward produced a low crawling behaviour because this was an easier way to gain 
+-forward velocity. The commit 'fix: reject crawling in walk goals' introduced robot-relative height 
+-termination to prevent this outcome. On 28 July, 'Derive robot structure from URDF, not joint 
+-names; add expression layer' removed a second source of robot-specific assumptions.
+-The most substantial redesign occurred on 29 July through four commits: 'Evaluate rewards as 
++work; stream JPEG sim frames’. The commit messages are informal, but this stage provided one 
++full interaction with the user, before any of the components were broken down.
++The commit 'Add MJX backend, config revisions, and agent routing' dated 29th June added 
++another high-performance backend. The next day's commit, 'switching to linux as mujoco isnt 
++working good on win', includes the operating-system problem that precluded this branch from 
++being the final training lane. The try proved that limitations of the simulator and operating 
++system are still there, even if not obvious through the desktop interface. EasyRTG then 
++introduced a new GPU subprocess, Isaac Sim, which would maintain its platform-specific 
++runtime while the cross-platform EasyRTG stayed alive.
++The locomotion case study was started on 27 July with 'added unitree go1 robot as casestudy'. 
++The first walking reward resulted in a low crawling behaviour because it was a more easy way 
++of obtaining forward velocity. Widely recognized as a poor state of affairs, the commit 'fix: reject 
++crawling in walk goals' introduced robot-relative height termination to prevent that. On 28 July, 
++'Derive robot structure from URDF, not joint names; add expression layer' eliminated yet 
++another source of robot-specific assumptions.
++The biggest rework was done on 29 July with the following four commits: 'Evaluate rewards as 
+ expressions on the Isaac lane', 'Give the Isaac lane real contact state, so a flight phase is 
+ expressible', 'Let the agent author the reward; delete the 4-keyword goal enum', and 'Delete the 
+-reward catalogue: expressions are the only reward path'. The final commit that day, 'Record the 
+-gallop result; gait is no longer inexpressible', captured the significance of these changes. 
+-Galloping cannot be defined by forward velocity alone because it requires a flight phase in 
+-which all four feet leave the ground. The task therefore required both Isaac contact state and a 
+-reward language capable of expressing that state. Before these mechanisms existed, the 
+-behaviour could not be specified by the application.
+-Later work focused on interface refinement and error handling. The 30 July commit 'Stop 
+-expressions written against observation names from being saved' followed an authoring error 
+-and added a further validation boundary. Interface refinement continued until the 7 August 
+-commit 'most stable and clean ui'. Commits on 14 August reorganised the architecture notes 
+-and updated the presentation and README. Additional run directories created on 18 August 
+-expanded the analysable dataset beyond the values reported in the earlier presentation.
++reward catalogue: expressions are the only reward path'. The last commit of the day was 
++'Record the gallop result; gait is no longer inexpressible', which encapsulates the meaning of 
++these changes. To describe galloping by forward velocity is too simple as this gait must have a 
++flight phase when all four feet are off the ground. Thus, both Isaac contact state and a reward 
++language which can represent this contact state were required. Prior to these mechanisms, the 
++application was not able to specify the behaviour.
++Subsequent work was on interface refinement and error handling. The commit on 30 July "Stop 
++expressions written against observation names from being saved" was a result of a authoring 
++mistake and provided an additional validation boundary. Changes to the interface were still 
++made up to the 7 August commit 'most stable and clean ui'. On 14th August commits were 
++made to reorganise the architecture notes and update the presentation and README. 
++Additional run directories were created on 18 August, increasing the number of runs which can 
++be analysed.

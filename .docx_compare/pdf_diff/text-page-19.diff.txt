@@ -1,0 +1,21 @@
+--- A/page-19
++++ B/page-19
+@@ -7,12 +7,12 @@
+ are more capable than EasyRTG within their intended domains; however, the path from a robot 
+ model to a trained policy still requires code and framework-specific knowledge.
+ 2.11 Unity RL Playground: the closest accessibility claim
+-The Unity RL Playground presented by Ye et al. is the closest published system to the 
+-accessibility objective of EasyRTG, providing one-click locomotion training for imported mobile 
+-robots [21]. EasyRTG differs by exposing a shared state vocabulary for reward authoring, 
+-performing a reward audit before training, and retaining a run archive for later examination. The 
+-published description of Unity RL Playground does not report reward authoring at the same 
+-level of detail, although its stated scope is narrower.
++EasyRTG's goal of accessibility is closest to the Unity RL Playground presented by Ye et al. which 
++gives one-click locomotion training to mobile robots imported into the Unity platform [21]. 
++EasyRTG is different in that it provides a common vocabulary of states for writing the rewards, 
++it conducts a reward audit prior to training, and it maintains a history of runs for analysis. The 
++published description of Unity RL Playground is available and does not detail reward authoring 
++as much as its scope is more limited.
+ 2.12 Where EasyRTG sits
+ The literature provides established learning algorithms, high-throughput simulators and 
+ methods for language-assisted reward generation. The remaining accessibility problem is their 

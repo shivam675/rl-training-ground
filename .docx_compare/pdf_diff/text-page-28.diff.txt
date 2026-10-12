@@ -1,0 +1,37 @@
+--- A/page-28
++++ B/page-28
+@@ -18,19 +18,19 @@
+ Saved run directories Ephemeral charts Enables later recomputation, 
+ comparison and failure diagnosis
+ 5.4 Security and reliability improvements
+-A no-code interface increases the user's dependence on application-level safeguards. Security 
+-and reliability are therefore part of the system design. An internal assessment identified unsafe 
+-pickle loading, arbitrary custom reward execution, ungated assistant changes and permissive 
+-CORS settings. The highest-priority issues were addressed during July. In particular, the 
+-custom-Python reward path was removed rather than protected through an expanding denylist; 
+-the expression compiler now excludes dangerous syntax by construction. Training, tuning and 
+-evaluation workers also check for conflicting jobs, and the desktop launcher will terminate only 
+-the backend process that it started.
++A no code interface makes the user more reliant on application level security. Hence as part of 
++the system design, security and reliability are also considered. An internal evaluation has 
++pointed out unsafe pickle loading, arbitrary execution of custom rewards, ungated assistant 
++changes and permissive CORS settings. July was used to solve issues that were prioritized the 
++most. Specifically, the custom-Python reward path was removed and not protected by a 
++growing denylist; dangerous syntax is no longer allowed by the expression compiler. There are 
++also conflicting jobs checks performed by training, tuning and evaluation workers and the 
++desktop launcher will only kill the backend process it started.
+ 5.5 Role of generative AI in the development process
+-Claude accelerated prototyping by translating my interface specifications into Dart code, 
+-drafting parts of the backend and helping diagnose failures. This support changed the speed of 
+-implementation, but not the allocation of responsibility. I determined what the application 
+-should do, selected the architecture, defined the interfaces and validation rules, integrated the 
+-generated code and decided which suggestions to retain. Git commits record the resulting 
+-sequence of changes, while the automated tests, run telemetry and evaluation videos show 
+-how proposed implementations were checked against the working system.
++Claude was able to rapidly prototype my interface specifications and write portions of the 
++backend, as well as help diagnose failures, for me. This support impacted the implementation 
++progress and not the responsibility. I made up my mind on the functionality of the application, 
++architecture, interfaces and validation rules, integrated the generated code and chose what 
++suggestions to keep. The resulting series of changes are captured in git commits; the automatic 
++tests, telemetry and evaluation videos demonstrate how a proposed implementation was 
++tested against the working system.

@@ -1,0 +1,31 @@
+--- A/page-43
++++ B/page-43
+@@ -1,4 +1,15 @@
+ 42
++[22] A. R. Hevner, S. T. March, J. Park, and S. Ram, "Design science in information systems 
++research," MIS Quarterly, vol. 28, no. 1, pp. 75-105, 2004. 
++[23] K. Peffers, T. Tuunanen, M. A. Rothenberger, and S. Chatterjee, "A design science 
++research methodology for information systems research," Journal of Management 
++Information Systems, vol. 24, no. 3, pp. 45-77, 2007. 
++[24] Flutter, "Flutter desktop documentation," 2026. [Online]. Available: 
++https://docs.flutter.dev/platform-integration/desktop.
++[25] FastAPI, "FastAPI documentation," 2026. [Online]. Available: 
++https://fastapi.tiangolo.com/.
++[26] S. Amershi et al., "Guidelines for human-AI interaction," in Proceedings of CHI, paper 3, 
++pp. 1-13, 2019. 
+ [27] T. Akiba, S. Sano, T. Yanase, T. Ohta, and M. Koyama, "Optuna: A next-generation 
+ hyperparameter optimization framework," in Proceedings of KDD, pp. 2623-2631, 
+ 2019. 
+@@ -17,12 +28,3 @@
+ backend/requirements.txt.
+ • For GPU training, install NVIDIA Isaac Sim 6.0.1 and Isaac Lab 3.0 as described in 
+ docs/isaac_setup.md.
+-• Create the Python environment using uv and install the backend requirements into it.
+-• Start both services with scripts/dev_run.ps1 on Windows or scripts/dev_run.sh on 
+-Linux.
+-• Load a URDF, configure the goal and reward, run Test reward, then launch Isaac training 
+-from the desktop application.
+-A.3 Verification commands
+-Backend tests:
+-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD=1; .\.venv\Scripts\python.exe -m pytest 
+-backend\tests\ -q --basetemp=.pytest_tmp

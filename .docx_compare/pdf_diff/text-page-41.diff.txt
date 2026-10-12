@@ -1,0 +1,53 @@
+--- A/page-41
++++ B/page-41
+@@ -1,15 +1,25 @@
+ 40
+-Observation expressions and per-episode velocity commands should also be introduced 
+-together, allowing one policy to respond to changing instructions rather than a fixed goal. A 
+-campaign worker could then propose, audit and test reward revisions automatically while 
+-retaining the user-approval mechanism described in Section 4.4.
+-Further work should add terrain and sensor observations, improve automatic dynamics 
+-checks, evaluate more robots with balanced seeds and algorithm budgets, and measure 
+-throughput on additional GPUs. Hyperparameters should be studied through a reproducible 
+-optimisation framework such as Optuna [27] rather than through individual experiments alone. 
+-Finally, domain randomisation and hardware export are required before EasyRTG can claim a 
+-complete route from simulation to physical robot behaviour. DrEureka provides a relevant 
+-model for this stage [18].
++The application started as a CPU-based conceptual application, and was developed into an 
++actual pipeline. This route indicates that, this can be combined with a single no code desktop 
++platform, under strict supervision of the users, by incorporating the parts of the robots 
++locomotion, reward design and training by using a GPU.
++8.2 Future work
++A controlled usability test is the number one priority. When using the EasyRTG workflow, the 
++time to complete the task, number of configuration errors, and the need for assistance and a 
++validated usability scale should be compared to a baseline documented code. This no-code 
++claim would need to be verified in the course of this study, and it does not appear this can be 
++taken for granted from the architecture.
++Also, a policy should only be sensitive to changes in instructions – not a fixed goal – otherwise, 
++observe and velocity commands should be introduced at the same time within a single 
++episode. Then a campaign worker could propose and run tests/ audits of changes to the 
++rewards (but would still have to have a user-approval process as described in 4.4.).
++Other items to consider for future research include including terrain and sensor observations, 
++enhancing automatic dynamics checks, testing additional robots with similar seeds and 
++algorithm budgets, and quantifying the throughput on other GPUs. Instead of just exploring by 
++individual experiments, hyperparameters should be explored from a reproducible optimisation 
++perspective, e.g., Optuna [27]. Lastly, it is required to have domain randomisation (and 
++hardware export) before EasyRTG can boast of having a complete simulation to real robot 
++behaviour path. This stage is provided with a model relevant to DrEureka [18].
+ Bibliography
+ [1] R. S. Sutton and A. G. Barto, Reinforcement Learning: An Introduction, 2nd ed., 
+ Cambridge, MA: MIT Press, 2018. 
+@@ -20,13 +30,3 @@
+ [4] T. Haarnoja, A. Zhou, P. Abbeel, and S. Levine, "Soft actor-critic: Off-policy maximum 
+ entropy deep reinforcement learning with a stochastic actor," in Proceedings of 
+ ICML, pp. 1861-1870, 2018. 
+-[5] S. Fujimoto, H. van Hoof, and D. Meger, "Addressing function approximation error in 
+-actor-critic methods," in Proceedings of ICML, pp. 1587-1596, 2018. 
+-[6] G. Brockman et al., "OpenAI Gym," arXiv:1606.01540, 2016.
+-[7] M. Towers et al., "Gymnasium: A standard interface for reinforcement learning 
+-environments," arXiv:2407.17032, 2024.
+-[8] A. Raffin et al., "Stable-Baselines3: Reliable reinforcement learning implementations," 
+-Journal of Machine Learning Research, vol. 22, no. 268, pp. 1-8, 2021. 
+-[9] E. Coumans and Y. Bai, "PyBullet, a Python module for physics simulation for games, 
+-robotics and machine learning," 2016-2021. [Online]. Available: 
+-https://pybullet.org/.
